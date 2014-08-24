@@ -1,0 +1,14 @@
+binheap.o: binheap.c binheap.h
+binheap_test.o: binheap_test.c binheap.h test_macros.h
+hash_leak_test.o: hash_leak_test.c hashtable.h hashtable_str.h
+hashtable.o: hashtable.c hashtable.h hashtable_private.h
+hashtable_itr.o: hashtable_itr.c hashtable.h hashtable_private.h \
+  hashtable_itr.h
+hashtable_str.o: hashtable_str.c hashtable_str.h
+hashtable_str_rj.o: hashtable_str_rj.c
+hashtable_test.o: hashtable_test.c hashtable.h hashtable_str.h \
+  test_macros.h
+varray.o: varray.c varray.h
+varray_test.o: varray_test.c varray.h test_macros.h
+vqarray.o: vqarray.c vqarray.h
+vqarray_test.o: vqarray_test.c vqarray.h varray.h test_macros.h

@@ -1,0 +1,29 @@
+ExpectedSAPType = 2
+MaxAudioGap (PTS ticks) = 10.0
+MaxVideoGap (PTS ticks) = 100.0
+900000	uf-0/seg-00001.ts	uf-1/seg-00001.ts
+900000	uf-0/seg-00002.ts	uf-1/seg-00002.ts
+900000	uf-0/seg-00003.ts	uf-1/seg-00003.ts
+900000	uf-0/seg-00004.ts	uf-1/seg-00004.ts
+900000	uf-0/seg-00005.ts	uf-1/seg-00005.ts
+900000	uf-0/seg-00006.ts	uf-1/seg-00006.ts
+900000	uf-0/seg-00007.ts	uf-1/seg-00007.ts
+900000	uf-0/seg-00008.ts	uf-1/seg-00008.ts
+900000	uf-0/seg-00009.ts	uf-1/seg-00009.ts
+900000	uf-0/seg-00010.ts	uf-1/seg-00010.ts
+900000	uf-0/seg-00011.ts	uf-1/seg-00011.ts
+900000	uf-0/seg-00012.ts	uf-1/seg-00012.ts
+900000	uf-0/seg-00013.ts	uf-1/seg-00013.ts
+900000	uf-0/seg-00014.ts	uf-1/seg-00014.ts
+900000	uf-0/seg-00015.ts	uf-1/seg-00015.ts
+900000	uf-0/seg-00016.ts	uf-1/seg-00016.ts
+900000	uf-0/seg-00017.ts	uf-1/seg-00017.ts
+900000	uf-0/seg-00018.ts	uf-1/seg-00018.ts
+900000	uf-0/seg-00019.ts	uf-1/seg-00019.ts
+900000	uf-0/seg-00020.ts	uf-1/seg-00020.ts
+900000	uf-0/seg-00021.ts	uf-1/seg-00021.ts
+900000	uf-0/seg-00022.ts	uf-1/seg-00022.ts
+900000	uf-0/seg-00023.ts	uf-1/seg-00023.ts
+900000	uf-0/seg-00024.ts	uf-1/seg-00024.ts
+900000	uf-0/seg-00025.ts	uf-1/seg-00025.ts
+647520	uf-0/seg-00026.ts	uf-1/seg-00026.ts
