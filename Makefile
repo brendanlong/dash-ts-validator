@@ -1,8 +1,8 @@
 SHELL = /bin/sh
 
-SUBDIRS = tslib libstructures h264bitstream
+SUBDIRS = tslib libstructures h264bitstream ISOBMFF
 
-tslib: libstructures h264bitstream
+tslib: libstructures h264bitstream ISOBMFF
 
 $(SUBDIRS):
 	$(MAKE) -C $@

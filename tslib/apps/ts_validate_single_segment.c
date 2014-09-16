@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
    }
 
    ///////////////////////////////////
-   int returnCode = doSegmentValidation(&dash_validator, fname, NULL);
+   int returnCode = doSegmentValidation(&dash_validator, fname, NULL, NULL /* GORP */, 0 /* GORP: segment duration */);
    if (returnCode != 0)
    {
        return returnCode;

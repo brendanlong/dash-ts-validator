@@ -88,7 +88,7 @@ int pes_processor(pes_packet_t *pes, elementary_stream_info_t *esi, vqarray_t* t
    return 1;
 }
 
-int pmt_processor(mpeg2ts_program_t *m2p, void *arg) 
+int pmt_processor_split(mpeg2ts_program_t *m2p, void *arg) 
 { 
    if (m2p == NULL || m2p->pmt == NULL) // if we don't have any PSI, there's nothing we can do
       return 0; 
@@ -146,14 +146,14 @@ int pmt_processor(mpeg2ts_program_t *m2p, void *arg)
 }
 
 
-int pat_processor(mpeg2ts_stream_t *m2s, void *arg) 
+int pat_processor_split(mpeg2ts_stream_t *m2s, void *arg) 
 { 
    for (int i = 0; i < vqarray_length(m2s->programs); i++) 
    {
       mpeg2ts_program_t *m2p = vqarray_get(m2s->programs, i); 
       
       if (m2p == NULL) continue; 
-      m2p->pmt_processor =  pmt_processor;
+      m2p->pmt_processor =  pmt_processor_split;
    }
    return 1;
 }
@@ -214,7 +214,7 @@ int main(int argc, char *argv[])
       return 1;
    }
    
-   m2s->pat_processor = pat_processor; 
+   m2s->pat_processor = pat_processor_split; 
    
    int num_packets = 4096;  
    uint8_t *ts_buf = malloc(TS_SIZE * 4096); 

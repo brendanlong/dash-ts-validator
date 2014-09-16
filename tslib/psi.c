@@ -114,7 +114,7 @@ void program_association_section_free(program_association_section_t *pas)
    free(pas);
 }
 
-int program_association_section_read(program_association_section_t *pas, uint8_t *buf, size_t buf_len) 
+int program_association_section_read(program_association_section_t *pas, uint8_t *buf, size_t buf_len)
 { 
    if (pas == NULL || buf == NULL) 
    {

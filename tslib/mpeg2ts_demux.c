@@ -363,6 +363,16 @@ int mpeg2ts_stream_read_pat(mpeg2ts_stream_t *m2s, ts_packet_t *ts)
    return ret;
 }
 
+int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t *m2s, ts_packet_t *ts) 
+{ 
+   doDASHEventValidation(ts->payload.bytes, ts->payload.len);
+
+   // GORP: allow >1 packet event
+ 
+   ts_free(ts);    
+   return 0;
+}
+
 int mpeg2ts_program_read_pmt(mpeg2ts_program_t *m2p, ts_packet_t *ts) 
 { 
    int ret = 0; 
@@ -436,7 +446,7 @@ int mpeg2ts_stream_reset(mpeg2ts_stream_t *m2s)
       mpeg2ts_program_t *m2p = vqarray_get(m2s->programs, i); 
       for (int j = 0; j < vqarray_length(m2p->pids); j++) 
       {
-         if ((pi = vqarray_get(m2p->pids, i)) != NULL) 
+         if ((pi = vqarray_get(m2p->pids, j)) != NULL) 
          {
             pid_cnt++; 
             if ((pi->demux_validator != NULL) && (pi->demux_validator->process_ts_packet != NULL)) 
@@ -468,6 +478,9 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t *m2s, ts_packet_t *ts)
        return mpeg2ts_stream_read_pat(m2s, ts); 
    if (ts->header.PID == CAT_PID)
        return mpeg2ts_stream_read_cat(m2s, ts); 
+   if (ts->header.PID == DASH_PID)
+       return mpeg2ts_stream_read_dash_event_msg(m2s, ts);
+
 
    if ( ts->header.PID == NULL_PID ) 
    {
@@ -492,7 +505,8 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t *m2s, ts_packet_t *ts)
       
       if (m2p->PID == ts->header.PID)
           return mpeg2ts_program_read_pmt(m2p, ts);  // got a PMT
-      
+
+     
       // pi == NULL => this PID does not belong to this program
       pi = mpeg2ts_program_get_pid_info(m2p, ts->header.PID); 
       

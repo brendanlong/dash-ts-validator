@@ -14,6 +14,8 @@
 #include "tpes.h"
 #include "vqarray.h"
 
+#include "ISOBMFF.h"
+
 #ifndef __H_SEGMENT_VALIDATOR
 #define __H_SEGMENT_VALIDATOR
 
@@ -25,6 +27,8 @@
 #define TS_TEST_DASH   0x01
 #define TS_TEST_MAIN   0x02
 #define TS_TEST_SIMPLE 0x04
+
+#define PID_EMSG    0x04
 
 typedef enum {
    UNKNOWN_CONTENT_COMPONENT = 0x00,
@@ -70,11 +74,13 @@ typedef struct
    program_map_section_t *initializaion_segment_pmt;      /// parsed PMT
 } dash_validator_t; 
 
+
 int pat_processor(mpeg2ts_stream_t *m2s, void *arg); 
 int pmt_processor(mpeg2ts_program_t *m2p, void *arg); 
 int validate_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_info, void *arg); 
 int validate_pes_packet(pes_packet_t *pes, elementary_stream_info_t *esi, vqarray_t *ts_queue, void *arg); 
-int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_validator_t *dash_validator_init);
-int doRepresentationIndexSegmentValidation(dash_validator_t *dash_validator, char *fname);
+int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_validator_t *dash_validator_init,
+                        data_segment_iframes_t* pIFrameData, unsigned int segmentDuration);
+void doDASHEventValidation(uint8_t* buf, int len);
 
 #endif

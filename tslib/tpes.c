@@ -68,6 +68,9 @@ int pes_demux_process_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_in
    if ( es_info == NULL || arg == NULL)
        return 0; 
 
+//   printf ("pes_demux_process_ts_packet\n");
+
+
    int end_of_pes = !!( ts == NULL );
    if ( !end_of_pes ) end_of_pes = ts->header.payload_unit_start_indicator;
    

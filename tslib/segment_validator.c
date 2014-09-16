@@ -1,10 +1,15 @@
 
 #include "segment_validator.h"
 
+#include "mpeg2ts_demux.h"
 #include "h264_stream.h"
+#include "ISOBMFF.h"
 
 
 static dash_validator_t *g_p_dash_validator;
+int g_nIFrameCntr;
+data_segment_iframes_t *g_pIFrameData;
+unsigned int g_segmentDuration;
 
 int pat_processor(mpeg2ts_stream_t *m2s, void *arg) 
 {  
@@ -117,6 +122,7 @@ int pmt_processor(mpeg2ts_program_t *m2p, void *arg)
          case  STREAM_TYPE_MPEG2_AAC:
          case  STREAM_TYPE_MPEG4_AAC:
             process_pid = 1; 
+ //           printf ("pi->es_info->stream_type = %d\n", pi->es_info->stream_type);
             content_component = AUDIO_CONTENT_COMPONENT; 
             break; 
             
@@ -204,7 +210,6 @@ int copy_pmt_info(mpeg2ts_program_t *m2p, dash_validator_t *dash_validator_sourc
             demux_validator->arg_destructor = NULL; 
             
             // hook PID processor to PID
-            // GORP: need m2p here
             mpeg2ts_program_register_pid_processor(m2p, PID, demux_handler, demux_validator); 
           
             pid_validator_dest = calloc(1, sizeof(pid_validator_t)); 
@@ -300,7 +305,20 @@ int validate_pes_packet(pes_packet_t *pes, elementary_stream_info_t *esi, vqarra
    }
    
    ts_packet_t *first_ts = vqarray_get(ts_queue, 0);   
-   pid_validator_t *pid_validator = dash_validator_find_pid(first_ts->header.PID);  
+   pid_validator_t *pid_validator = dash_validator_find_pid(first_ts->header.PID);
+   
+//   printf ("processing PES packet: PID = %d\n", first_ts->header.PID);
+   if (first_ts->header.PID == PID_EMSG)
+   {
+       uint8_t* buf = pes->payload;
+       int len = pes->payload_len;
+       if (validateEmsgMsg(buf, len, g_segmentDuration) != 0)
+       {
+          LOG_ERROR("DASH Conformance: validation of EMSG failed"); 
+          g_p_dash_validator->status = 0;
+       }
+   }
+
    
    assert(pid_validator != NULL); 
    if (pes->status > 0) 
@@ -349,6 +367,7 @@ int validate_pes_packet(pes_packet_t *pes, elementary_stream_info_t *esi, vqarra
                 int index = 0;
                 while ((len > index) && ((returnCode = find_nal_unit(buf + index, len - index, &nal_start, &nal_end)) !=  0))
                 {
+ //                   printf("nal_start = %d, nal_end = %d \n", nal_start, nal_end);
                     h264_stream_t* h = h264_new();
                     read_nal_unit(h, &buf[nal_start + index], nal_end - nal_start);
  //                   printf("h->nal->nal_unit_type: %d \n", h->nal->nal_unit_type);
@@ -385,6 +404,30 @@ int validate_pes_packet(pes_packet_t *pes, elementary_stream_info_t *esi, vqarra
    if (pid_validator->content_component == VIDEO_CONTENT_COMPONENT)
    {        
         pid_validator->duration = 3000;
+
+        if (g_pIFrameData->doIFrameValidation && first_ts->adaptation_field.random_access_indicator) 
+        {
+            // check iFrame location against index file
+
+            if (g_nIFrameCntr < g_pIFrameData->numIFrames)
+            {
+                unsigned int expectedIFramePTS = g_pIFrameData->pIFrameLocations[g_nIFrameCntr];
+                unsigned int actualIFramePTS = pes->header.PTS;
+                g_nIFrameCntr++;
+                printf ("expectedIFramePTS = %u, actualIFramePTS = %u\n", expectedIFramePTS, actualIFramePTS);
+                if (expectedIFramePTS != actualIFramePTS)
+                {
+                    LOG_ERROR_ARGS("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actua: %d",
+                        expectedIFramePTS, actualIFramePTS); 
+                    g_p_dash_validator->status = 0;
+                }
+            }
+            else
+            {
+                LOG_ERROR("DASH Conformance: Stream has more IFrames than index file"); 
+                g_p_dash_validator->status = 0;
+            }
+        }
    }
 
    if (pid_validator->content_component == AUDIO_CONTENT_COMPONENT)
@@ -404,11 +447,12 @@ int validate_pes_packet(pes_packet_t *pes, elementary_stream_info_t *esi, vqarra
 //                pes->header.PTS, pes->payload_len, frame_length, frame_cntr, index);
         }
 
-        if (frame_cntr != 4)
+//            printf ("AUDIO FRAME CNTR = %d\n", frame_cntr);
+/*        if (frame_cntr != 4)
         {
             printf ("\nAUDIO FRAME CNTR = %d\n\n", frame_cntr);
         }
-        
+*/        
         pid_validator->duration = 1920 /* 21.3 msec for 90kHz clock */ * frame_cntr;
 
  //       printf ("AUDIO ANALYSIS: END: %d\n", frame_cntr);
@@ -420,17 +464,13 @@ int validate_pes_packet(pes_packet_t *pes, elementary_stream_info_t *esi, vqarra
    return 1;
 }
 
-int doRepresentationIndexSegmentValidation(dash_validator_t *dash_validator, char *fname)
-{
-    // GORP: fill in
-    LOG_INFO_ARGS ("doRepresentationIndexSegmentValidation : %s", fname);
-
-    g_p_dash_validator->status = 0; 
-}
-
-int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_validator_t *dash_validator_init)
+int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_validator_t *dash_validator_init,
+                        data_segment_iframes_t* pIFrameData, unsigned int segmentDuration)
 {
    g_p_dash_validator = dash_validator;
+   g_nIFrameCntr = 0;
+   g_pIFrameData = pIFrameData;
+   g_segmentDuration = segmentDuration;
 
    LOG_INFO_ARGS ("doSegmentValidation : %s", fname);
 
@@ -468,7 +508,6 @@ int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_vali
    // if had intialization segment, then copy program info and setup PES callbacks
    if (dash_validator_init != NULL)
    {
-
          mpeg2ts_program_t *prog = mpeg2ts_program_new(
              200 /* GORP */,  // can I just use dummy values here?
              201 /* GORP */);
@@ -525,6 +564,9 @@ int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_vali
          packet_buf_size = (long)(packets_to_read - packets_read);
       }
    }
+
+   // need to reset the mpeg stream to be sure to process the last PES packet
+   mpeg2ts_stream_reset(m2s);
    
    LOG_INFO_ARGS("%lld TS packets read", packets_read); 
    
@@ -543,3 +585,11 @@ int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_vali
 }
 
 
+void doDASHEventValidation(uint8_t* buf, int len)
+{
+    if (validateEmsgMsg(buf, len, g_segmentDuration) != 0)
+    {
+       LOG_ERROR("DASH Conformance: validation of EMSG failed"); 
+       g_p_dash_validator->status = 0;
+    }
+}

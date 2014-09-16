@@ -16,8 +16,8 @@ RM = rm -f
 SRCS = $(wildcard *.c) 
 OBJS = $(SRCS:%.c=%.o)
 
-INCLUDES = -I . -I../common -I../libstructures/ -I../h264bitstream/ 
-LIBS = -L . -ltslib -L../h264bitstream/.libs -lh264bitstream  -L../libstructures/ -ldatastruct -lm
+INCLUDES = -I . -I../common -I../libstructures/ -I../h264bitstream/ -I../ISOBMFF/  -I../logging/
+LIBS = -L . -ltslib -L../h264bitstream/.libs -lh264bitstream  -L../ISOBMFF -lisobmff  -L../logging/ -llogging   -L../libstructures/ -ldatastruct -lm
 
 CFLAGS  += $(INCLUDES)
 LDFLAGS += $(LIBS)
