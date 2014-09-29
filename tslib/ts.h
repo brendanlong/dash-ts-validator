@@ -106,6 +106,8 @@ typedef struct {
 
    int status;
 
+   uint64_t payload_pos_in_stream;  // byte location of payload in transport stream
+
 } ts_packet_t;
 
 ts_packet_t* ts_new();
@@ -113,7 +115,7 @@ void ts_free(ts_packet_t *ts);
 
 int ts_read_header(ts_header_t *tsh, bs_t *b);
 int ts_read_adaptation_field(ts_adaptation_field_t *af, bs_t *b);
-int ts_read(ts_packet_t *ts, uint8_t *buf, size_t buf_size);
+int ts_read(ts_packet_t *ts, uint8_t *buf, size_t buf_size, uint64_t packet_num);
 
 int ts_write_adaptation_field(ts_adaptation_field_t *af, bs_t *b);
 int ts_write_header(ts_header_t *tsh, bs_t *b);

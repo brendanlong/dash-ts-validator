@@ -67,13 +67,16 @@ typedef struct
    long segment_end; 
    vqarray_t *pids; 
    int PCR_PID; 
+   int videoPID;
+   int audioPID;
+   uint32_t pmt_program_number; 
+   uint32_t pmt_version_number; 
    int status; // 0 == fail
    uint32_t psi_tables_seen;
    segment_type_t segment_type;
    int use_initializaion_segment;
    program_map_section_t *initializaion_segment_pmt;      /// parsed PMT
 } dash_validator_t; 
-
 
 int pat_processor(mpeg2ts_stream_t *m2s, void *arg); 
 int pmt_processor(mpeg2ts_program_t *m2p, void *arg); 

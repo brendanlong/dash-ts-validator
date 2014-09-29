@@ -53,9 +53,11 @@ int readStringFromSegInfoFile (FILE *segInfoFile, char * paramName, char *paramV
 int readSegInfoFile(char * fname, int *numRepresentations, int *numSegments, char **segFileNames, int **segDurations,
                     int *expectedSAPType, int *maxVideoGapPTSTicks, int *maxAudioGapPTSTicks,
                     int *segmentAlignment, int *subsegmentAlignment, int *bitstreamSwitching,
-                    char *initializationSegment, char **representationIndexFileNames, char **segmentIndexFileNames);
+                    char *initializationSegment, char **representationIndexFileNames, char **segmentIndexFileNames, 
+                    int *presentationTimeOffset, int *videoPID);
 char *trimWhitespace (char *string);
 
+int checkPSIIdentical(dash_validator_t *dash_validator, int numDashValidators);
 
 
 static struct option long_options[] = { 
@@ -76,6 +78,7 @@ static void usage(char *name)
     fprintf(stderr, "\nUsage: \n%s [options] <input file with segment info>\n\nOptions:\n%s\n", name, options);
 }
 
+
 int main(int argc, char *argv[]) 
 { 
     int c, long_options_index; 
@@ -91,7 +94,7 @@ int main(int argc, char *argv[])
     }
 
 
-    while ((c = getopt_long(argc, argv, "vdbh", long_options, &long_options_index)) != -1) 
+    while ((c = getopt_long(argc, argv, "vd::b:h", long_options, &long_options_index)) != -1) 
     {
         switch (c) 
         {
@@ -143,18 +146,20 @@ int main(int argc, char *argv[])
     int bitstreamSwitching = 0;
     char initializationSegment[SEGMENT_FILE_NAME_MAX_LENGTH];
     initializationSegment[0] = 0;
+    int presentationTimeOffset = 0;
     char * representationIndexFileNames = NULL;    // contains numRepresentations filenames
     char * segmentIndexFileNames = NULL;    // contains numRepresentations*numSegments filenames, ordered with segments first, then representations
+    int videoPID = -1;
 
     // first step: read input file and get all test parameters
     if (readSegInfoFile(fname, &numRepresentations, &numSegments, &segFileNames, &segDurations,
         &expectedSAPType, &maxVideoGapPTSTicks, &maxAudioGapPTSTicks,
-        &segmentAlignment, &subsegmentAlignment, &bitstreamSwitching,
-        initializationSegment, &representationIndexFileNames, &segmentIndexFileNames) != 0)
+        &segmentAlignment, &subsegmentAlignment, &bitstreamSwitching, initializationSegment, 
+        &representationIndexFileNames, &segmentIndexFileNames, &presentationTimeOffset, &videoPID) != 0)
     {
         return 1;
     }
-                
+    
     dash_validator_t *dash_validator = calloc (numRepresentations * numSegments, sizeof (dash_validator_t));
     dash_validator_t *dash_validator_init_segment = calloc (1, sizeof (dash_validator_t));
     dash_validator_init_segment->segment_type = INITIALIZAION_SEGMENT;
@@ -202,13 +207,14 @@ int main(int argc, char *argv[])
     // next process index files, either representation index files or single segment index files
     // the index files contain iFrame locations which are stored here and then validated when the actual
     // media segments are processed later
+
     if (strlen(&(representationIndexFileNames[0])) != 0)
     {
         for (int repIndex=0; repIndex<numRepresentations; repIndex++)
         {
             data_segment_iframes_t *pIFramesTemp = pIFrames + getArrayIndex (repIndex, 0 /* segIndex */, numSegments);
             returnCode = validateIndexSegment(representationIndexFileNames + repIndex*SEGMENT_FILE_NAME_MAX_LENGTH, 
-                numSegments, segDurations, pIFramesTemp);
+                numSegments, segDurations, pIFramesTemp, presentationTimeOffset, videoPID, conformance_level & TS_TEST_SIMPLE);
             if (returnCode != 0)
             {
                 LOG_ERROR_ARGS("Validation of RepresentationIndexFile %s FAILED", 
@@ -228,7 +234,8 @@ int main(int argc, char *argv[])
                 data_segment_iframes_t *pIFramesTemp = pIFrames + arrayIndex;
 
                 char *segmentIndexFileName = segmentIndexFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH;
-                returnCode = validateIndexSegment(segmentIndexFileName, 1, &(segDurations[segIndex]), pIFramesTemp);
+                returnCode = validateIndexSegment(segmentIndexFileName, 1, &(segDurations[segIndex]), pIFramesTemp,
+                    presentationTimeOffset, videoPID, conformance_level & TS_TEST_SIMPLE);
                 if (returnCode != 0)
                 {
                     LOG_ERROR_ARGS("Validation of SegmentIndexFile %s FAILED", segmentIndexFileName);
@@ -240,6 +247,8 @@ int main(int argc, char *argv[])
 
     // validate media files for each segment
     // store timing info for each segment so that segment-segment timing can be tested
+    expectedStartTime[0] = presentationTimeOffset;
+    
     char *segFileName = NULL;
     for (int segIndex=0; segIndex < numSegments; segIndex++)
     {
@@ -273,21 +282,7 @@ int main(int argc, char *argv[])
 
             // GORP: what if there is no video in the segment??
             pid_validator_t *pv = NULL;
-            if (expectedStartTime[arrayIndex] == 0)
-            {
-                for (int pidIndex = 0; pidIndex < vqarray_length(dash_validator[arrayIndex].pids); pidIndex++) 
-                {
-                    pv = (pid_validator_t *)vqarray_get(dash_validator[arrayIndex].pids, pidIndex); 
-                    if (pv == NULL) continue; 
-
-                    // should be only one video stream in program
-                    if (pv->content_component == VIDEO_CONTENT_COMPONENT)
-                    {
-                        expectedStartTime[arrayIndex] = pv->EPT;
-                    }
-                }
-            }
-
+            
             expectedDuration[arrayIndex] = segDurations[segIndex];
             expectedEndTime[arrayIndex] = expectedStartTime[arrayIndex] + expectedDuration[arrayIndex];
 
@@ -357,20 +352,9 @@ int main(int argc, char *argv[])
                     if (pv->content_component == VIDEO_CONTENT_COMPONENT)
                     {
                         dash_validator[arrayIndex].status = 0;
-                   }
+                    }
                     else if (pv->content_component == AUDIO_CONTENT_COMPONENT)
                     {
-/*                        float numDeltaFrames = (actualStartTime - expectedStartTime[arrayIndex])/1917.0;
-                        if (numDeltaFrames >= 4.0 || numDeltaFrames <= -4.0)
-                        {
-                            LOG_INFO_ARGS ("%s: Num Audio Frames in Delta (%f) >= 4: FAIL", segFileName, numDeltaFrames);
-                            dash_validator[arrayIndex].status = 0;
-                        }
-                        else
-                        {
-                            LOG_INFO_ARGS ("%s: Num Audio Frames in Delta (%f) < 4: OK", segFileName, numDeltaFrames);
-                        }
-                        */
                     }
                 }
 
@@ -451,12 +435,23 @@ int main(int argc, char *argv[])
             lastAudioEndTime[arrayIndex1] = actualAudioEndTime[arrayIndex0];
             lastVideoEndTime[arrayIndex1] = actualVideoEndTime[arrayIndex0];
 
-            LOG_INFO_ARGS("%s: RESULT: %s", segFileNames + arrayIndex0*SEGMENT_FILE_NAME_MAX_LENGTH, 
+            LOG_INFO_ARGS("SEGMENT TEST RESULT: %s: %s", segFileNames + arrayIndex0*SEGMENT_FILE_NAME_MAX_LENGTH, 
                 dash_validator[arrayIndex0].status ? "PASS" : "FAIL"); 
         }
 
         printf ("\n");
     }
+    
+    if (conformance_level & TS_TEST_SIMPLE)
+    {
+        // for a simple profile, the PSI info must be the same for all segments
+        if (checkPSIIdentical(dash_validator, numRepresentations * numSegments) != 0)
+        {
+            LOG_ERROR("Validation FAILED: PSI info not identical for all segments");
+            overallStatus = 0;
+        }
+    }
+
 
     for (int repIndex=0; repIndex < numRepresentations; repIndex++)
     {
@@ -712,7 +707,8 @@ void printAudioTimingMatrix(char* segFileNames, int64_t *actualAudioStartTime, i
 int readSegInfoFile(char * fname, int *numRepresentations, int *numSegments, char **segFileNames, int **segDurations,
                     int *expectedSAPType, int *maxVideoGapPTSTicks, int *maxAudioGapPTSTicks,
                     int *segmentAlignment, int *subsegmentAlignment, int *bitstreamSwitching,
-                    char *initializationSegment, char **representationIndexFileNames, char **segmentIndexFileNames)
+                    char *initializationSegment, char **representationIndexFileNames, char **segmentIndexFileNames, 
+                    int *presentationTimeOffset, int *videoPID)
 {
     char representationIndexSegmentString[1024];
 
@@ -766,13 +762,30 @@ int readSegInfoFile(char * fname, int *numRepresentations, int *numSegments, cha
             LOG_ERROR_ARGS("Error parsing line in SegInfoFile %s", fname);
             continue;
         }
-        if (strncmp("StartWithSAP", trimmedLine, strlen("StartWithSAP")) == 0)
+
+        if (strncmp("PresentationTimeOffset_PTSTicks", trimmedLine, strlen("PresentationTimeOffset_PTSTicks")) == 0)
+        {
+            if (sscanf(temp+1, "%d", presentationTimeOffset) != 1)
+            {
+                LOG_ERROR_ARGS("Error parsing PresentationTimeOffset_PTSTicks in SegInfoFile %s", fname);
+            }
+            LOG_INFO_ARGS ("PresentationTimeOffset_PTSTicks = %d", *presentationTimeOffset);
+        }
+        else if (strncmp("VideoPID", trimmedLine, strlen("VideoPID")) == 0)
+        {
+            if (sscanf(temp+1, "%d", videoPID) != 1)
+            {
+                LOG_ERROR_ARGS("Error parsing VideoPID in SegInfoFile %s", fname);
+            }
+            LOG_INFO_ARGS ("VideoPID = %d", *videoPID);
+        }
+        else if (strncmp("ExpectedSAPType", trimmedLine, strlen("ExpectedSAPType")) == 0)
         {
             if (sscanf(temp+1, "%d", expectedSAPType) != 1)
             {
-                LOG_ERROR_ARGS("Error parsing StartWithSAP in SegInfoFile %s", fname);
+                LOG_ERROR_ARGS("Error parsing ExpectedSAPType in SegInfoFile %s", fname);
             }
-            LOG_INFO_ARGS ("StartWithSAP = %d", *expectedSAPType);
+            LOG_INFO_ARGS ("ExpectedSAPType = %d", *expectedSAPType);
         }
         else if (strncmp("MaxAudioGap_PTSTicks", trimmedLine, strlen("MaxAudioGap_PTSTicks")) == 0)
         {
@@ -1005,3 +1018,86 @@ char *trimWhitespace (char *string)
 
     return newString;
 }
+
+int checkPSIIdentical(dash_validator_t *dash_validator, int numDashValidators)
+{
+    LOG_INFO ("Validating that PSI info is identical in each segment\n");
+
+    int videoPID;
+    int audioPID;
+    int PCR_PID;
+    uint32_t pmt_program_number;
+    uint32_t pmt_version_number; 
+
+    unsigned char initialized = 0;
+    unsigned char status = 0; // 0=PASS, 1-FAIL
+
+    for (int i=0; i<numDashValidators; i++)
+    {
+        int PCR_PID_Temp = dash_validator[i].PCR_PID; 
+        int videoPID_Temp = dash_validator[i].videoPID; 
+        int audioPID_Temp = dash_validator[i].audioPID;
+        uint32_t pmt_program_number_Temp = dash_validator[i].pmt_program_number;
+        uint32_t pmt_version_number_Temp = dash_validator[i].pmt_version_number;
+
+        /*
+        LOG_INFO ("");
+        LOG_INFO_ARGS ("PSI Table Validation: num %d", i);
+        LOG_INFO_ARGS ("PSI Table Validation: PCR_PID = %d", PCR_PID_Temp);
+        LOG_INFO_ARGS ("PSI Table Validation: videoPID = %d", videoPID_Temp);
+        LOG_INFO_ARGS ("PSI Table Validation: audioPID = %d", audioPID_Temp);
+        LOG_INFO_ARGS ("PSI Table Validation: pmt_program_number = %d", pmt_program_number_Temp);
+        LOG_INFO_ARGS ("PSI Table Validation: pmt_version_number = %d", pmt_version_number_Temp);
+        LOG_INFO ("");
+        */
+
+        if (initialized)
+        {
+            if (PCR_PID != PCR_PID_Temp)
+            {
+                LOG_ERROR_ARGS ("PSI Table Validation FAILED: Incorrect PCR_PID: Expected = %d, Actual = %d",
+                    PCR_PID, PCR_PID_Temp);
+                status = -1;
+            }
+            if (videoPID != videoPID_Temp)
+            {
+                LOG_ERROR_ARGS ("PSI Table Validation FAILED: Incorrect videoPID: Expected = %d, Actual = %d",
+                    videoPID, videoPID_Temp);
+                status = -1;
+            }
+            if (audioPID != audioPID_Temp)
+            {
+                LOG_ERROR_ARGS ("PSI Table Validation FAILED: Incorrect audioPID: Expected = %d, Actual = %d",
+                    audioPID, audioPID_Temp);
+                status = -1;
+            }
+            if (pmt_program_number != pmt_program_number_Temp)
+            {
+                LOG_ERROR_ARGS ("PSI Table Validation FAILED: Incorrect pmt_program_number: Expected = %d, Actual = %d",
+                    pmt_program_number, pmt_program_number_Temp);
+                status = -1;
+            }
+            if (pmt_version_number != pmt_version_number_Temp)
+            {
+                LOG_ERROR_ARGS ("PSI Table Validation FAILED: Incorrect pmt_version_number: Expected = %d, Actual = %d",
+                    pmt_version_number, pmt_version_number_Temp);
+                status = -1;
+            }
+        }
+        else
+        {
+//            LOG_INFO ("PSI Table Validation: INITIALIZING");
+
+            PCR_PID = PCR_PID_Temp;
+            videoPID = videoPID_Temp;
+            audioPID = audioPID_Temp;
+            pmt_program_number = pmt_program_number_Temp;
+            pmt_version_number = pmt_version_number_Temp;
+
+            initialized = 1;
+        }
+    }
+
+    return 0;
+}
+

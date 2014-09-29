@@ -62,7 +62,28 @@ int main(int argc, char *argv[])
 
 
    int durations[26];
+   for (int i=0; i<25; i++)
+   {
+       durations[i] = 900000;
+   }
+   durations[25] = 647520;
+
+   int presentationTimeOffset = 6000;
+   int videoPID = 256;
+
    data_segment_iframes_t *pIFrames = (data_segment_iframes_t *)calloc(26, sizeof(data_segment_iframes_t));
-   validateIndexSegment(fname, 26, durations, pIFrames);
+   validateIndexSegment(fname, 26, durations, pIFrames, presentationTimeOffset, videoPID, 0);
+/*
+   printf ("\n\n");
+   for (int i=0; i<26; i++)
+   {
+       printf ("data_segment_iframes %d: doIFrameValidation = %d, firstOffset = %d, numIFrames = %d\n",
+           i, pIFrames[i].doIFrameValidation, pIFrames[i].firstOffset, pIFrames[i].numIFrames);
+       for (int j=0; j<pIFrames[i].numIFrames; j++)
+       {
+            printf ("   pIFrameLocations_Time[%d] = %d\n", j, pIFrames[i].pIFrameLocations_Time[j]);
+       }
+   }
+   */
 }
 

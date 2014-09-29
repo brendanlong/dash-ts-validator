@@ -173,7 +173,7 @@ int ts_read_adaptation_field(ts_adaptation_field_t *af, bs_t *b)
    return (1 + bs_pos(b) - start_pos);
 }
 
-int ts_read(ts_packet_t *ts, uint8_t *buf, size_t buf_size) 
+int ts_read(ts_packet_t *ts, uint8_t *buf, size_t buf_size, uint64_t packet_num) 
 { 
    if (buf == NULL || buf_size < TS_SIZE || ts == NULL) 
    {
@@ -205,9 +205,11 @@ int ts_read(ts_packet_t *ts, uint8_t *buf, size_t buf_size)
    
    if (ts->header.adaptation_field_control & TS_PAYLOAD) 
    {
+      ts->payload_pos_in_stream = packet_num * TS_SIZE + bs_pos(&b); 
       ts->payload.len = TS_SIZE - bs_pos(&b); 
       ts->payload.bytes = malloc(ts->payload.len); 
       bs_read_bytes(&b, ts->payload.bytes, ts->payload.len);
+
    }
    
    // FIXME read and interpret pointer field

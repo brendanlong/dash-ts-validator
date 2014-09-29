@@ -218,14 +218,16 @@ int main(int argc, char *argv[])
    
    int num_packets = 4096;  
    uint8_t *ts_buf = malloc(TS_SIZE * 4096); 
+   uint64_t packets_read = 0;
    
    while ((num_packets = fread(ts_buf, TS_SIZE, 4096, infile)) > 0) 
    {
       for (int i = 0; i < num_packets; i++) 
       {
          ts_packet_t *ts = ts_new(); 
-         ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE); 
+         ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read); 
          mpeg2ts_stream_read_ts_packet(m2s, ts);
+         packets_read++;
       }
    }
    

@@ -101,9 +101,16 @@ int pes_demux_process_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_in
          
          buf_t *vec = malloc(packets_in_queue * sizeof(buf_t)); // can be optimized...
          
+         uint64_t pes_pos_in_stream;
          for (int i = 0; i < packets_in_queue; i++) 
          {
             tsp = vqarray_get(pdm->ts_queue, i); 
+            if (i==0)
+            {
+                // first packet in queue
+                pes_pos_in_stream = tsp->payload_pos_in_stream;
+            }
+
             if ((tsp != NULL) && (tsp->header.adaptation_field_control & TS_PAYLOAD)) 
             {
                vec[i].len = tsp->payload.len; 
@@ -116,7 +123,7 @@ int pes_demux_process_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_in
             }            
          }
          pes_packet_t *pes = pes_new(); 
-         pes_read_vec(pes, vec, packets_in_queue);
+         pes_read_vec(pes, vec, packets_in_queue, pes_pos_in_stream);
             
             if (pdm->process_pes_packet != NULL) 
             {

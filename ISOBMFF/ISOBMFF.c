@@ -76,7 +76,8 @@ void freeBoxes(int numBoxes, box_type_t *box_types, void ** box_data)
 
 
 int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_type_t *box_types, void ** box_data,
-    int *box_sizes, int *segmentDurations, data_segment_iframes_t *pIFrames)
+    int *box_sizes, int *segmentDurations, data_segment_iframes_t *pIFrames, int presentationTimeOffset, int videoPID,
+    unsigned char isSimpleProfile)
 {
     /*
     A Representation Index Segment indexes all Media Segments of one Representation and is defined as follows:
@@ -95,18 +96,20 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     Index information for a single Media Segment.
    */
 
+    int returnCode = 0;
+
     int boxIndex = 0;
     if (numBoxes == 0)
     {
         LOG_ERROR ("ERROR validating Representation Index Segment: no boxes in segment\n");
-        return -1;
+        returnCode = -1;
     }
 
     // first box must be a styp
     if (box_types[boxIndex] != BOX_STYP)
     {
         LOG_ERROR ("ERROR validating Representation Index Segment: first box not a styp\n");
-        return -1;
+        returnCode = -1;
     }
     
     // check brand
@@ -115,7 +118,7 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     {
         LOG_INFO_ARGS ("styp brand = %x", styp->major_brand);
         LOG_ERROR ("ERROR validating Representation Index Segment: styp brand not risx\n");
-        return -1;
+        returnCode = -1;
     }
 
     boxIndex++;
@@ -124,30 +127,34 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     if (box_types[boxIndex] != BOX_SIDX)
     {
         LOG_ERROR ("ERROR validating Representation Index Segment: second box not a sidx\n");
-        return -1;
+        returnCode = -1;
     }
-
-    
 
 
     // walk all references: they should all be of type 1 and should point to sidx boxes
     data_sidx_t * masterSidx = (data_sidx_t *)box_data[boxIndex];
     unsigned int masterReferenceID = masterSidx->reference_ID;
+    if (masterReferenceID != videoPID)
+    {
+        LOG_ERROR_ARGS ("ERROR validating Representation Index Segment: master ref ID does not equal \
+video PID.  Expected %d, actual %d\n", videoPID, masterReferenceID);
+        returnCode = -1;
+    }
     for (int i=0; i<masterSidx->reference_count; i++)
     {
         data_sidx_reference_t ref = masterSidx->references[i];
         if (ref.reference_type != 1)
         {
             LOG_ERROR ("ERROR validating Representation Index Segment: reference type not 1\n");
-            return -1;
+            returnCode = -1;
         }
 
         // validate duration
         if (segmentDurations[i] != ref.subsegment_duration)
         {
             LOG_ERROR_ARGS ("ERROR validating Representation Index Segment: master ref segment duration does not equal \
-                segment duration.  Expected %d, actual %d\n", segmentDurations[i], ref.subsegment_duration);
-            return -1;
+segment duration.  Expected %d, actual %d\n", segmentDurations[i], ref.subsegment_duration);
+            returnCode = -1;
         }
     }
     boxIndex++;
@@ -156,7 +163,9 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     int ssixPresent = 0;
     int pcrbPresent = 0;
     int numNestedSidx = 0;
+    unsigned int referenced_size = 0;
 
+    uint64_t segmentStartTime = presentationTimeOffset;
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
     while (boxIndex < numBoxes)
@@ -166,35 +175,66 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
             ssixPresent = 0;
             pcrbPresent = 0;
 
+            data_sidx_t * sidx = (data_sidx_t *)box_data[boxIndex];
             if (numNestedSidx > 0)
             {
                 numNestedSidx--;
+                // GORP: check earliest presentation time
             }
             else
             {
+                // check size:
+                LOG_INFO_ARGS ("Validating referenced_size for reference %d.", segmentIndex);
+                if (segmentIndex >= 0 && referenced_size != masterSidx->references[segmentIndex].referenced_size)
+                {
+                    LOG_ERROR_ARGS ("ERROR validating Representation Index Segment: referenced_size for reference %d. \
+Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].referenced_size, referenced_size);
+                    returnCode = -1;
+                }
+                        
+                referenced_size = 0;
                 segmentIndex++;
-            }
+                if (segmentIndex > 0)
+                {
+                    segmentStartTime += segmentDurations[segmentIndex - 1];
+                }
 
-            data_sidx_t * sidx = (data_sidx_t *)box_data[boxIndex];
+                LOG_INFO_ARGS ("Validating earliest_presentation_time for reference %d.", segmentIndex);
+                if (segmentStartTime != sidx->earliest_presentation_time)
+                {
+                    LOG_ERROR_ARGS ("ERROR validating Representation Index Segment: invalid earliest_presentation_time in sidx box. \
+Expected %"PRId64", actual %"PRId64"\n", segmentStartTime, sidx->earliest_presentation_time);
+                    returnCode = -1;
+                }
+            }
+            referenced_size += sidx->size;
+
+            LOG_INFO ("Validating reference_id");
             if (masterReferenceID != sidx->reference_ID)
             {
                  LOG_ERROR_ARGS ("ERROR validating Representation Index Segment: invalid reference id in sidx box. \
-                            Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
-                 return -1;
+Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
+                 returnCode = -1;
             }
 
             // count number of Iframes and number of sidx boxes in reference list of this sidx
-            analyzeSidxReferences (sidx, &(pIFrames[segmentIndex].numIFrames), &numNestedSidx);
+            if (analyzeSidxReferences (sidx, &(pIFrames[segmentIndex].numIFrames), &numNestedSidx, isSimpleProfile) != 0)
+            {
+                 returnCode = -1;
+            }
         }
         else
         {
             // must be a ssix or pcrb box
             if (box_types[boxIndex] == BOX_SSIX)
             {
+                data_ssix_t * ssix = (data_ssix_t *)box_data[boxIndex];
+                referenced_size += ssix->size;
+                LOG_INFO ("Validating ssix box");
                 if (ssixPresent)
                 {
                     LOG_ERROR ("ERROR validating Representation Index Segment: More than one ssix box following sidx box\n");
-                    return -1;
+                    returnCode = -1;
                 }
                 else
                 {
@@ -203,10 +243,13 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
             }
             else if (box_types[boxIndex] == BOX_PCRB)
             {
+                data_pcrb_t * pcrb = (data_pcrb_t *)box_data[boxIndex];
+                referenced_size += pcrb->size;
+                LOG_INFO ("Validating pcrb box");
                 if (pcrbPresent)
                 {
                     LOG_ERROR ("ERROR validating Representation Index Segment: More than one pcrb box following sidx box\n");
-                    return -1;
+                    returnCode = -1;
                 }
                 else
                 {
@@ -218,17 +261,27 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
         boxIndex++;
     }
 
+    // check the last reference size -- the last one is not checked in the above loop
+    LOG_INFO_ARGS ("Validating referenced_size for reference %d. \
+Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].referenced_size, referenced_size);
+    if (segmentIndex >= 0 && referenced_size != masterSidx->references[segmentIndex].referenced_size)
+    {
+        LOG_ERROR_ARGS ("ERROR validating Representation Index Segment: referenced_size for reference %d. \
+Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].referenced_size, referenced_size);
+        returnCode = -1;
+    }
+
     if (numNestedSidx != 0)
     {
         LOG_ERROR_ARGS ("ERROR validating Representation Index Segment: Incorrect number of nested sidx boxes: %d\n", numNestedSidx);
-        return -1;
+        returnCode = -1;
     }
 
-    if (segmentIndex != numSegments)
+    if ((segmentIndex+1) != numSegments)
     {
         LOG_ERROR_ARGS ("ERROR validating Representation Index Segment: Invalid number of segment sidx boxes following master sidx box: \
-                expected %d, found %d\n", numSegments, segmentIndex);
-        return -1;
+expected %d, found %d\n", numSegments, segmentIndex);
+        returnCode = -1;
     }
 
     // fill in iFrame locations by walking the list of sidx's again, starting from the third box
@@ -237,6 +290,8 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     segmentIndex = -1;
     int nIFrameCntr = 0;
     unsigned int lastIFrameDuration = 0;
+    uint64_t nextIFrameByteLocation = 0;
+    segmentStartTime = presentationTimeOffset;
     while (boxIndex < numBoxes)
     {
         if (box_types[boxIndex] == BOX_SIDX)
@@ -246,22 +301,27 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
             if (numNestedSidx > 0)
             {
                 numNestedSidx--;
+                nextIFrameByteLocation += sidx->first_offset;  // convert from 64-bit t0 32 bit
             }
             else
             {
                 segmentIndex++;
-                pIFrames[segmentIndex].doIFrameValidation = 1;
+                if (segmentIndex > 0)
+                {
+                    segmentStartTime += segmentDurations[segmentIndex - 1];
+                }
 
                 nIFrameCntr = 0;
+                nextIFrameByteLocation = sidx->first_offset;
                 if (segmentIndex < numSegments)
                 {
-                    pIFrames[segmentIndex].pIFrameLocations = ( unsigned int *)calloc (pIFrames[segmentIndex].numIFrames, sizeof (unsigned int));
-                    pIFrames[segmentIndex].firstOffset = (sidx->first_offset & 0x0FFFFFFFF);  // convert from 64-bit t0 32 bit
+                    pIFrames[segmentIndex].doIFrameValidation = 1;
+                    pIFrames[segmentIndex].pIFrameLocations_Time = ( unsigned int *)calloc (pIFrames[segmentIndex].numIFrames, sizeof (unsigned int));
+                    pIFrames[segmentIndex].pIFrameLocations_Byte = ( uint64_t *)calloc (pIFrames[segmentIndex].numIFrames, sizeof (uint64_t));
+                    pIFrames[segmentIndex].pStartsWithSAP = ( unsigned char *)calloc (pIFrames[segmentIndex].numIFrames, sizeof (unsigned char));
+                    pIFrames[segmentIndex].pSAPType = ( unsigned char *)calloc (pIFrames[segmentIndex].numIFrames, sizeof (unsigned char));
                 }
             }
-
-            // GORP: handle nested boxes -- if firstoffset is aways zero, then the following will work
-            // GORP: handle first offset
 
             // fill in Iframe locations here
             for (int i=0; i<sidx->reference_count; i++)
@@ -269,17 +329,27 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
                 data_sidx_reference_t ref = sidx->references[i];
                 if (ref.reference_type == 0)
                 {
+                    (pIFrames[segmentIndex]).pStartsWithSAP[nIFrameCntr] = ref.starts_with_SAP;
+                    (pIFrames[segmentIndex]).pSAPType[nIFrameCntr] = ref.SAP_type;
+                    (pIFrames[segmentIndex]).pIFrameLocations_Byte[nIFrameCntr] = nextIFrameByteLocation;
+                    
+
                     if (nIFrameCntr ==0)
                     {
-                        (pIFrames[segmentIndex]).pIFrameLocations[nIFrameCntr] = 0;
+                        (pIFrames[segmentIndex]).pIFrameLocations_Time[nIFrameCntr] = segmentStartTime + ref.SAP_delta_time;
                     }
                     else
                     {
-                        (pIFrames[segmentIndex]).pIFrameLocations[nIFrameCntr] = 
-                            (pIFrames[segmentIndex]).pIFrameLocations[nIFrameCntr-1] + lastIFrameDuration;
+                        (pIFrames[segmentIndex]).pIFrameLocations_Time[nIFrameCntr] = 
+                            (pIFrames[segmentIndex]).pIFrameLocations_Time[nIFrameCntr-1] + lastIFrameDuration + ref.SAP_delta_time;
                     }
                     nIFrameCntr++;
                     lastIFrameDuration = ref.subsegment_duration;
+                    nextIFrameByteLocation += ref.referenced_size;
+                }
+                else
+                {
+                    numNestedSidx++;
                 }
             }
         }
@@ -288,27 +358,12 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     }
 
 
-    return 0;
-}
-
-void analyzeSidxReferences (data_sidx_t * sidx, int *pNumIFrames, int *pNumNestedSidx)
-{
-    for (int i=0; i<sidx->reference_count; i++)
-    {
-        data_sidx_reference_t ref = sidx->references[i];
-        if (ref.reference_type == 1)
-        {
-            (*pNumNestedSidx)++;
-        }
-        else
-        {
-            (*pNumIFrames)++;
-        }
-    }
+    return returnCode;
 }
 
 int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t *box_types, void ** box_data, int *box_sizes,
-                                    int segmentDuration, data_segment_iframes_t *pIFrames)
+    int segmentDuration, data_segment_iframes_t *pIFrames, int presentationTimeOffset, int videoPID,
+    unsigned char isSimpleProfile)
 {
 /*
  A Single Index Segment indexes exactly one Media Segment and is defined as follows: 
@@ -327,50 +382,41 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t *box_types, void **
 
 */
 
+    int returnCode = 0;
+
     int boxIndex = 0;
     if (numBoxes == 0)
     {
         LOG_ERROR ("ERROR validating Single Index Segment: no boxes in segment\n");
-        return -1;
+        returnCode = -1;
     }
 
     // first box must be a styp
     if (box_types[boxIndex] != BOX_STYP)
     {
         LOG_ERROR ("ERROR validating Single Index Segment: first box not a styp\n");
-        return -1;
+        returnCode = -1;
     }
     
     // check brand
     data_styp_t * styp = (data_styp_t *)box_data[boxIndex];
-    if (styp->major_brand != 0x78736973 /* 'sisx' in reversed byte order */)
+    if (styp->major_brand != 0x73697378 /* 'sisx' */)
     {
-        LOG_ERROR ("ERROR validating Single Index Segment: styp brand not sisx\n");
-        return -1;
+        LOG_INFO_ARGS ("styp brand = %x", styp->major_brand);
+        LOG_ERROR ("ERROR validating Single Index Segment: styp brand not risx\n");
+        returnCode = -1;
     }
-
-    boxIndex++;
-
-    // second box must be a sidx
-    if (box_types[boxIndex] != BOX_SIDX)
-    {
-        LOG_ERROR ("ERROR validating Single Index Segment: second box not a sidx\n");
-        return -1;
-    }
-
-    pIFrames->doIFrameValidation = 1;  // marks that this struct contains actual iFrame info
-
-    // walk all references: they should all be of type 1 and should point to 
-    data_sidx_t * sidx = (data_sidx_t *)box_data[boxIndex];
-    int numNestedSidx = 0;
-    int numIFrames;
-    analyzeSidxReferences (sidx, &numIFrames, &numNestedSidx);
 
     boxIndex++;
 
     int ssixPresent = 0;
     int pcrbPresent = 0;
+    int numNestedSidx = 0;
+    unsigned int referenced_size = 0;
 
+    uint64_t segmentStartTime = presentationTimeOffset;
+
+    // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
     while (boxIndex < numBoxes)
     {
         if (box_types[boxIndex] == BOX_SIDX)
@@ -378,21 +424,52 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t *box_types, void **
             ssixPresent = 0;
             pcrbPresent = 0;
 
-            numNestedSidx--;
+            data_sidx_t * sidx = (data_sidx_t *)box_data[boxIndex];
+            if (numNestedSidx > 0)
+            {
+                numNestedSidx--;
+                // GORP: check earliest presentation time
+            }
+            else
+            {                        
+                referenced_size = 0;
 
-            sidx = (data_sidx_t *)box_data[boxIndex];
-            int numIFrames;
-            analyzeSidxReferences (sidx, &numIFrames, &numNestedSidx);
+                LOG_INFO ("Validating earliest_presentation_time");
+                if (segmentStartTime != sidx->earliest_presentation_time)
+                {
+                    LOG_ERROR_ARGS ("ERROR validating Single Index Segment: invalid earliest_presentation_time in sidx box. \
+Expected %"PRId64", actual %"PRId64"\n", segmentStartTime, sidx->earliest_presentation_time);
+                    returnCode = -1;
+                }
+            }
+            referenced_size += sidx->size;
+
+            LOG_INFO ("Validating reference_id");
+            if (videoPID != sidx->reference_ID)
+            {
+                 LOG_ERROR_ARGS ("ERROR validating Single Index Segment: invalid reference id in sidx box. \
+Expected %d, actual %d\n", videoPID, sidx->reference_ID);
+                 returnCode = -1;
+            }
+
+            // count number of Iframes and number of sidx boxes in reference list of this sidx
+            if (analyzeSidxReferences (sidx, &(pIFrames->numIFrames), &numNestedSidx, isSimpleProfile) != 0)
+            {
+                 returnCode = -1;
+            }
         }
         else
         {
             // must be a ssix or pcrb box
             if (box_types[boxIndex] == BOX_SSIX)
             {
+                data_ssix_t * ssix = (data_ssix_t *)box_data[boxIndex];
+                referenced_size += ssix->size;
+                LOG_INFO ("Validating ssix box");
                 if (ssixPresent)
                 {
                     LOG_ERROR ("ERROR validating Single Index Segment: More than one ssix box following sidx box\n");
-                    return -1;
+                    returnCode = -1;
                 }
                 else
                 {
@@ -401,10 +478,13 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t *box_types, void **
             }
             else if (box_types[boxIndex] == BOX_PCRB)
             {
+                data_pcrb_t * pcrb = (data_pcrb_t *)box_data[boxIndex];
+                referenced_size += pcrb->size;
+                LOG_INFO ("Validating pcrb box");
                 if (pcrbPresent)
                 {
                     LOG_ERROR ("ERROR validating Single Index Segment: More than one pcrb box following sidx box\n");
-                    return -1;
+                    returnCode = -1;
                 }
                 else
                 {
@@ -419,7 +499,98 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t *box_types, void **
     if (numNestedSidx != 0)
     {
         LOG_ERROR_ARGS ("ERROR validating Single Index Segment: Incorrect number of nested sidx boxes: %d\n", numNestedSidx);
-        return -1;
+        returnCode = -1;
+    }
+
+    // fill in iFrame locations by walking the list of sidx's again, startng from box 1
+                    
+    pIFrames->doIFrameValidation = 1;
+    pIFrames->pIFrameLocations_Time = ( unsigned int *)calloc (pIFrames->numIFrames, sizeof (unsigned int));
+    pIFrames->pIFrameLocations_Byte = ( uint64_t *)calloc (pIFrames->numIFrames, sizeof (uint64_t));
+    pIFrames->pStartsWithSAP = ( unsigned char *)calloc (pIFrames->numIFrames, sizeof (unsigned char));
+    pIFrames->pSAPType = ( unsigned char *)calloc (pIFrames->numIFrames, sizeof (unsigned char));
+
+    boxIndex = 1;
+    numNestedSidx = 0;
+    int nIFrameCntr = 0;
+    unsigned int lastIFrameDuration = 0;
+    uint64_t nextIFrameByteLocation = 0;
+    segmentStartTime = presentationTimeOffset;
+    while (boxIndex < numBoxes)
+    {
+        if (box_types[boxIndex] == BOX_SIDX)
+        {
+            data_sidx_t * sidx = (data_sidx_t *)box_data[boxIndex];
+
+            if (numNestedSidx > 0)
+            {
+                numNestedSidx--;
+                nextIFrameByteLocation += sidx->first_offset;  // convert from 64-bit t0 32 bit
+            }
+
+            // fill in Iframe locations here
+            for (int i=0; i<sidx->reference_count; i++)
+            {
+                data_sidx_reference_t ref = sidx->references[i];
+                if (ref.reference_type == 0)
+                {
+                    pIFrames->pStartsWithSAP[nIFrameCntr] = ref.starts_with_SAP;
+                    pIFrames->pSAPType[nIFrameCntr] = ref.SAP_type;
+                    pIFrames->pIFrameLocations_Byte[nIFrameCntr] = nextIFrameByteLocation;
+
+                    if (nIFrameCntr ==0)
+                    {
+                        pIFrames->pIFrameLocations_Time[nIFrameCntr] = segmentStartTime + ref.SAP_delta_time;
+                    }
+                    else
+                    {
+                        pIFrames->pIFrameLocations_Time[nIFrameCntr] = 
+                            pIFrames->pIFrameLocations_Time[nIFrameCntr-1] + lastIFrameDuration + ref.SAP_delta_time;
+                    }
+                    nIFrameCntr++;
+                    lastIFrameDuration = ref.subsegment_duration;
+                    nextIFrameByteLocation += ref.referenced_size;
+                }
+                else
+                {
+                    numNestedSidx++;
+                }
+           }
+        }
+
+        boxIndex++;
+    }
+
+    return returnCode;
+}
+
+int analyzeSidxReferences (data_sidx_t * sidx, int *pNumIFrames, int *pNumNestedSidx, unsigned char isSimpleProfile)
+{
+    int originalNumNestedSidx = *pNumNestedSidx;
+    int originalNumIFrames = *pNumIFrames;
+
+    for (int i=0; i<sidx->reference_count; i++)
+    {
+        data_sidx_reference_t ref = sidx->references[i];
+        if (ref.reference_type == 1)
+        {
+            (*pNumNestedSidx)++;
+        }
+        else
+        {
+            (*pNumIFrames)++;
+        }
+    }
+
+    if (isSimpleProfile)
+    {
+        if (originalNumNestedSidx != *pNumNestedSidx && originalNumIFrames != *pNumIFrames)
+        {
+            // failure -- references contain references to both media and nested sidx boxes
+            LOG_ERROR ("ERROR validating Representation Index Segment: Section 8.7.3: Simple profile requires that \
+sidx boxes have either media references or sidx references, but not both.");
+            return -1;
+        }
     }
 
     return 0;
@@ -466,7 +637,8 @@ void printBoxes(int numBoxes, box_type_t *box_types, void ** box_data)
 }
 
 
-int validateIndexSegment(char *fname, int numSegments, int *segmentDurations, data_segment_iframes_t *pIFrames)
+int validateIndexSegment(char *fname, int numSegments, int *segmentDurations, data_segment_iframes_t *pIFrames,
+                         int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile)
 {
     LOG_INFO_ARGS ("validateIndexSegment: %s", fname);
     int numBoxes; 
@@ -481,7 +653,7 @@ int validateIndexSegment(char *fname, int numSegments, int *segmentDurations, da
         return -1;
     }
 
-//    printBoxes(numBoxes, box_types, box_data);
+    printBoxes(numBoxes, box_types, box_data);
 
     if (numSegments <= 0)
     {
@@ -492,15 +664,27 @@ int validateIndexSegment(char *fname, int numSegments, int *segmentDurations, da
     else if (numSegments == 1)
     {
         nReturnCode = validateSingleIndexSegmentBoxes(numBoxes, box_types, box_data, box_sizes, 
-            segmentDurations[0], pIFrames);
+            segmentDurations[0], pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
     }
     else
     {
         nReturnCode = validateRepresentationIndexSegmentBoxes(numSegments, numBoxes, box_types, box_data, box_sizes, 
-            segmentDurations, pIFrames);
+            segmentDurations, pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
     }
 
     freeBoxes(numBoxes, box_types, box_data);
+
+   printf ("\n\n");
+   for (int i=0; i<numSegments; i++) 
+   {
+       printf ("data_segment_iframes %d: doIFrameValidation = %d, numIFrames = %d\n",
+           i, pIFrames[i].doIFrameValidation, pIFrames[i].numIFrames);
+       for (int j=0; j<pIFrames[i].numIFrames; j++)
+       {
+            printf ("   pIFrameLocations_Time[%d] = %d, \tpIFrameLocations_Byte[%d] = %"PRId64"\n", j, 
+                pIFrames[i].pIFrameLocations_Time[j], j, pIFrames[i].pIFrameLocations_Byte[j]);
+       }
+   }
 
     return nReturnCode;
 }
@@ -1154,6 +1338,7 @@ void printSidx (data_sidx_t *sidx)
 {
     printf ("\n####### SIDX ######\n");
 
+    printf ("size = %u\n", sidx->size);
     printf ("version = %u\n", sidx->version);
     printf ("flags = %u\n", sidx->flags);
     printf ("reference_ID = %u\n", sidx->reference_ID);
@@ -1240,16 +1425,6 @@ uint64_t ntohll(uint64_t num)
     return num2;
 }
 
-void saveSampleIndexFile()
-{
-    unsigned char *buffer = (unsigned char *) malloc (5000);  // should be enough
-    int index = 0;
-
-    // start with styp
-
-    // add 
-}
-
 int validateEmsgMsg(unsigned char *buffer, int bufferSz, unsigned int segmentDuration)
 {
     LOG_INFO ("validateEmsgMsg\n");
@@ -1291,4 +1466,32 @@ int validateEmsgMsg(unsigned char *buffer, int bufferSz, unsigned int segmentDur
     freeBoxes(numBoxes, box_types, box_data);
 
     return nReturnCode;
+}
+
+void freeIFrames (data_segment_iframes_t *pIFrames, int numSegments)
+{
+    if (pIFrames == NULL)
+    {
+        return;
+    }
+
+    for (int i=0; i<numSegments; i++)
+    {
+        if (pIFrames[i].pIFrameLocations_Time != NULL)
+        {
+            free (pIFrames[i].pIFrameLocations_Time);
+        }
+        if (pIFrames[i].pIFrameLocations_Byte != NULL)
+        {
+            free (pIFrames[i].pIFrameLocations_Byte);
+        }
+        if (pIFrames[i].pStartsWithSAP != NULL)
+        {
+            free (pIFrames[i].pStartsWithSAP);
+        }
+        if (pIFrames[i].pSAPType != NULL)
+        {
+            free (pIFrames[i].pSAPType);
+        }
+    }
 }

@@ -113,9 +113,13 @@ typedef struct
 typedef struct
 {
     unsigned int doIFrameValidation;  // 0 = FALSE, 1 = TRUE
-    unsigned int firstOffset;
+
     int numIFrames;
-    unsigned int *pIFrameLocations;
+    unsigned int *pIFrameLocations_Time;
+    uint64_t *pIFrameLocations_Byte;
+    unsigned char *pStartsWithSAP; 
+    unsigned char *pSAPType;
+
 } data_segment_iframes_t;
 
 typedef enum
@@ -158,14 +162,19 @@ void freeBoxes(int numBoxes, box_type_t *box_types, void ** box_data);
 int readBoxes(char *fname, int *pNumBoxes, box_type_t **box_types_in, void *** box_data_in, int **box_sizes_in);
 int readBoxes2(unsigned char *buffer, int buuferSz, int *pNumBoxes, box_type_t **box_types_in, void *** box_data_in, int **box_sizes_in);
 
-int validateIndexSegment(char *fname, int numSegments, int *segmentDurations, data_segment_iframes_t *pIFrames);
+int validateIndexSegment(char *fname, int numSegments, int *segmentDurations, data_segment_iframes_t *pIFrames, 
+                         int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile);
 int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_type_t *box_types, void ** box_data, 
-    int *box_sizes, int *segmentDurations, data_segment_iframes_t *pIFrames);
+    int *box_sizes, int *segmentDurations, data_segment_iframes_t *pIFrames, int presentationTimeOffset, int videoPID,
+    unsigned char isSimpleProfile);
 int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t *box_types, void ** box_data, int *box_sizes, int segmentDuration,
-                                    data_segment_iframes_t *pIFrames);
+    data_segment_iframes_t *pIFrames, int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile);
+
 int validateEmsgMsg(unsigned char *buffer, int bufferSz, unsigned int segmentDuration);
 
-void saveSampleIndexFile();
-void analyzeSidxReferences (data_sidx_t * sidx, int *pNumIFrames, int *pNumNestedSidx);
+int analyzeSidxReferences (data_sidx_t * sidx, int *pNumIFrames, int *pNumNestedSidx, unsigned char isSimpleProfile);
+
+void freeIFrames (data_segment_iframes_t *pIFrames, int numSegments);
+
 
 #endif  // __H_ISOBMFF_CONFORMANCE

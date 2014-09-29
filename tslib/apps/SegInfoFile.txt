@@ -1,14 +1,11 @@
 
-
-StartWithSAP = 1
+ExpectedSAPType = 1
 MaxAudioGap_PTSTicks = 10
 MaxVideoGap_PTSTicks = 100
-SegmentAlignment = 1
-SubsegmentAlignment = 1
-BitstreamSwitching = 1
 InitializationSegment = 
+PresentationTimeOffset_PTSTicks = 6000
 
-####### COMMENT ################
+####### SAMPLE COMMENT ################
 
 RepresentationIndexSegment = uf3/uf3_iframe.sidx,uf7/uf7_iframe.sidx,uf12/uf12_iframe.sidx,uf28/uf28_iframe.sidx
 

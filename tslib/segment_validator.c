@@ -5,7 +5,6 @@
 #include "h264_stream.h"
 #include "ISOBMFF.h"
 
-
 static dash_validator_t *g_p_dash_validator;
 int g_nIFrameCntr;
 data_segment_iframes_t *g_pIFrameData;
@@ -84,6 +83,8 @@ int pmt_processor(mpeg2ts_program_t *m2p, void *arg)
 
    g_p_dash_validator->PCR_PID = m2p->pmt->PCR_PID; 
    g_p_dash_validator->psi_tables_seen |= ( 1 << m2p->pmt->table_id ); 
+   g_p_dash_validator->pmt_program_number = m2p->pmt->program_number; 
+   g_p_dash_validator->pmt_version_number = m2p->pmt->version_number; 
    
    for (int i = 0; i < vqarray_length(m2p->pids); i++) 
    {
@@ -114,6 +115,7 @@ int pmt_processor(mpeg2ts_program_t *m2p, void *arg)
          case  STREAM_TYPE_S3D_SC_AVC:
             process_pid = 1; 
             content_component = VIDEO_CONTENT_COMPONENT; 
+            g_p_dash_validator->videoPID = PID; 
             break; 
             
          case  STREAM_TYPE_MPEG1_AUDIO:
@@ -124,6 +126,7 @@ int pmt_processor(mpeg2ts_program_t *m2p, void *arg)
             process_pid = 1; 
  //           printf ("pi->es_info->stream_type = %d\n", pi->es_info->stream_type);
             content_component = AUDIO_CONTENT_COMPONENT; 
+            g_p_dash_validator->audioPID = PID; 
             break; 
             
          default:
@@ -177,21 +180,21 @@ int copy_pmt_info(mpeg2ts_program_t *m2p, dash_validator_t *dash_validator_sourc
     pid_validator_t *pid_validator_src = NULL;
     pid_validator_t *pid_validator_dest = NULL;
 
-   dash_validator_dest->PCR_PID = dash_validator_source->PCR_PID; 
-   dash_validator_dest->psi_tables_seen = 0; 
+    dash_validator_dest->PCR_PID = dash_validator_source->PCR_PID; 
+    dash_validator_dest->psi_tables_seen = 0; 
 
    
     LOG_INFO_ARGS("copy_pmt_info: vqarray_length(dash_validator_source->pids) = %d", 
         vqarray_length(dash_validator_source->pids));
-   for (int i = 0; i < vqarray_length(dash_validator_source->pids); i++) 
-   {
-      if ((pid_validator_src = vqarray_get(dash_validator_source->pids, i)) != NULL) 
-      {
-         int content_component = 0; 
-         int parse_high_level_syntax = 0; 
-         int PID = pid_validator_src->PID;
+    for (int i = 0; i < vqarray_length(dash_validator_source->pids); i++) 
+    {
+        if ((pid_validator_src = vqarray_get(dash_validator_source->pids, i)) != NULL) 
+        {
+            int content_component = 0; 
+            int parse_high_level_syntax = 0; 
+            int PID = pid_validator_src->PID;
 
-         // hook PES validation to PES demuxer
+            // hook PES validation to PES demuxer
             pes_demux_t *pd = pes_demux_new(validate_pes_packet); 
             pd->pes_arg = NULL; 
             pd->pes_arg_destructor = NULL; 
@@ -219,12 +222,11 @@ int copy_pmt_info(mpeg2ts_program_t *m2p, dash_validator_t *dash_validator_sourc
             
             LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %x for PID %d", (unsigned int)pid_validator_dest, PID);
             vqarray_add(dash_validator_dest->pids, pid_validator_dest); 
-            // TODO:
-            // parse CA descriptors, add ca system and ecm_pid if they don't exist yet
-      }
-   }
+            // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
+        }
+    }
          
-   return 0;
+    return 0;
 }
 
 int validate_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_info, void *arg) 
@@ -407,20 +409,45 @@ int validate_pes_packet(pes_packet_t *pes, elementary_stream_info_t *esi, vqarra
 
         if (g_pIFrameData->doIFrameValidation && first_ts->adaptation_field.random_access_indicator) 
         {
+            LOG_INFO ("Performing IFrame validation");
             // check iFrame location against index file
 
             if (g_nIFrameCntr < g_pIFrameData->numIFrames)
             {
-                unsigned int expectedIFramePTS = g_pIFrameData->pIFrameLocations[g_nIFrameCntr];
+                unsigned int expectedIFramePTS = g_pIFrameData->pIFrameLocations_Time[g_nIFrameCntr];
                 unsigned int actualIFramePTS = pes->header.PTS;
-                g_nIFrameCntr++;
-                printf ("expectedIFramePTS = %u, actualIFramePTS = %u\n", expectedIFramePTS, actualIFramePTS);
+                LOG_INFO_ARGS ("expectedIFramePTS = %u, actualIFramePTS = %u", expectedIFramePTS, actualIFramePTS);
                 if (expectedIFramePTS != actualIFramePTS)
                 {
                     LOG_ERROR_ARGS("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actua: %d",
                         expectedIFramePTS, actualIFramePTS); 
                     g_p_dash_validator->status = 0;
                 }
+
+                // check frame byte location
+                uint64_t expectedFrameByteLocation = g_pIFrameData->pIFrameLocations_Byte[g_nIFrameCntr];
+                uint64_t actualFrameByteLocation = pes->payload_pos_in_stream;
+                LOG_INFO_ARGS ("expectedIFrameByteLocation = %"PRId64", actualIFrameByteLocation = %"PRId64"", expectedFrameByteLocation, actualFrameByteLocation);
+                if (expectedFrameByteLocation != actualFrameByteLocation)
+                {
+                    LOG_ERROR_ARGS("DASH Conformance: expected IFrame Byte Locaton does not match actual.  Expected: %"PRId64", Actual: %"PRId64"",
+                        expectedFrameByteLocation, actualFrameByteLocation); 
+                    g_p_dash_validator->status = 0;
+                }
+
+                // check SAP type
+                unsigned char expectedStartsWithSAP = g_pIFrameData->pStartsWithSAP[g_nIFrameCntr];
+                unsigned char expectedSAPType = g_pIFrameData->pSAPType[g_nIFrameCntr];
+                unsigned char actualSAPType = pid_validator->SAP_type;
+                LOG_INFO_ARGS ("expectedStartsWithSAP = %d, expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPType, actualSAPType);
+                if (expectedStartsWithSAP == 1 && expectedSAPType != 0 && expectedSAPType != actualSAPType)
+                {
+                    LOG_ERROR_ARGS ("DASH Conformance: expected IFrame SAP Type does not match actual: expectedStartsWithSAP = %d, \
+expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPType, actualSAPType);
+                    g_p_dash_validator->status = 0;
+                }
+
+                g_nIFrameCntr++;
             }
             else
             {
@@ -475,6 +502,12 @@ int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_vali
    LOG_INFO_ARGS ("doSegmentValidation : %s", fname);
 
    mpeg2ts_stream_t *m2s = NULL; 
+
+// GORP:    initialization segment shall not contain any media data with an assigned presentation time
+// GORP:    initialization segment shall contain PAT and PMT and PCR
+// GORP: self-initializing segment shall contain PAT and PMT and PCR
+// GORP:     check for complete transport stream packets
+// GORP:         check for complete PES packets
 
    
    FILE *infile = NULL; 
@@ -545,7 +578,7 @@ int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_vali
       {
          int res = 0; 
          ts_packet_t *ts = ts_new(); 
-         if ((res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE)) < TS_SIZE) 
+         if ((res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read)) < TS_SIZE) 
          {
             LOG_ERROR_ARGS("Error parsing TS packet %lld (%d)", packets_read, res); 
             g_p_dash_validator->status = 0; 
@@ -554,10 +587,10 @@ int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_vali
          
          mpeg2ts_stream_read_ts_packet(m2s, ts); 
          packets_read++; 
-         if (g_p_dash_validator->status == 0)  break;
+//         if (g_p_dash_validator->status == 0)  break;
       }
       
-      if (g_p_dash_validator->status == 0)  break; 
+//      if (g_p_dash_validator->status == 0)  break; 
       
       if (packets_to_read - packets_read < packet_buf_size) 
       {
@@ -577,7 +610,7 @@ int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_vali
       printf ("m2p = %x\n", (unsigned int)m2p);
       g_p_dash_validator->initializaion_segment_pmt = m2p->pmt;
    }
-   
+    
    mpeg2ts_stream_free(m2s); 
    fclose(infile); 
    

@@ -155,6 +155,8 @@ typedef struct {
    void *opaque;         /// opaque pointer that should always be passed through
    uint32_t PID;
    int status;
+   
+   uint64_t payload_pos_in_stream;  // byte location of payload in transport stream
 } pes_packet_t; 
 
 pes_packet_t* pes_new(); 
@@ -189,7 +191,7 @@ int pes_read_buf(pes_packet_t *pes, const uint8_t *buf, size_t len);
  * 
  * @return int 
  */
-int pes_read_vec(pes_packet_t *pes, const buf_t *vec, int buf_count); 
+int pes_read_vec(pes_packet_t *pes, const buf_t *vec, int buf_count, uint64_t pes_pos_in_stream); 
 
 
 int pes_write_header(pes_header_t *ph, bs_t *b); 
