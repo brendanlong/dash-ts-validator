@@ -2,36 +2,42 @@ SHELL = /bin/sh
 
 CC = gcc
 CFLAGS = -std=c99 -O0 -g -Wall -Wno-unused-variable
-#CFLAGS = -std=c99 -O2 -ffast-math -g -pedantic -pipe -Wall -Wextra
 
 LD = gcc
-LDFLAGS += -g -static
+LDFLAGS += -g
 
 AR = ar
 ARFLAGS = rcls
-
 RANLIB = ranlib
-RM = rm -f
 
 SRCS = $(wildcard *.c) 
 OBJS = $(SRCS:%.c=%.o)
 
 INCLUDES = -I . -I../common -I../logging
-LIBS = -L . -lisobmff -L../logging/ -llogging -L../libstructures/ -ldatastruct -lm
+LIBS = -L../logging/ -llogging -L../libstructures/ -ldatastruct -lm
 
-CFLAGS  += $(INCLUDES)
+CFLAGS  += $(INCLUDES) -MD
 LDFLAGS += $(LIBS)
 
-BINARIES = ISOBMFF
+BINARIES = ISOBMFFApp
 
 all: libisobmff.a $(BINARIES)
 
 libisobmff.a: $(OBJS)
-	$(AR) $(ARFLAGS) $@ $^ 
+	$(AR) $(ARFLAGS) $@ $^
 	$(RANLIB) $@
 
-ISOBMFF: ISOBMFF.c
-	$(CC) $(CFLAGS) -o ISOBMFFApp ISOBMFFApp.c $(LIBS)
+ISOBMFFApp: $(OBJS)
+	$(LD) -o ISOBMFFApp $^ $(LDFLAGS)
+
+%.o : %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+	@cp $*.d $*.P; \
+	  sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
+	      -e '/^$$/ d' -e 's/$$/ :/' < $*.d >> $*.P; \
+	  rm -f $*.d
 
 clean:
-	rm -f $(OBJS) *.a $(BINARIES) core
+	rm -f $(OBJS) *.a *.P $(BINARIES) core
+
+-include $(SRCS:%.c=%.P)
