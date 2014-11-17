@@ -154,7 +154,10 @@ void printSidxReference(data_sidx_reference_t *reference);
 void printSsixSubsegment(data_ssix_subsegment_t *subsegment);
 
 void convertUintToString(char *str, unsigned int uintStr);
-uint64_t ntohll (uint64_t num);
+
+/* don't name this "ntohll" or it will cause build failures on platforms where
+ * ntohll is a standard function */
+uint64_t isobmff_ntohll (uint64_t num);
 
 int getNumBoxes(unsigned char *buffer, int bufferSz, int *pNumBoxes);
 void printBoxes(int numBoxes, box_type_t *box_types, void ** box_data);

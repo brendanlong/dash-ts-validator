@@ -993,11 +993,11 @@ aligned(8) class SegmentIndexBox extends FullBox(‘sidx’, version, 0) {
     else
     {
         memcpy (&(sidx->earliest_presentation_time), buffer + index, ISOBMF_8BYTE_SZ);
-        sidx->earliest_presentation_time = ntohll(sidx->earliest_presentation_time);
+        sidx->earliest_presentation_time = isobmff_ntohll(sidx->earliest_presentation_time);
         index += ISOBMF_8BYTE_SZ;
 
         memcpy (&(sidx->first_offset), buffer + index, ISOBMF_8BYTE_SZ);
-        sidx->first_offset = ntohll(sidx->first_offset);
+        sidx->first_offset = isobmff_ntohll(sidx->first_offset);
         index += ISOBMF_8BYTE_SZ;
     }
 
@@ -1082,7 +1082,7 @@ int parsePcrb (unsigned char *buffer, int bufferSz, data_pcrb_t *pcrb)
     index += ISOBMF_4BYTE_SZ;
 
     memcpy (&(pcrb->ntp_timestamp), buffer + index, ISOBMF_8BYTE_SZ);
-    pcrb->ntp_timestamp = ntohll(pcrb->ntp_timestamp);
+    pcrb->ntp_timestamp = isobmff_ntohll(pcrb->ntp_timestamp);
     index += ISOBMF_8BYTE_SZ;
 
     if (pcrb->version == 0)
@@ -1095,7 +1095,7 @@ int parsePcrb (unsigned char *buffer, int bufferSz, data_pcrb_t *pcrb)
     else
     {
         memcpy (&(pcrb->media_time), buffer + index, ISOBMF_8BYTE_SZ);
-        pcrb->media_time = ntohll(pcrb->media_time);
+        pcrb->media_time = isobmff_ntohll(pcrb->media_time);
         index += ISOBMF_8BYTE_SZ;
     }
 
@@ -1419,7 +1419,7 @@ void convertUintToString(char *str, unsigned int uintStr)
    str[3] = (uintStr >>  0) & 0xff;
 }
 
-uint64_t ntohll(uint64_t num)
+uint64_t isobmff_ntohll(uint64_t num)
 {
     uint64_t num2 = (((uint64_t)ntohl((unsigned int)num)) << 32) + (uint64_t)ntohl((unsigned int)(num >> 32));
     return num2;
