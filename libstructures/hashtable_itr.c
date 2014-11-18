@@ -1,26 +1,26 @@
 /*
  * Copyright (c) 2002, Christopher Clark
  * All rights reserved.
- * 
+ *
  * Portions Copyright (C) 2005-2008 Avail Media, Inc.
  * Written by Alex Izvorski <aizvorski@gmail.com>
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright
  * notice, this list of conditions and the following disclaimer.
- * 
+ *
  * * Redistributions in binary form must reproduce the above copyright
  * notice, this list of conditions and the following disclaimer in the
  * documentation and/or other materials provided with the distribution.
- * 
+ *
  * * Neither the name of the original author; nor the names of any contributors
  * may be used to endorse or promote products derived from this software
  * without specific prior written permission.
- * 
- * 
+ *
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -44,22 +44,24 @@
 /*****************************************************************************/
 /* hashtable_iterator    - iterator constructor */
 
-hashtable_itr_t * hashtable_iterator_new(hashtable_t *h)
+hashtable_itr_t* hashtable_iterator_new(hashtable_t* h)
 {
     unsigned int i, tablelength;
-    hashtable_itr_t *itr = (hashtable_itr_t *) malloc(sizeof(hashtable_itr_t));
-    if (NULL == itr) return NULL;
+    hashtable_itr_t* itr = (hashtable_itr_t*) malloc(sizeof(hashtable_itr_t));
+    if(NULL == itr) {
+        return NULL;
+    }
     itr->h = h;
     itr->e = NULL;
     itr->parent = NULL;
     tablelength = h->tablelength;
     itr->index = tablelength;
-    if (0 == h->entrycount) return itr;
+    if(0 == h->entrycount) {
+        return itr;
+    }
 
-    for (i = 0; i < tablelength; i++)
-    {
-        if (NULL != h->table[i])
-        {
+    for(i = 0; i < tablelength; i++) {
+        if(NULL != h->table[i]) {
             itr->e = h->table[i];
             itr->index = i;
             break;
@@ -71,7 +73,7 @@ hashtable_itr_t * hashtable_iterator_new(hashtable_t *h)
 /*****************************************************************************/
 /* hashtable_iterator    - iterator destructor */
 
-void hashtable_iterator_free(hashtable_itr_t *itr)
+void hashtable_iterator_free(hashtable_itr_t* itr)
 {
     free(itr);
 }
@@ -80,15 +82,19 @@ void hashtable_iterator_free(hashtable_itr_t *itr)
 /* key      - return the key of the (key,value) pair at the current position */
 /* value    - return the value of the (key,value) pair at the current position */
 
-void * hashtable_iterator_key(hashtable_itr_t *itr)
+void* hashtable_iterator_key(hashtable_itr_t* itr)
 {
-    if (NULL == itr->e) { return NULL; }
+    if(NULL == itr->e) {
+        return NULL;
+    }
     return itr->e->k;
 }
 
-void * hashtable_iterator_value(hashtable_itr_t *itr)
+void* hashtable_iterator_value(hashtable_itr_t* itr)
 {
-    if (NULL == itr->e) { return NULL; }
+    if(NULL == itr->e) {
+        return NULL;
+    }
     return itr->e->v;
 }
 
@@ -96,32 +102,30 @@ void * hashtable_iterator_value(hashtable_itr_t *itr)
 /* advance - advance the iterator to the next element
  *           returns zero if advanced to end of table */
 
-int hashtable_iterator_advance(hashtable_itr_t *itr)
+int hashtable_iterator_advance(hashtable_itr_t* itr)
 {
-    unsigned int j,tablelength;
-    struct entry **table;
-    struct entry *next;
-    if (NULL == itr->e) return 0; /* stupidity check */
+    unsigned int j, tablelength;
+    struct entry** table;
+    struct entry* next;
+    if(NULL == itr->e) {
+        return 0;    /* stupidity check */
+    }
 
     next = itr->e->next;
-    if (NULL != next)
-    {
+    if(NULL != next) {
         itr->parent = itr->e;
         itr->e = next;
         return -1;
     }
     tablelength = itr->h->tablelength;
     itr->parent = NULL;
-    if (tablelength <= (j = ++(itr->index)))
-    {
+    if(tablelength <= (j = ++(itr->index))) {
         itr->e = NULL;
         return 0;
     }
     table = itr->h->table;
-    while (NULL == (next = table[j]))
-    {
-        if (++j >= tablelength)
-        {
+    while(NULL == (next = table[j])) {
+        if(++j >= tablelength) {
             itr->index = tablelength;
             itr->e = NULL;
             return 0;
@@ -140,14 +144,13 @@ int hashtable_iterator_advance(hashtable_itr_t *itr)
  *          beware memory leaks if you don't.
  *          Returns zero if end of iteration. */
 
-int hashtable_iterator_remove(hashtable_itr_t *itr)
+int hashtable_iterator_remove(hashtable_itr_t* itr)
 {
-    struct entry *remember_e, *remember_parent;
+    struct entry* remember_e, *remember_parent;
     int ret;
 
     /* Do the removal */
-    if (NULL == (itr->parent))
-    {
+    if(NULL == (itr->parent)) {
         /* element is head of a chain */
         itr->h->table[itr->index] = itr->e->next;
     } else {
@@ -162,28 +165,28 @@ int hashtable_iterator_remove(hashtable_itr_t *itr)
     /* Advance the iterator, correcting the parent */
     remember_parent = itr->parent;
     ret = hashtable_iterator_advance(itr);
-    if (itr->parent == remember_e) { itr->parent = remember_parent; }
+    if(itr->parent == remember_e) {
+        itr->parent = remember_parent;
+    }
     free(remember_e);
     return ret;
 }
 
 /*****************************************************************************/
 /* returns zero if not found */
-int hashtable_iterator_search(hashtable_itr_t *itr, hashtable_t *h, void *k)
+int hashtable_iterator_search(hashtable_itr_t* itr, hashtable_t* h, void* k)
 {
-    struct entry *e, *parent;
+    struct entry* e, *parent;
     unsigned int hashvalue, index;
 
-    hashvalue = hash(h,k);
-    index = indexFor(h->tablelength,hashvalue);
+    hashvalue = hash(h, k);
+    index = indexFor(h->tablelength, hashvalue);
 
     e = h->table[index];
     parent = NULL;
-    while (NULL != e)
-    {
+    while(NULL != e) {
         /* Check hash value to short circuit heavier comparison */
-        if ((hashvalue == e->h) && (h->eqfn(k, e->k)))
-        {
+        if((hashvalue == e->h) && (h->eqfn(k, e->k))) {
             itr->index = index;
             itr->e = e;
             itr->parent = parent;

@@ -1,10 +1,10 @@
-/* 
- Copyright (c) 2014-, ISO/IEC JTC1/SC29/WG11 
+/*
+ Copyright (c) 2014-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com> and Vlad Zbarsky <zbarsky@cornell.edu>
  All rights reserved.
- 
- 
- 
+
+
+
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  * Redistributions of source code must retain the above copyright
@@ -29,7 +29,7 @@
  */
 
 #ifndef _TSLIB_DESCRIPTORS_H_
-#define _TSLIB_DESCRIPTORS_H_        
+#define _TSLIB_DESCRIPTORS_H_
 
 #include <stdint.h>
 
@@ -39,16 +39,16 @@
 #include "log.h"
 
 typedef enum {
-	DESCRIPTOR_TAG_RESERVED = 0,
-	DESCRIPTOR_TAG_FORBIDDEN,
+    DESCRIPTOR_TAG_RESERVED = 0,
+    DESCRIPTOR_TAG_FORBIDDEN,
     VIDEO_STREAM_DESCRIPTOR,
     AUDIO_STREAM_DESCRIPTOR,
     HIERARCHY_DESCRIPTOR,
     REGISTRATION_DESCRIPTOR,
     DATA_STREAM_ALIGNMENT_DESCRIPTOR,
-    TARGET_BACKGROUND_GRID_DESCRIPTOR, 
-    VIDEO_WINDOW_DESCRIPTOR, 
-    CA_DESCRIPTOR, 
+    TARGET_BACKGROUND_GRID_DESCRIPTOR,
+    VIDEO_WINDOW_DESCRIPTOR,
+    CA_DESCRIPTOR,
     ISO_639_LANGUAGE_DESCRIPTOR,
     SYSTEM_CLOCK_DESCRIPTOR,
     MULTIPLEX_BUFFER_UTILIZATION_DESCRIPTOR,
@@ -89,26 +89,26 @@ typedef enum {
 } mpeg_descriptor_t; // descriptors defined in ISO/IEC 13818-1:2012
 
 typedef struct {
-   uint32_t tag;
-   uint32_t length;
+    uint32_t tag;
+    uint32_t length;
 } descriptor_t;
 
-typedef descriptor_t* (*descriptor_reader_t)(void*, uint32_t, uint32_t, bs_t *);
-typedef int (*descriptor_printer_t)(const descriptor_t *, int, char *, size_t);
+typedef descriptor_t* (*descriptor_reader_t)(void*, uint32_t, uint32_t, bs_t*);
+typedef int (*descriptor_printer_t)(const descriptor_t*, int, char*, size_t);
 typedef void (*descriptor_destructor_t)(descriptor_t*);
 
 typedef struct {
-	uint32_t tag;
-   descriptor_reader_t read_descriptor;
-   descriptor_printer_t print_descriptor;
-   descriptor_destructor_t free_descriptor;
-} descriptor_table_entry_t; 
+    uint32_t tag;
+    descriptor_reader_t read_descriptor;
+    descriptor_printer_t print_descriptor;
+    descriptor_destructor_t free_descriptor;
+} descriptor_table_entry_t;
 
 
 // "factory methods"
-int read_descriptor_loop(vqarray_t *desc_list, bs_t *b, int length);
-int write_descriptor_loop(vqarray_t *desc_list, bs_t *b);
-int print_descriptor_loop(vqarray_t *desc_list, int level, char *str, size_t str_len);
+int read_descriptor_loop(vqarray_t* desc_list, bs_t* b, int length);
+int write_descriptor_loop(vqarray_t* desc_list, bs_t* b);
+int print_descriptor_loop(vqarray_t* desc_list, int level, char* str, size_t str_len);
 
 
 descriptor_t* descriptor_new();
@@ -117,14 +117,14 @@ descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b);
 int descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len);
 
 typedef struct {
-	char ISO_639_language_code[4];
-	uint32_t audio_type;
+    char ISO_639_language_code[4];
+    uint32_t audio_type;
 } iso639_lang_t;
 
 typedef struct {
-	descriptor_t descriptor;
-	iso639_lang_t* languages;
-	int _num_languages;
+    descriptor_t descriptor;
+    iso639_lang_t* languages;
+    int _num_languages;
 } language_descriptor_t;
 
 descriptor_t* language_descriptor_new(descriptor_t* desc);
@@ -134,16 +134,16 @@ int language_descriptor_print(const descriptor_t* desc, int level, char* str, si
 
 
 typedef struct {
-   descriptor_t descriptor;
-   uint32_t CA_system_ID;
-   uint32_t CA_PID;
-   uint8_t *private_data_bytes;
-   size_t _private_data_bytes_buf_len;
+    descriptor_t descriptor;
+    uint32_t CA_system_ID;
+    uint32_t CA_PID;
+    uint8_t* private_data_bytes;
+    size_t _private_data_bytes_buf_len;
 } ca_descriptor_t;
 
-descriptor_t* ca_descriptor_new(descriptor_t *desc);
-int ca_descriptor_free(descriptor_t *desc);
-descriptor_t* ca_descriptor_read(descriptor_t *desc, bs_t *b);
-int ca_descriptor_print(const descriptor_t *desc, int level, char *str, size_t str_len);
+descriptor_t* ca_descriptor_new(descriptor_t* desc);
+int ca_descriptor_free(descriptor_t* desc);
+descriptor_t* ca_descriptor_read(descriptor_t* desc, bs_t* b);
+int ca_descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len);
 
 #endif

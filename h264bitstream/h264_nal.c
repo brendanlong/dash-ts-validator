@@ -1,20 +1,20 @@
-/* 
+/*
  * h264bitstream - a library for reading and writing H.264 video
  * Copyright (C) 2005-2007 Auroras Entertainment, LLC
  * Copyright (C) 2008-2011 Avail-TVN
- * 
+ *
  * Written by Alex Izvorski <aizvorski@gmail.com> and Alex Giladi <alex.giladi@gmail.com>
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
@@ -39,8 +39,12 @@ h264_stream_t* h264_new()
     h->nal = (nal_t*)calloc(1, sizeof(nal_t));
 
     // initialize tables
-    for ( int i = 0; i < 32; i++ ) { h->sps_table[i] = (sps_t*)calloc(1, sizeof(sps_t)); }
-    for ( int i = 0; i < 256; i++ ) { h->pps_table[i] = (pps_t*)calloc(1, sizeof(pps_t)); }
+    for(int i = 0; i < 32; i++) {
+        h->sps_table[i] = (sps_t*)calloc(1, sizeof(sps_t));
+    }
+    for(int i = 0; i < 256; i++) {
+        h->pps_table[i] = (pps_t*)calloc(1, sizeof(pps_t));
+    }
 
     h->sps = h->sps_table[0];
     h->pps = h->pps_table[0];
@@ -51,7 +55,7 @@ h264_stream_t* h264_new()
     h->sh = (slice_header_t*)calloc(1, sizeof(slice_header_t));
     h->slice_data = (slice_data_rbsp_t*)calloc(1, sizeof(slice_data_rbsp_t));
 
-    return h;   
+    return h;
 }
 
 
@@ -63,24 +67,27 @@ void h264_free(h264_stream_t* h)
 {
     free(h->nal);
 
-    for ( int i = 0; i < 32; i++ ) { free( h->sps_table[i] ); }
-    for ( int i = 0; i < 256; i++ ) { free( h->pps_table[i] ); }
+    for(int i = 0; i < 32; i++) {
+        free(h->sps_table[i]);
+    }
+    for(int i = 0; i < 256; i++) {
+        free(h->pps_table[i]);
+    }
 
     free(h->aud);
-    if(h->seis != NULL)
-    {
-        for( int i = 0; i < h->num_seis; i++ )
-        {
+    if(h->seis != NULL) {
+        for(int i = 0; i < h->num_seis; i++) {
             sei_t* sei = h->seis[i];
             sei_free(sei);
         }
         free(h->seis);
     }
     free(h->sh);
-    if (h->slice_data) {
-    	if (h->slice_data->rbsp_buf)
-    		free(h->slice_data->rbsp_buf);
-    	free(h->slice_data);
+    if(h->slice_data) {
+        if(h->slice_data->rbsp_buf) {
+            free(h->slice_data->rbsp_buf);
+        }
+        free(h->slice_data);
     }
     free(h);
 }
@@ -101,7 +108,7 @@ int find_nal_unit(uint8_t* buf, int size, int* nal_start, int* nal_end)
     // find start
     *nal_start = 0;
     *nal_end = 0;
-    
+
     i = 0;
     while (   //( next_bits( 24 ) != 0x000001 && next_bits( 32 ) != 0x00000001 )
         (buf[i] != 0 || buf[i+1] != 0 || buf[i+2] != 0x01) &&
@@ -151,31 +158,34 @@ int find_nal_unit(uint8_t* buf, int size, int* nal_start, int* nal_end)
 //        (buf[i] != 0 || buf[i+1] != 0 || buf[i+2] != 0 || buf[i+3] != 0x01)
 //        )
 
-    while (buf[i] != 0x0 || buf[i+1] != 0x0 || (buf[i+2] != 0x1 && (buf[i+2] != 0x0 || buf[i+3] != 0x1))) {
+    while(buf[i] != 0x0 || buf[i + 1] != 0x0 || (buf[i + 2] != 0x1 && (buf[i + 2] != 0x0
+            || buf[i + 3] != 0x1))) {
         i++; // skip leading zero
-        if (i+4 >= size)
-        	return 0; // did not find nal start
+        if(i + 4 >= size) {
+            return 0;    // did not find nal start
+        }
     }
 
-    if  (buf[i] != 0 || buf[i+1] != 0 || buf[i+2] != 0x01) // ( next_bits( 24 ) != 0x000001 )
+    if(buf[i] != 0 || buf[i + 1] != 0 || buf[i + 2] != 0x01) {   // ( next_bits( 24 ) != 0x000001 )
         i++;
-
-    if  (buf[i] != 0 || buf[i+1] != 0 || buf[i+2] != 0x01) {
-    	fprintf(stderr, "ERROR: should never happen\n");
-    	return 0;
     }
-    i+= 3;
+
+    if(buf[i] != 0 || buf[i + 1] != 0 || buf[i + 2] != 0x01) {
+        fprintf(stderr, "ERROR: should never happen\n");
+        return 0;
+    }
+    i += 3;
     *nal_start = i;
-    
+
 //    while (   //( next_bits( 24 ) != 0x000000 && next_bits( 24 ) != 0x000001 )
 //        (buf[i] != 0 || buf[i+1] != 0 || buf[i+2] != 0) &&
 //        (buf[i] != 0 || buf[i+1] != 0 || buf[i+2] != 0x01)
 //        )
-    while (buf[i] != 0 || buf[i+1] != 0 || (buf[i+2] != 0 && buf[i+2] != 1)) {
+    while(buf[i] != 0 || buf[i + 1] != 0 || (buf[i + 2] != 0 && buf[i + 2] != 1)) {
         i++; // FIXME the next line fails when reading a nal that ends exactly at the end of the data
-        if (i+3 >= size) {
-        	*nal_end = size;
-        	return -1;
+        if(i + 3 >= size) {
+            *nal_end = size;
+            return -1;
         } // did not find nal end, stream ended first
     }
 
@@ -202,29 +212,25 @@ int rbsp_to_nal(const uint8_t* rbsp_buf, const int* rbsp_size, uint8_t* nal_buf,
     int j     = 1;
     int count = 0;
 
-    if (*nal_size > 0) { nal_buf[0] = 0x00; } // zero out first byte since we start writing from second byte
+    if(*nal_size > 0) {
+        nal_buf[0] = 0x00;    // zero out first byte since we start writing from second byte
+    }
 
-    for ( i = 0; i < *rbsp_size ; i++ )
-    {
-        if ( j >= *nal_size ) 
-        {
+    for(i = 0; i < *rbsp_size ; i++) {
+        if(j >= *nal_size) {
             // error, not enough space
             return -1;
         }
 
-        if ( ( count == 2 ) && !(rbsp_buf[i] & 0xFC) ) // HACK 0xFC
-        {
+        if((count == 2) && !(rbsp_buf[i] & 0xFC)) {      // HACK 0xFC
             nal_buf[j] = 0x03;
             j++;
             count = 0;
         }
         nal_buf[j] = rbsp_buf[i];
-        if ( rbsp_buf[i] == 0x00 )
-        {
+        if(rbsp_buf[i] == 0x00) {
             count++;
-        }
-        else
-        {
+        } else {
             count = 0;
         }
         j++;
@@ -237,7 +243,7 @@ int rbsp_to_nal(const uint8_t* rbsp_buf, const int* rbsp_size, uint8_t* nal_buf,
 /**
    Convert NAL data (Annex B format) to RBSP data.
    The size of rbsp_buf must be the same as size of the nal_buf to guarantee the output will fit.
-   If that is not true, output may be truncated and an error will be returned. 
+   If that is not true, output may be truncated and an error will be returned.
    Additionally, certain byte sequences in the input nal_buf are not allowed in the spec and also cause the conversion to fail and an error to be returned.
    @param[in] nal_buf   the nal data
    @param[in,out] nal_size  as input, pointer to the size of the nal data; as output, filled in with the actual size of the nal data
@@ -252,26 +258,21 @@ int nal_to_rbsp(const uint8_t* nal_buf, int* nal_size, uint8_t* rbsp_buf, int* r
     int i;
     int j     = 0;
     int count = 0;
-  
-    for( i = 0; i < *nal_size; i++ )
-    { 
+
+    for(i = 0; i < *nal_size; i++) {
         // in NAL unit, 0x000000, 0x000001 or 0x000002 shall not occur at any byte-aligned position
-        if( ( count == 2 ) && ( nal_buf[i] < 0x03) ) 
-        {
+        if((count == 2) && (nal_buf[i] < 0x03)) {
             return -1;
         }
 
-        if( ( count == 2 ) && ( nal_buf[i] == 0x03) )
-        {
+        if((count == 2) && (nal_buf[i] == 0x03)) {
             // check the 4th byte after 0x000003, except when cabac_zero_word is used, in which case the last three bytes of this NAL unit must be 0x000003
-            if((i < *nal_size - 1) && (nal_buf[i+1] > 0x03))
-            {
+            if((i < *nal_size - 1) && (nal_buf[i + 1] > 0x03)) {
                 return -1;
             }
 
             // if cabac_zero_word is used, the final byte of this NAL unit(0x03) is discarded, and the last two bytes of RBSP must be 0x0000
-            if(i == *nal_size - 1)
-            {
+            if(i == *nal_size - 1) {
                 break;
             }
 
@@ -279,19 +280,15 @@ int nal_to_rbsp(const uint8_t* nal_buf, int* nal_size, uint8_t* rbsp_buf, int* r
             count = 0;
         }
 
-        if ( j >= *rbsp_size ) 
-        {
+        if(j >= *rbsp_size) {
             // error, not enough space
             return -1;
         }
 
         rbsp_buf[j] = nal_buf[i];
-        if(nal_buf[i] == 0x00)
-        {
+        if(nal_buf[i] == 0x00) {
             count++;
-        }
-        else
-        {
+        } else {
             count = 0;
         }
         j++;
@@ -313,32 +310,33 @@ int peek_nal_unit(h264_stream_t* h, uint8_t* buf, int size)
 
     bs_t* b = bs_new(buf, size);
 
-    nal->forbidden_zero_bit = bs_read_f(b,1);
-    nal->nal_ref_idc = bs_read_u(b,2);
-    nal->nal_unit_type = bs_read_u(b,5);
+    nal->forbidden_zero_bit = bs_read_f(b, 1);
+    nal->nal_ref_idc = bs_read_u(b, 2);
+    nal->nal_unit_type = bs_read_u(b, 5);
 
     bs_free(b);
 
     // basic verification, per 7.4.1
-    if ( nal->forbidden_zero_bit ) { return -1; }
-    if ( nal->nal_unit_type <= 0 || nal->nal_unit_type > 20 ) { return -1; }
-    if ( nal->nal_unit_type > 15 && nal->nal_unit_type < 19 ) { return -1; }
+    if(nal->forbidden_zero_bit) {
+        return -1;
+    }
+    if(nal->nal_unit_type <= 0 || nal->nal_unit_type > 20) {
+        return -1;
+    }
+    if(nal->nal_unit_type > 15 && nal->nal_unit_type < 19) {
+        return -1;
+    }
 
-    if ( nal->nal_ref_idc == 0 )
-    {
-        if ( nal->nal_unit_type == NAL_UNIT_TYPE_CODED_SLICE_IDR )
-        {
+    if(nal->nal_ref_idc == 0) {
+        if(nal->nal_unit_type == NAL_UNIT_TYPE_CODED_SLICE_IDR) {
             return -1;
         }
-    }
-    else 
-    {
-        if ( nal->nal_unit_type ==  NAL_UNIT_TYPE_SEI || 
-             nal->nal_unit_type == NAL_UNIT_TYPE_AUD || 
-             nal->nal_unit_type == NAL_UNIT_TYPE_END_OF_SEQUENCE || 
-             nal->nal_unit_type == NAL_UNIT_TYPE_END_OF_STREAM || 
-             nal->nal_unit_type == NAL_UNIT_TYPE_FILLER ) 
-        {
+    } else {
+        if(nal->nal_unit_type ==  NAL_UNIT_TYPE_SEI ||
+                nal->nal_unit_type == NAL_UNIT_TYPE_AUD ||
+                nal->nal_unit_type == NAL_UNIT_TYPE_END_OF_SEQUENCE ||
+                nal->nal_unit_type == NAL_UNIT_TYPE_END_OF_STREAM ||
+                nal->nal_unit_type == NAL_UNIT_TYPE_FILLER) {
             return -1;
         }
     }

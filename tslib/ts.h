@@ -51,88 +51,87 @@ extern "C"
 #define PCR_IS_VALID(P)  ( ( (P) >= 0 ) && ((P) <  PCR_MAX))
 
 typedef struct {
-   uint32_t transport_error_indicator;
-   uint32_t payload_unit_start_indicator;
-   uint32_t transport_priority;
-   uint32_t PID;
+    uint32_t transport_error_indicator;
+    uint32_t payload_unit_start_indicator;
+    uint32_t transport_priority;
+    uint32_t PID;
 
-   uint32_t transport_scrambling_control;
-   uint32_t adaptation_field_control;
-   uint32_t continuity_counter;
+    uint32_t transport_scrambling_control;
+    uint32_t adaptation_field_control;
+    uint32_t continuity_counter;
 } ts_header_t;
 
 typedef struct {
-   uint32_t adaptation_field_length;
+    uint32_t adaptation_field_length;
 
-   uint32_t discontinuity_indicator;
-   uint32_t random_access_indicator;
-   uint32_t elementary_stream_priority_indicator;
-   uint32_t PCR_flag;
-   uint32_t OPCR_flag;
-   uint32_t splicing_point_flag;
-   uint32_t transport_private_data_flag;
-   uint32_t adaptation_field_extension_flag;
+    uint32_t discontinuity_indicator;
+    uint32_t random_access_indicator;
+    uint32_t elementary_stream_priority_indicator;
+    uint32_t PCR_flag;
+    uint32_t OPCR_flag;
+    uint32_t splicing_point_flag;
+    uint32_t transport_private_data_flag;
+    uint32_t adaptation_field_extension_flag;
 
-   uint64_t program_clock_reference_base;
-   uint32_t program_clock_reference_extension;
-   uint64_t original_program_clock_reference_base;
-   uint32_t original_program_clock_reference_extension;
+    uint64_t program_clock_reference_base;
+    uint32_t program_clock_reference_extension;
+    uint64_t original_program_clock_reference_base;
+    uint32_t original_program_clock_reference_extension;
 
-   uint32_t splice_countdown;
-   uint32_t transport_private_data_length;
-   uint32_t adaptation_field_extension_length;
-   uint32_t ltw_flag;
-   uint32_t piecewise_rate_flag;
-   uint32_t seamless_splice_flag;
-   uint32_t ltw_valid_flag;
-   uint32_t ltw_offset;
-   uint32_t piecewise_rate;
-   uint32_t splice_type;
-   uint64_t DTS_next_AU;
+    uint32_t splice_countdown;
+    uint32_t transport_private_data_length;
+    uint32_t adaptation_field_extension_length;
+    uint32_t ltw_flag;
+    uint32_t piecewise_rate_flag;
+    uint32_t seamless_splice_flag;
+    uint32_t ltw_valid_flag;
+    uint32_t ltw_offset;
+    uint32_t piecewise_rate;
+    uint32_t splice_type;
+    uint64_t DTS_next_AU;
 
-   buf_t private_data_bytes;
+    buf_t private_data_bytes;
 
 } ts_adaptation_field_t;
 
 typedef struct {
-   ts_header_t header;
-   ts_adaptation_field_t adaptation_field;
-   uint8_t *bytes;     /// bytes of the *complete* TS packet, managed by the caller. we know its size is 188 bytes
+    ts_header_t header;
+    ts_adaptation_field_t adaptation_field;
+    uint8_t* bytes;     /// bytes of the *complete* TS packet, managed by the caller. we know its size is 188 bytes
 
-   buf_t payload;      /// start of the payload
+    buf_t payload;      /// start of the payload
 
-   uint8_t *opaque;    /// opaque user-defined pointer. memory is managed by the user
-   uint64_t pcr_int;   /// interpolated PCR
+    uint8_t* opaque;    /// opaque user-defined pointer. memory is managed by the user
+    uint64_t pcr_int;   /// interpolated PCR
 
-   int status;
+    int status;
 
-   uint64_t pos_in_stream;  // byte location of payload in transport stream
+    uint64_t pos_in_stream;  // byte location of payload in transport stream
 
 } ts_packet_t;
 
 ts_packet_t* ts_new();
-void ts_free(ts_packet_t *ts);
+void ts_free(ts_packet_t* ts);
 
-int ts_read_header(ts_header_t *tsh, bs_t *b);
-int ts_read_adaptation_field(ts_adaptation_field_t *af, bs_t *b);
-int ts_read(ts_packet_t *ts, uint8_t *buf, size_t buf_size, uint64_t packet_num);
+int ts_read_header(ts_header_t* tsh, bs_t* b);
+int ts_read_adaptation_field(ts_adaptation_field_t* af, bs_t* b);
+int ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num);
 
-int ts_write_adaptation_field(ts_adaptation_field_t *af, bs_t *b);
-int ts_write_header(ts_header_t *tsh, bs_t *b);
-int ts_write(ts_packet_t *ts, uint8_t *buf, size_t buf_size);
+int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b);
+int ts_write_header(ts_header_t* tsh, bs_t* b);
+int ts_write(ts_packet_t* ts, uint8_t* buf, size_t buf_size);
 
-int ts_print_adaptation_field(const ts_adaptation_field_t *const af, char *str, size_t str_len);
-int ts_print_header(const ts_header_t *const tsh, char *str, size_t str_len);
-int ts_print(const ts_packet_t *const ts, char *str, size_t str_len);
+int ts_print_adaptation_field(const ts_adaptation_field_t* const af, char* str, size_t str_len);
+int ts_print_header(const ts_header_t* const tsh, char* str, size_t str_len);
+int ts_print(const ts_packet_t* const ts, char* str, size_t str_len);
 
 int64_t ts_read_pcr(const ts_packet_t* const ts);
 
 
-typedef enum 
-{
-   TS_ERROR_UNKNOWN         =  0,
-   TS_ERROR_NOT_ENOUGH_DATA = -1,
-   TS_ERROR_NO_SYNC_BYTE    = -2,
+typedef enum {
+    TS_ERROR_UNKNOWN         =  0,
+    TS_ERROR_NOT_ENOUGH_DATA = -1,
+    TS_ERROR_NO_SYNC_BYTE    = -2,
 } ts_error_t;
 
 #ifdef __cplusplus

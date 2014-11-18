@@ -3,7 +3,7 @@
  Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com>
  All rights reserved.
- 
+
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  * Redistributions of source code must retain the above copyright
@@ -28,7 +28,7 @@
  */
 
 #ifndef _TSLIB_SECTION_H_
-#define _TSLIB_SECTION_H_        
+#define _TSLIB_SECTION_H_
 
 // TODO: generic section reader
 

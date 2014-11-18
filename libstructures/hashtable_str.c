@@ -1,19 +1,19 @@
-/* 
+/*
  * libstructures - a library for generic data structures in C
  * Copyright (C) 2005-2008 Avail Media, Inc.
- * 
+ *
  * Written by Alex Izvorski <aizvorski@gmail.com>
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
@@ -33,12 +33,11 @@ uint32_t hashfn_uint8_djb(uint8_t* s, int len)
 {
     uint32_t hash = 5381;
     int i    = 0;
-    
-    for(i = 0; i < len; i++)
-    {
+
+    for(i = 0; i < len; i++) {
         hash = ((hash << 5) + hash) + s[i];
     }
-    
+
     return (hash & 0x7FFFFFFF);
 }
 
@@ -60,11 +59,11 @@ uint32_t hashfn_uint32_rj(uint32_t key)
 int32_t hashfn_int32_tw(int32_t key)
 {
     key += ~(key << 15);
-    key ^=  (key >> 10);
-    key +=  (key << 3);
-    key ^=  (key >> 6);
+    key ^= (key >> 10);
+    key += (key << 3);
+    key ^= (key >> 6);
     key += ~(key << 11);
-    key ^=  (key >> 16);
+    key ^= (key >> 16);
     return key;
 }
 
@@ -99,12 +98,12 @@ uint32_t hashtable_hashfn_uint32(void* k)
 
 uint32_t hashtable_hashfn_int64(void* k)
 {
-    return hashfn_uint8_djb( k, sizeof(int64_t) );
+    return hashfn_uint8_djb(k, sizeof(int64_t));
 }
 
 uint32_t hashtable_hashfn_uint64(void* k)
 {
-    return hashfn_uint8_djb( k, sizeof(uint64_t) );
+    return hashfn_uint8_djb(k, sizeof(uint64_t));
 }
 
 
@@ -113,9 +112,13 @@ int hashtable_eqfn_char(void* k1, void* k2)
 {
     char* s1 = (char*) k1;
     char* s2 = (char*) k2;
-    if (s1 == s2){ return 1; }
-    else if (s1 == NULL || s2 == NULL) { return 0; }
-    else { return (strcmp(s1, s2) == 0 ? 1 : 0); }
+    if(s1 == s2) {
+        return 1;
+    } else if(s1 == NULL || s2 == NULL) {
+        return 0;
+    } else {
+        return (strcmp(s1, s2) == 0 ? 1 : 0);
+    }
 }
 
 #ifdef HAVE_BSTRING
@@ -123,9 +126,13 @@ int hashtable_eqfn_bstring(void* k1, void* k2)
 {
     bstring b1 = (bstring) k1;
     bstring b2 = (bstring) k2;
-    if (b1 == b2){ return 1; }
-    else if (b1 == NULL || b2 == NULL) { return 0; }
-    else { return biseq(b1, b2); }
+    if(b1 == b2) {
+        return 1;
+    } else if(b1 == NULL || b2 == NULL) {
+        return 0;
+    } else {
+        return biseq(b1, b2);
+    }
 }
 #endif
 

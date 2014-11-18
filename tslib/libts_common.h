@@ -26,7 +26,7 @@
  */
 
 #ifndef _TSLIB_TSCOMMON_H_
-#define _TSLIB_TSCOMMON_H_        
+#define _TSLIB_TSCOMMON_H_
 
 #include <stdint.h>
 
@@ -34,60 +34,60 @@
 #include "common.h"
 
 #ifdef __cplusplus
-extern "C" 
+extern "C"
 {
 #endif
 
 /**
  * Read a 90KHz timestamp in MPEG syntax (e.g. PTS/DTS)
- * 
- * @author agiladi (3/20/2014) 
- * @param b bit shifter 
- * @return timestamp value as a 64-bit integer 
+ *
+ * @author agiladi (3/20/2014)
+ * @param b bit shifter
+ * @return timestamp value as a 64-bit integer
  */
-static inline uint64_t bs_read_90khz_timestamp(bs_t *b) 
-{ 
-   uint64_t v = (uint64_t)bs_read_u(b, 3) << 30ULL; 
-   bs_skip_u1(b); 
-   v |= (uint64_t)bs_read_u(b, 15) << 15ULL; 
-   bs_skip_u1(b); 
-   v |= (uint64_t)bs_read_u(b, 15); 
-   bs_skip_u1(b); 
-   
-   return v;
+static inline uint64_t bs_read_90khz_timestamp(bs_t* b)
+{
+    uint64_t v = (uint64_t)bs_read_u(b, 3) << 30ULL;
+    bs_skip_u1(b);
+    v |= (uint64_t)bs_read_u(b, 15) << 15ULL;
+    bs_skip_u1(b);
+    v |= (uint64_t)bs_read_u(b, 15);
+    bs_skip_u1(b);
+
+    return v;
 }
 
 /**
  * Write a 90KHz timestamp in MPEG syntax (e.g. PTS/DTS)
- * 
- * @author agiladi (3/20/2014) 
+ *
+ * @author agiladi (3/20/2014)
  * @param b bit shifter
  * @param v 90KHz value as a 64-bit integer
  */
-static inline void bs_write_90khz_timestamp(bs_t *b, uint64_t v) 
-{ 
-   bs_write_u(b, 3, v >> 30); 
-   bs_write_u1(b, 1); 
-   bs_write_u(b, 15, v >> 15); 
-   bs_write_u1(b, 1); 
-   bs_write_u(b, 15, v); 
-   bs_write_u1(b, 1);
+static inline void bs_write_90khz_timestamp(bs_t* b, uint64_t v)
+{
+    bs_write_u(b, 3, v >> 30);
+    bs_write_u1(b, 1);
+    bs_write_u(b, 15, v >> 15);
+    bs_write_u1(b, 1);
+    bs_write_u(b, 15, v);
+    bs_write_u1(b, 1);
 }
 
 #define bs_write_reserved(b,n) bs_write_ones(b, (n))
 
-static inline void bs_write_ones(bs_t *b, int n) 
-{ 
-   bs_write_u(b, n, 0x7FFFFFFF);
+static inline void bs_write_ones(bs_t* b, int n)
+{
+    bs_write_u(b, n, 0x7FFFFFFF);
 }
 
-static inline void bs_write_marker_bit(bs_t *b) 
-{ 
-   bs_write_u1(b, 1);
+static inline void bs_write_marker_bit(bs_t* b)
+{
+    bs_write_u1(b, 1);
 }
 
 // Dirty hack: our own errno, error reporting via a global var. Initialized to zero on start.
-extern volatile int tslib_errno; 
+extern volatile int tslib_errno;
 // This macro is NOT thread-safe
 #define SAFE_REPORT_TS_ERR(errCode)		if (tslib_errno == 0) tslib_errno = (errCode)
 

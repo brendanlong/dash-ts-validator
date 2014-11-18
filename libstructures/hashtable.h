@@ -1,26 +1,26 @@
 /*
  * Copyright (c) 2002, Christopher Clark
  * All rights reserved.
- * 
+ *
  * Portions Copyright (C) 2005-2008 Avail Media, Inc.
  * Written by Alex Izvorski <aizvorski@gmail.com>
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright
  * notice, this list of conditions and the following disclaimer.
- * 
+ *
  * * Redistributions in binary form must reproduce the above copyright
  * notice, this list of conditions and the following disclaimer in the
  * documentation and/or other materials provided with the distribution.
- * 
+ *
  * * Neither the name of the original author; nor the names of any contributors
  * may be used to endorse or promote products derived from this software
  * without specific prior written permission.
- * 
- * 
+ *
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -56,7 +56,7 @@ typedef struct hashtable hashtable_t;
  *      v = (struct some_value *)   malloc(sizeof(struct some_value));
  *
  *      (initialise k and v to suitable values)
- * 
+ *
  *      if (! hashtable_insert(h,k,v) )
  *      {     exit(-1);               }
  *
@@ -70,7 +70,7 @@ typedef struct hashtable hashtable_t;
 
 /* Macros may be used to define type-safe(r) hashtable access functions, with
  * methods specialized to take known key and value types as parameters.
- * 
+ *
  * Example:
  *
  * Insert this at the start of your file:
@@ -100,7 +100,7 @@ typedef struct hashtable hashtable_t;
 
 /*****************************************************************************
  * hashtable_new
-   
+
  * @name                    hashtable_new
  * @param   minsize         minimum initial size of hashtable
  * @param   hashfunction    function for hashing keys
@@ -108,13 +108,13 @@ typedef struct hashtable hashtable_t;
  * @return                  newly created hashtable or NULL on failure
  */
 
-hashtable_t *
-hashtable_new(unsigned int (*hashfunction) (void*),
-              int (*key_eq_fn) (void*,void*));
+hashtable_t*
+hashtable_new(unsigned int (*hashfunction)(void*),
+              int (*key_eq_fn)(void*, void*));
 
 /*****************************************************************************
  * hashtable_insert
-   
+
  * @name        hashtable_insert
  * @param   h   the hashtable to insert into
  * @param   k   the key - hashtable claims ownership and will free on removal
@@ -131,8 +131,8 @@ hashtable_new(unsigned int (*hashfunction) (void*),
  * If in doubt, remove before insert.
  */
 
-int 
-hashtable_insert(hashtable_t *h, void *k, void *v);
+int
+hashtable_insert(hashtable_t* h, void* k, void* v);
 
 #define DEFINE_HASHTABLE_INSERT(fnname, keytype, valuetype) \
 int fnname (hashtable_t *h, keytype *k, valuetype *v) \
@@ -142,15 +142,15 @@ int fnname (hashtable_t *h, keytype *k, valuetype *v) \
 
 /*****************************************************************************
  * hashtable_search
-   
+
  * @name        hashtable_search
  * @param   h   the hashtable to search
  * @param   k   the key to search for  - does not claim ownership
  * @return      the value associated with the key, or NULL if none found
  */
 
-void *
-hashtable_search(hashtable_t *h, void *k);
+void*
+hashtable_search(hashtable_t* h, void* k);
 
 #define DEFINE_HASHTABLE_SEARCH(fnname, keytype, valuetype) \
 valuetype * fnname (hashtable_t *h, keytype *k) \
@@ -160,15 +160,15 @@ valuetype * fnname (hashtable_t *h, keytype *k) \
 
 /*****************************************************************************
  * hashtable_remove
-   
+
  * @name        hashtable_remove
  * @param   h   the hashtable to remove the item from
  * @param   k   the key to search for  - does not claim ownership
  * @return      the value associated with the key, or NULL if none found
  */
 
-void * /* returns value */
-hashtable_remove(hashtable_t *h, void *k);
+void*  /* returns value */
+hashtable_remove(hashtable_t* h, void* k);
 
 #define DEFINE_HASHTABLE_REMOVE(fnname, keytype, valuetype) \
 valuetype * fnname (hashtable_t *h, keytype *k) \
@@ -179,36 +179,36 @@ valuetype * fnname (hashtable_t *h, keytype *k) \
 
 /*****************************************************************************
  * hashtable_count
-   
+
  * @name        hashtable_count
  * @param   h   the hashtable
  * @return      the number of items stored in the hashtable
  */
 unsigned int
-hashtable_count(hashtable_t *h);
+hashtable_count(hashtable_t* h);
 
 /*****************************************************************************
  * hashtable_foreach
-   
+
  * @name        hashtable_foreach
  * @param  h    the hashtable
  * @param  func function, accepting 2 arguments, one of which is the value of the <key,value> tuple
  * @param  arg  argument to be passed to the function above
  */
 
-void hashtable_foreach(hashtable_t *h, void (*func) (void*, void *), void *arg );
+void hashtable_foreach(hashtable_t* h, void (*func)(void*, void*), void* arg);
 
-void hashtable_foreach_pair(hashtable_t *h, void (*func) (void*, void *, void*), void *arg );
+void hashtable_foreach_pair(hashtable_t* h, void (*func)(void*, void*, void*), void* arg);
 
 /*****************************************************************************
  * hashtable_free
-   
+
  * @name        hashtable_free
  * @param   h   the hashtable
  * @param       free_values     whether to call 'free' on the remaining values
  */
 
 void
-hashtable_free(hashtable_t *h, int free_values);
+hashtable_free(hashtable_t* h, int free_values);
 
 #endif /* HASHTABLE_INCLUDE */

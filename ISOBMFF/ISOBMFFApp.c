@@ -1,7 +1,7 @@
 /*
 ** Copyright (C) 2014  Cable Television Laboratories, Inc.
 ** Contact: http://www.cablelabs.com/
- 
+
 
  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -30,60 +30,60 @@
 #define ISOBMF_4BYTE_SZ 4
 #define ISOBMF_8BYTE_SZ 8
 
-static struct option long_options[] = { 
-   { "verbose",	   no_argument,        NULL, 'v' }, 
-   { "dash",	   optional_argument,  NULL, 'd' }, 
-   { "byte-range", required_argument,  NULL, 'b' }, 
-   { "help",       no_argument,        NULL, 'h' }, 
-}; 
+static struct option long_options[] = {
+    { "verbose",	   no_argument,        NULL, 'v' },
+    { "dash",	   optional_argument,  NULL, 'd' },
+    { "byte-range", required_argument,  NULL, 'b' },
+    { "help",       no_argument,        NULL, 'h' },
+};
 
-static char options[] = 
-   "\t-d, --dash\n"
-   "\t-v, --verbose\n"
-   "\t-h, --help\n"; 
+static char options[] =
+    "\t-d, --dash\n"
+    "\t-v, --verbose\n"
+    "\t-h, --help\n";
 
-static void usage(char *name) 
-{ 
-   fprintf(stderr, "\n%s\n", name); 
-   fprintf(stderr, "\nUsage: \n%s [options] <input file with segment info>\n\nOptions:\n%s\n", name, options);
+static void usage(char* name)
+{
+    fprintf(stderr, "\n%s\n", name);
+    fprintf(stderr, "\nUsage: \n%s [options] <input file with segment info>\n\nOptions:\n%s\n", name,
+            options);
 }
 
 // for testing
-int main(int argc, char *argv[]) 
-{ 
-   if (argc < 2) 
-   {
-      usage(argv[0]); 
-      return 1;
-   }
+int main(int argc, char* argv[])
+{
+    if(argc < 2) {
+        usage(argv[0]);
+        return 1;
+    }
 
-   char *fname = argv[1]; 
-   printf ("Index file = %s\n", fname);
+    char* fname = argv[1];
+    printf("Index file = %s\n", fname);
 
 
-   int durations[26];
-   for (int i=0; i<25; i++)
-   {
-       durations[i] = 900000;
-   }
-   durations[25] = 647520;
+    int durations[26];
+    for(int i = 0; i < 25; i++) {
+        durations[i] = 900000;
+    }
+    durations[25] = 647520;
 
-   int presentationTimeOffset = 6000;
-   int videoPID = 256;
+    int presentationTimeOffset = 6000;
+    int videoPID = 256;
 
-   data_segment_iframes_t *pIFrames = (data_segment_iframes_t *)calloc(26, sizeof(data_segment_iframes_t));
-   validateIndexSegment(fname, 26, durations, pIFrames, presentationTimeOffset, videoPID, 0);
-/*
-   printf ("\n\n");
-   for (int i=0; i<26; i++)
-   {
-       printf ("data_segment_iframes %d: doIFrameValidation = %d, firstOffset = %d, numIFrames = %d\n",
-           i, pIFrames[i].doIFrameValidation, pIFrames[i].firstOffset, pIFrames[i].numIFrames);
-       for (int j=0; j<pIFrames[i].numIFrames; j++)
+    data_segment_iframes_t* pIFrames = (data_segment_iframes_t*)calloc(26,
+                                       sizeof(data_segment_iframes_t));
+    validateIndexSegment(fname, 26, durations, pIFrames, presentationTimeOffset, videoPID, 0);
+    /*
+       printf ("\n\n");
+       for (int i=0; i<26; i++)
        {
-            printf ("   pIFrameLocations_Time[%d] = %d\n", j, pIFrames[i].pIFrameLocations_Time[j]);
+           printf ("data_segment_iframes %d: doIFrameValidation = %d, firstOffset = %d, numIFrames = %d\n",
+               i, pIFrames[i].doIFrameValidation, pIFrames[i].firstOffset, pIFrames[i].numIFrames);
+           for (int j=0; j<pIFrames[i].numIFrames; j++)
+           {
+                printf ("   pIFrameLocations_Time[%d] = %d\n", j, pIFrames[i].pIFrameLocations_Time[j]);
+           }
        }
-   }
-   */
+       */
 }
 

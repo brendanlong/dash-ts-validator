@@ -1,26 +1,26 @@
 /*
  * Copyright (c) 2002, Christopher Clark
  * All rights reserved.
- * 
+ *
  * Portions Copyright (C) 2005-2008 Avail Media, Inc.
  * Written by Alex Izvorski <aizvorski@gmail.com>
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright
  * notice, this list of conditions and the following disclaimer.
- * 
+ *
  * * Redistributions in binary form must reproduce the above copyright
  * notice, this list of conditions and the following disclaimer in the
  * documentation and/or other materials provided with the distribution.
- * 
+ *
  * * Neither the name of the original author; nor the names of any contributors
  * may be used to endorse or promote products derived from this software
  * without specific prior written permission.
- * 
- * 
+ *
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -44,11 +44,10 @@
 /*****************************************************************************/
 /* This struct is only concrete here to allow the inlining of two of the
  * accessor functions. */
-struct hashtable_itr
-{
-    struct hashtable *h;
-    struct entry *e;
-    struct entry *parent;
+struct hashtable_itr {
+    struct hashtable* h;
+    struct entry* e;
+    struct entry* parent;
     unsigned int index;
 };
 
@@ -58,27 +57,27 @@ typedef struct hashtable_itr hashtable_itr_t;
 /* hashtable_iterator
  */
 
-hashtable_itr_t *
-hashtable_iterator_new(hashtable_t *h);
+hashtable_itr_t*
+hashtable_iterator_new(hashtable_t* h);
 
-void 
-hashtable_iterator_free(hashtable_itr_t *itr);
+void
+hashtable_iterator_free(hashtable_itr_t* itr);
 
 /*****************************************************************************/
 /* hashtable_iterator_key
  * - return the value of the (key,value) pair at the current position */
-void * hashtable_iterator_key(hashtable_itr_t *itr);
+void* hashtable_iterator_key(hashtable_itr_t* itr);
 
 /*****************************************************************************/
 /* value - return the value of the (key,value) pair at the current position */
-void * hashtable_iterator_value(hashtable_itr_t *itr);
+void* hashtable_iterator_value(hashtable_itr_t* itr);
 
 /*****************************************************************************/
 /* advance - advance the iterator to the next element
  *           returns zero if advanced to end of table */
 
 int
-hashtable_iterator_advance(hashtable_itr_t *itr);
+hashtable_iterator_advance(hashtable_itr_t* itr);
 
 /*****************************************************************************/
 /* remove - remove current element and advance the iterator to the next element
@@ -87,7 +86,7 @@ hashtable_iterator_advance(hashtable_itr_t *itr);
  *          returns zero if advanced to end of table */
 
 int
-hashtable_iterator_remove(hashtable_itr_t *itr);
+hashtable_iterator_remove(hashtable_itr_t* itr);
 
 /*****************************************************************************/
 /* search - overwrite the supplied iterator, to point to the entry
@@ -95,8 +94,8 @@ hashtable_iterator_remove(hashtable_itr_t *itr);
             h points to the hashtable to be searched.
  *          returns zero if not found. */
 int
-hashtable_iterator_search(hashtable_itr_t *itr,
-                          struct hashtable *h, void *k);
+hashtable_iterator_search(hashtable_itr_t* itr,
+                          struct hashtable* h, void* k);
 
 #define DEFINE_HASHTABLE_ITERATOR_SEARCH(fnname, keytype) \
 int fnname (hashtable_itr_t *i, hashtable_t *h, keytype *k) \

@@ -15,8 +15,7 @@ static int _app_running = 1;
 int main(int argc, char** argv)
 {
     int64_t iterations = 0;
-    while(_app_running)
-    {
+    while(_app_running) {
         hashtable_t* h = hashtable_new(hashtable_hashfn_char, hashtable_eqfn_char);
         int i;
         int n;
@@ -26,8 +25,7 @@ int main(int argc, char** argv)
         char** keys = (char**)malloc(hash_size * sizeof(char*));
         char** values = (char**)malloc(hash_size * sizeof(char*));
 
-        for (i = 0; i < hash_size; i++)
-        {
+        for(i = 0; i < hash_size; i++) {
             keys[i] = (char*)malloc(len * sizeof(uint8_t));
             values[i] = (char*)malloc(len * sizeof(uint8_t));
             snprintf(keys[i], len, "key=%d", rand());
@@ -36,17 +34,14 @@ int main(int argc, char** argv)
             hashtable_insert(h, keys[i], values[i]);
         }
 
-        for (n = 0; n < num_repeats; n++)
-        {
+        for(n = 0; n < num_repeats; n++) {
             i = rand() % hash_size;
         }
-        for (n = 0; n < num_repeats; n++)
-        {
+        for(n = 0; n < num_repeats; n++) {
             i = rand() % hash_size;
             char* v = (char*)hashtable_search(h, keys[i]);
         }
-        for (n = 0; n < num_repeats; n++)
-        {
+        for(n = 0; n < num_repeats; n++) {
             i = rand() % hash_size;
             char* v = (char*)hashtable_remove(h, keys[i]);
             free(v);
@@ -70,8 +65,7 @@ int main(int argc, char** argv)
 
 void _handle_term_signals(int sig)
 {
-    if ( (sig == SIGINT) || (sig == SIGTERM) )
-    {
+    if((sig == SIGINT) || (sig == SIGTERM)) {
         _app_running = 0;
     }
     signal(sig, _handle_term_signals);

@@ -3,7 +3,7 @@
  Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com>
  All rights reserved.
- 
+
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  * Redistributions of source code must retain the above copyright
@@ -40,7 +40,7 @@
 #include "vqarray.h"
 
 #ifdef __cplusplus
-extern "C" 
+extern "C"
 {
 #endif
 
@@ -52,21 +52,20 @@ extern "C"
 #include "vqarray.h"
 
 
-typedef int (*pes_processor_t)(pes_packet_t *, elementary_stream_info_t *, vqarray_t*, void *); 
-typedef int (*pes_arg_destructor_t)(void *); 
+typedef int (*pes_processor_t)(pes_packet_t*, elementary_stream_info_t*, vqarray_t*, void*);
+typedef int (*pes_arg_destructor_t)(void*);
 
-typedef struct 
-{
-   vqarray_t *ts_queue; 
-   pes_processor_t process_pes_packet; 
-   void *pes_arg; 
-   pes_arg_destructor_t pes_arg_destructor;
-} pes_demux_t; 
+typedef struct {
+    vqarray_t* ts_queue;
+    pes_processor_t process_pes_packet;
+    void* pes_arg;
+    pes_arg_destructor_t pes_arg_destructor;
+} pes_demux_t;
 
 
-pes_demux_t* pes_demux_new(pes_processor_t pes_processor); 
-void pes_demux_free(pes_demux_t *pdm); 
-int pes_demux_process_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_info, void *arg); 
+pes_demux_t* pes_demux_new(pes_processor_t pes_processor);
+void pes_demux_free(pes_demux_t* pdm);
+int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
 
 
 #ifdef __cplusplus

@@ -97,11 +97,11 @@ static const crc_t crc_table[256] = {
  * \param data_len Number of bytes in the \a data buffer.
  * \return         The updated crc value.
  *****************************************************************************/
-crc_t crc_update(crc_t crc, const unsigned char *data, size_t data_len)
+crc_t crc_update(crc_t crc, const unsigned char* data, size_t data_len)
 {
     unsigned int tbl_idx;
 
-    while (data_len--) {
+    while(data_len--) {
         tbl_idx = ((crc >> 24) ^ *data) & 0xff;
         crc = (crc_table[tbl_idx] ^ (crc << 8)) & 0xffffffff;
 

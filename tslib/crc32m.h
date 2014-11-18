@@ -57,7 +57,7 @@ static inline crc_t crc_init(void)
  * \param data_len Number of bytes in the \a data buffer.
  * \return         The updated crc value.
  *****************************************************************************/
-crc_t crc_update(crc_t crc, const unsigned char *data, size_t data_len);
+crc_t crc_update(crc_t crc, const unsigned char* data, size_t data_len);
 
 
 /**

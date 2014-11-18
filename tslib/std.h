@@ -3,7 +3,7 @@
  Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com>
  All rights reserved.
- 
+
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  * Redistributions of source code must retain the above copyright
@@ -42,20 +42,19 @@
 // TODO account for
 //    (1) smoothing buffer
 
-typedef struct
-{
-   vqarray_t *ts_in;
-   vqarray_t *ts_out;
-   uint64_t prev_pcr;
-   uint64_t num_bytes;
-   double pcr_rate;
+typedef struct {
+    vqarray_t* ts_in;
+    vqarray_t* ts_out;
+    uint64_t prev_pcr;
+    uint64_t num_bytes;
+    double pcr_rate;
 } stc_t;
 
 stc_t* stc_new();
-void stc_free(stc_t *stc);
-int stc_put_ts_packet(stc_t *stc, ts_packet_t* ts);
-ts_packet_t* stc_get_ts_packet(stc_t *stc);
-void stc_flush(stc_t *stc);
+void stc_free(stc_t* stc);
+int stc_put_ts_packet(stc_t* stc, ts_packet_t* ts);
+ts_packet_t* stc_get_ts_packet(stc_t* stc);
+void stc_flush(stc_t* stc);
 
 #endif // _TSLIB_STD_H_
 

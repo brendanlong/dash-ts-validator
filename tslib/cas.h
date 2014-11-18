@@ -1,8 +1,8 @@
 /*
 
  Copyright (c) 2014-, ISO/IEC JTC1/SC29/WG11
- 
- Written by Alex Giladi <alex.giladi@gmail.com> 
+
+ Written by Alex Giladi <alex.giladi@gmail.com>
  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
@@ -41,7 +41,7 @@
 #include "vqarray.h"
 
 #ifdef __cplusplus
-extern "C" 
+extern "C"
 {
 #endif
 
@@ -53,42 +53,41 @@ extern "C"
 #include "vqarray.h"
 #include "descriptors.h"
 
-typedef struct 
-{
-   int PID;    
-   ts_packet_t* ecm; 
-   vqarray_t* elementary_pids;
-} ecm_pid_t; 
+typedef struct {
+    int PID;
+    ts_packet_t* ecm;
+    vqarray_t* elementary_pids;
+} ecm_pid_t;
 
-typedef struct
-{
-   int id; 
-   int EMM_PID; 
-   vqarray_t *ecm_pids; 
-   buf_t emm;
+typedef struct {
+    int id;
+    int EMM_PID;
+    vqarray_t* ecm_pids;
+    buf_t emm;
 } ca_system_t;
 
 
 
 ca_system_t* ca_system_new(int CA_system_id);
-void ca_system_free(ca_system_t *cas);
+void ca_system_free(ca_system_t* cas);
 
 
 
 /**
- * Process a TS packet from an ECM PID 
- * 
+ * Process a TS packet from an ECM PID
+ *
  * @author agiladi (4/24/2014)
- * 
+ *
  * @param ts ECM packet
  * @param es_info es_info for the ECM PID
- * @param arg vqarray of ca_system_t objects 
- * 
- * @return 1 if processed. 
+ * @param arg vqarray of ca_system_t objects
+ *
+ * @return 1 if processed.
  */
-int ca_system_process_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_info, void *arg);
+int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
 
-int ca_system_process_ca_descriptor(vqarray_t *cas_list, elementary_stream_info_t *esi, ca_descriptor_t *cad);
+int ca_system_process_ca_descriptor(vqarray_t* cas_list, elementary_stream_info_t* esi,
+                                    ca_descriptor_t* cad);
 
 #ifdef __cplusplus
 }

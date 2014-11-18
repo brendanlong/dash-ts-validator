@@ -13,22 +13,21 @@ extern "C" {
 
 /**
    AVC decoder configuration record, ISO/IEC 14496-15:2004(E), Section 5.2.4.1
-   Seen in seen in mp4 files as 'avcC' atom 
+   Seen in seen in mp4 files as 'avcC' atom
    Seen in flv files as AVCVIDEOPACKET with AVCPacketType == 0
 */
-typedef struct
-{
-  int configurationVersion; // = 1
-  int AVCProfileIndication;
-  int profile_compatibility;
-  int AVCLevelIndication;
-  // bit(6) reserved = '111111'b;
-  int lengthSizeMinusOne;
-  // bit(3) reserved = '111'b;
-  int numOfSequenceParameterSets;
-  sps_t** sps_table;
-  int numOfPictureParameterSets;
-  pps_t** pps_table;
+typedef struct {
+    int configurationVersion; // = 1
+    int AVCProfileIndication;
+    int profile_compatibility;
+    int AVCLevelIndication;
+    // bit(6) reserved = '111111'b;
+    int lengthSizeMinusOne;
+    // bit(3) reserved = '111'b;
+    int numOfSequenceParameterSets;
+    sps_t** sps_table;
+    int numOfPictureParameterSets;
+    pps_t** pps_table;
 } avcc_t;
 
 avcc_t* avcc_new();

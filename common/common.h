@@ -54,10 +54,9 @@
 
 #define ARRAYSIZE(x)	((sizeof(x))/(sizeof((x)[0])))
 
-typedef struct 
-{
-  uint8_t* bytes;
-  size_t   len;
+typedef struct {
+    uint8_t* bytes;
+    size_t   len;
 } buf_t;
 
 #endif /* _COMMON_H */

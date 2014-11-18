@@ -1,26 +1,25 @@
-/* 
+/*
  * h264bitstream - a library for reading and writing H.264 video
  * Copyright (C) 2012 Alex Izvorski
- * 
+ *
  * Written by Alex Izvorski <aizvorski@gmail.com> and Alex Giladi <alex.giladi@gmail.com>
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-typedef struct
-{
+typedef struct {
     int mb_type;
     int sub_mb_type[4]; // [ mbPartIdx ]
 
@@ -59,8 +58,7 @@ typedef struct
 } macroblock_t;
 
 
-typedef struct 
-{
+typedef struct {
     macroblock_t* mbs;
 } slice_t;
 
@@ -111,15 +109,15 @@ void bs_write_ce(bs_t* b, uint32_t v);
 #define SubWidthC 2
 #define SubHeightC 2
 
-int NextMbAddress( int CurrMbAddr );
-int MbPartPredMode( int mb_type, int mbPartIdx );
-int NumMbPart( int mb_type );
-int NumSubMbPart( int sub_mb_type );
-int SubMbPredMode( int sub_mb_type );
-int TotalCoeff( int x );
-int TrailingOnes( int x );
-int Min( int a, int b );
-int Abs( int x );
+int NextMbAddress(int CurrMbAddr);
+int MbPartPredMode(int mb_type, int mbPartIdx);
+int NumMbPart(int mb_type);
+int NumSubMbPart(int sub_mb_type);
+int SubMbPredMode(int sub_mb_type);
+int TotalCoeff(int x);
+int TrailingOnes(int x);
+int Min(int a, int b);
+int Abs(int x);
 
 #define CodedBlockPatternLuma (mb->coded_block_pattern % 16)
 #define CodedBlockPatternChroma (mb->coded_block_pattern / 16)

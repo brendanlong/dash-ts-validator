@@ -1,9 +1,9 @@
 /*
 
- Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11 
+ Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com> and Vlad Zbarsky <zbarsky@cornell.edu>
  All rights reserved.
- 
+
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  * Redistributions of source code must retain the above copyright
@@ -64,7 +64,7 @@ extern "C" {
 #define SKIT_LOG_STR(str, level, arg, n) skit_log_struct((level), #arg, arg, SKIT_LOG_TYPE_STR, NULL);
 #define SKIT_LOG_STR_DBG(str, level, arg, n) skit_log_struct((level), #arg, arg, SKIT_LOG_TYPE_STR_DBG, NULL);
 
-int skit_log_struct(int level, char *name, uint64_t value, int type, char *str);
+int skit_log_struct(int level, char* name, uint64_t value, int type, char* str);
 
 // More traditional debug logging
 // tslib-global loglevel: error > warn (default) > info > debug

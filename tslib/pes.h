@@ -1,5 +1,5 @@
-/* 
- Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11 
+/*
+ Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com>
  All rights reserved.
 
@@ -35,7 +35,7 @@
 #include "common.h"
 
 #ifdef __cplusplus
-extern "C" 
+extern "C"
 {
 #endif
 
@@ -51,7 +51,7 @@ extern "C"
 #define PES_STREAM_ID_PRIVATE_1                0xBD
 #define PES_STREAM_ID_PADDING                  0xBE
 #define PES_STREAM_ID_PRIVATE_2                0xBF
-#define PES_STREAM_ID_AUDIO_MIN                0xC0 
+#define PES_STREAM_ID_AUDIO_MIN                0xC0
 #define PES_STREAM_ID_AUDIO_MAX                0xDF
 #define PES_STREAM_ID_VIDEO_MIN                0xEF
 #define PES_STREAM_ID_VIDEO_MAX                0xEF
@@ -75,7 +75,7 @@ extern "C"
 #define PES_STREAM_ID_EXT_IPMP                 0x01
 #define PES_STREAM_ID_EXT_MPEG4_TIMED_TEXT_MIN 0x02
 #define PES_STREAM_ID_EXT_MPEG4_TIMED_TEXT_MAX 0x0F
-#define PES_STREAM_ID_EXT_AVSI_VIDEO_MIN       0x10 
+#define PES_STREAM_ID_EXT_AVSI_VIDEO_MIN       0x10
 #define PES_STREAM_ID_EXT_AVSI_VIDEO_MAX       0x1F
 
 #define HAS_PES_HEADER(SID)  (((SID) != PES_STREAM_ID_PROGRAM_STREAM_MAP )	\
@@ -100,105 +100,105 @@ extern "C"
 #define PES_ERROR_WRONG_START_CODE -2
 
 typedef struct {
-   uint32_t stream_id; 
-   uint32_t PES_packet_length; 
-   uint32_t PES_scrambling_control; 
-   uint32_t PES_priority; 
-   uint32_t data_alignment_indicator; 
-   uint32_t copyright; 
-   uint32_t original_or_copy; 
-   uint32_t PTS_DTS_flags; 
-   uint32_t ESCR_flag; 
-   uint32_t ES_rate_flag; 
-   uint32_t DSM_trick_mode_flag; 
-   uint32_t additional_copy_info_flag; 
-   uint32_t PES_CRC_flag; 
-   uint32_t PES_extension_flag; 
-   uint32_t PES_header_data_length; 
-   int64_t PTS; 
-   int64_t DTS; 
-   int64_t ESCR_base; 
-   int32_t ESCR_extension; 
-   uint32_t ES_rate; 
-   uint32_t trick_mode_control; 
-   uint32_t field_id; 
-   uint32_t intra_slice_refresh; 
-   uint32_t frequency_truncation; 
-   uint32_t rep_cntrl; 
-   uint32_t additional_copy_info; 
-   uint32_t previous_PES_packet_CRC; 
-   uint32_t PES_private_data_flag; 
-   uint32_t pack_header_field_flag; 
-   uint32_t program_packet_sequence_counter_flag; 
-   uint32_t PSTD_buffer_flag; 
-   uint32_t PES_extension_flag_2; 
-   uint8_t PES_private_data[16]; 
-   uint32_t pack_field_length; 
-   uint32_t program_packet_sequence_counter; 
-   uint32_t MPEG1_MPEG2_identifier; 
-   uint32_t original_stuff_length; 
-   uint32_t PSTD_buffer_scale; 
-   uint32_t PSTD_buffer_size; 
-   uint32_t PES_extension_field_length; 
-   uint32_t stream_id_extension_flag; 
-   uint32_t stream_id_extension; 
-   uint32_t tref_extension_flag; 
-   uint64_t TREF;
-} pes_header_t; 
+    uint32_t stream_id;
+    uint32_t PES_packet_length;
+    uint32_t PES_scrambling_control;
+    uint32_t PES_priority;
+    uint32_t data_alignment_indicator;
+    uint32_t copyright;
+    uint32_t original_or_copy;
+    uint32_t PTS_DTS_flags;
+    uint32_t ESCR_flag;
+    uint32_t ES_rate_flag;
+    uint32_t DSM_trick_mode_flag;
+    uint32_t additional_copy_info_flag;
+    uint32_t PES_CRC_flag;
+    uint32_t PES_extension_flag;
+    uint32_t PES_header_data_length;
+    int64_t PTS;
+    int64_t DTS;
+    int64_t ESCR_base;
+    int32_t ESCR_extension;
+    uint32_t ES_rate;
+    uint32_t trick_mode_control;
+    uint32_t field_id;
+    uint32_t intra_slice_refresh;
+    uint32_t frequency_truncation;
+    uint32_t rep_cntrl;
+    uint32_t additional_copy_info;
+    uint32_t previous_PES_packet_CRC;
+    uint32_t PES_private_data_flag;
+    uint32_t pack_header_field_flag;
+    uint32_t program_packet_sequence_counter_flag;
+    uint32_t PSTD_buffer_flag;
+    uint32_t PES_extension_flag_2;
+    uint8_t PES_private_data[16];
+    uint32_t pack_field_length;
+    uint32_t program_packet_sequence_counter;
+    uint32_t MPEG1_MPEG2_identifier;
+    uint32_t original_stuff_length;
+    uint32_t PSTD_buffer_scale;
+    uint32_t PSTD_buffer_size;
+    uint32_t PES_extension_field_length;
+    uint32_t stream_id_extension_flag;
+    uint32_t stream_id_extension;
+    uint32_t tref_extension_flag;
+    uint64_t TREF;
+} pes_header_t;
 
 typedef struct {
-   pes_header_t header;  /// parsed PES header
-   uint8_t *payload;     /// reference to a location within the buf. thou shalt not free it!
-   uint8_t *buf;         /// buffer containing actual bytes (including headers)
-   size_t payload_len;   /// length of the payload
-   size_t buf_len;       /// length of the buffer (which includes payload)
-   void *opaque;         /// opaque pointer that should always be passed through
-   uint32_t PID;
-   int status;
-   
-   uint64_t payload_pos_in_stream;  // byte location of payload in transport stream
-} pes_packet_t; 
+    pes_header_t header;  /// parsed PES header
+    uint8_t* payload;     /// reference to a location within the buf. thou shalt not free it!
+    uint8_t* buf;         /// buffer containing actual bytes (including headers)
+    size_t payload_len;   /// length of the payload
+    size_t buf_len;       /// length of the buffer (which includes payload)
+    void* opaque;         /// opaque pointer that should always be passed through
+    uint32_t PID;
+    int status;
 
-pes_packet_t* pes_new(); 
-void pes_free(pes_packet_t *pes); 
+    uint64_t payload_pos_in_stream;  // byte location of payload in transport stream
+} pes_packet_t;
 
-int pes_read_header(pes_header_t *ph, bs_t *b); 
+pes_packet_t* pes_new();
+void pes_free(pes_packet_t* pes);
+
+int pes_read_header(pes_header_t* ph, bs_t* b);
 
 // parse a PES packet from a continuous buffer
 /**
- * 
- * 
+ *
+ *
  * @author agiladi (3/21/2014)
- * 
+ *
  * @param pes PES packet to parse
  * @param buf buffers containing PES packet bytes
  * @param len buffer length
- * 
- * @return int 
+ *
+ * @return int
  */
-int pes_read_buf(pes_packet_t *pes, const uint8_t *buf, size_t len);
+int pes_read_buf(pes_packet_t* pes, const uint8_t* buf, size_t len);
 
 
 /**
  * scatter-gather version of pes_read_buf
- * removes an extra malloc/copy/free set necessary to build a continuous buffer 
- *  
+ * removes an extra malloc/copy/free set necessary to build a continuous buffer
+ *
  * @author agiladi (3/21/2014)
- * 
+ *
  * @param pes PES packet to construct / parse
  * @param vec list of buffers containing parts of a PES packet
  * @param buf_count number of buffers
- * 
- * @return int 
+ *
+ * @return int
  */
-int pes_read_vec(pes_packet_t *pes, const buf_t *vec, int buf_count, uint64_t pes_pos_in_stream); 
+int pes_read_vec(pes_packet_t* pes, const buf_t* vec, int buf_count, uint64_t pes_pos_in_stream);
 
 
-int pes_write_header(pes_header_t *ph, bs_t *b); 
-int pes_write(pes_packet_t *pes, uint8_t *buf, size_t len); 
+int pes_write_header(pes_header_t* ph, bs_t* b);
+int pes_write(pes_packet_t* pes, uint8_t* buf, size_t len);
 
-int pes_print_header(pes_header_t *pes_header, char* str, size_t str_len); 
-int pes_print(pes_packet_t *pes, char* str, size_t str_len); 
+int pes_print_header(pes_header_t* pes_header, char* str, size_t str_len);
+int pes_print(pes_packet_t* pes, char* str, size_t str_len);
 
 #ifdef __cplusplus
 }

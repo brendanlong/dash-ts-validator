@@ -1,8 +1,8 @@
 /*
  Copyright (c) 2014-, ISO/IEC JTC1/SC29/WG11
- 
+
  Written by Alex Giladi <alex.giladi@gmail.com>
- 
+
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  * Redistributions of source code must retain the above copyright
@@ -36,115 +36,116 @@
 
 
 
-static struct option long_options[] = { 
-   { "verbose",	   no_argument,        NULL, 'v' }, 
-   { "dash",	   optional_argument,  NULL, 'd' }, 
-   { "byte-range", required_argument,  NULL, 'b' }, 
-   { "help",       no_argument,        NULL, 'h' }, 
-}; 
+static struct option long_options[] = {
+    { "verbose",	   no_argument,        NULL, 'v' },
+    { "dash",	   optional_argument,  NULL, 'd' },
+    { "byte-range", required_argument,  NULL, 'b' },
+    { "help",       no_argument,        NULL, 'h' },
+};
 
-static char options[] = 
-   "\t-d, --dash\n"
-   "\t-b, --byte-range\n"
-   "\t-v, --verbose\n"
-   "\t-h, --help\n"; 
+static char options[] =
+    "\t-d, --dash\n"
+    "\t-b, --byte-range\n"
+    "\t-v, --verbose\n"
+    "\t-h, --help\n";
 
-static void usage(char *name) 
-{ 
-   fprintf(stderr, "\n%s\n", name); 
-   fprintf(stderr, "\nUsage: \n%s [options] <input bitstream>\n\nOptions:\n%s\n", name, options);
+static void usage(char* name)
+{
+    fprintf(stderr, "\n%s\n", name);
+    fprintf(stderr, "\nUsage: \n%s [options] <input bitstream>\n\nOptions:\n%s\n", name, options);
 }
 
 
 
-int main(int argc, char *argv[]) 
-{ 
-   int c, long_options_index; 
-   extern char *optarg; 
-   extern int optind; 
+int main(int argc, char* argv[])
+{
+    int c, long_options_index;
+    extern char* optarg;
+    extern int optind;
 
-   dash_validator_t dash_validator; 
-   memset(&dash_validator, 0, sizeof (dash_validator_t));
+    dash_validator_t dash_validator;
+    memset(&dash_validator, 0, sizeof(dash_validator_t));
 
- //  mpeg2ts_stream_t *m2s = NULL; 
-   
-   
-   if (argc < 2) 
-   {
-      usage(argv[0]); 
-      return 1;
-   }
-   
-   
-   while ((c = getopt_long(argc, argv, "vdbh", long_options, &long_options_index)) != -1) 
-   {
-      switch (c) 
-      {
-      case 'd':
-         dash_validator.conformance_level = TS_TEST_DASH; 
-         if (optarg != NULL) 
-         {
-            if (!strcmp(optarg, "simple")) dash_validator.conformance_level |= TS_TEST_SIMPLE; 
-            if (!strcmp(optarg, "main")) dash_validator.conformance_level   |= TS_TEST_MAIN; 
-            
-            // simple is a subset of main
-            if (dash_validator.conformance_level & TS_TEST_SIMPLE) dash_validator.conformance_level |= TS_TEST_MAIN;
-         }
-         break; 
-      case 'b':
-         if (sscanf(optarg, "%ld-%ld", &dash_validator.segment_start, &dash_validator.segment_end) == 2) 
-         {
-            if (dash_validator.segment_end < dash_validator.segment_start + TS_SIZE) 
-            {
-               LOG_ERROR_ARGS("Invalid byte range %s", optarg); 
-               return 1;
+//  mpeg2ts_stream_t *m2s = NULL;
+
+
+    if(argc < 2) {
+        usage(argv[0]);
+        return 1;
+    }
+
+
+    while((c = getopt_long(argc, argv, "vdbh", long_options, &long_options_index)) != -1) {
+        switch(c) {
+        case 'd':
+            dash_validator.conformance_level = TS_TEST_DASH;
+            if(optarg != NULL) {
+                if(!strcmp(optarg, "simple")) {
+                    dash_validator.conformance_level |= TS_TEST_SIMPLE;
+                }
+                if(!strcmp(optarg, "main")) {
+                    dash_validator.conformance_level   |= TS_TEST_MAIN;
+                }
+
+                // simple is a subset of main
+                if(dash_validator.conformance_level & TS_TEST_SIMPLE) {
+                    dash_validator.conformance_level |= TS_TEST_MAIN;
+                }
             }
-         } 
-         else 
-         {
-            LOG_ERROR_ARGS("Invalid byte range %s", optarg); 
+            break;
+        case 'b':
+            if(sscanf(optarg, "%ld-%ld", &dash_validator.segment_start, &dash_validator.segment_end) == 2) {
+                if(dash_validator.segment_end < dash_validator.segment_start + TS_SIZE) {
+                    LOG_ERROR_ARGS("Invalid byte range %s", optarg);
+                    return 1;
+                }
+            } else {
+                LOG_ERROR_ARGS("Invalid byte range %s", optarg);
+                return 1;
+            }
+        case 'v':
+            if(tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
+                tslib_loglevel++;
+            }
+            break;
+        case 'h':
+        default:
+            usage(argv[0]);
             return 1;
-         }
-      case 'v':
-         if (tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) tslib_loglevel++; 
-         break; 
-      case 'h':
-      default:
-         usage(argv[0]); 
-         return 1;
-      }
-   }
-   
-   char *fname = argv[optind]; 
-   if (fname == NULL || fname[0] == 0) 
-   {
-      LOG_ERROR("No input file provided"); 
-      usage(argv[0]); 
-      return 1;
-   }
+        }
+    }
 
-   ///////////////////////////////////
-   int returnCode = doSegmentValidation(&dash_validator, fname, NULL, NULL /* GORP */, 0 /* GORP: segment duration */);
-   if (returnCode != 0)
-   {
-       return returnCode;
-   }
+    char* fname = argv[optind];
+    if(fname == NULL || fname[0] == 0) {
+        LOG_ERROR("No input file provided");
+        usage(argv[0]);
+        return 1;
+    }
 
-   fprintf(stdout, "RESULT: %s\n", dash_validator.status ? "PASS" : "FAIL"); 
-   
-   // per PID
-  
-   pid_validator_t *pv = NULL;
-   char *content_component_table[NUM_CONTENT_COMPONENTS] = 
-        { "<unknown>", "video", "audio" }; 
+    ///////////////////////////////////
+    int returnCode = doSegmentValidation(&dash_validator, fname, NULL, NULL /* GORP */,
+                                         0 /* GORP: segment duration */);
+    if(returnCode != 0) {
+        return returnCode;
+    }
 
-   for (int i = 0; i < vqarray_length(dash_validator.pids); i++) 
-   {
-      pv = (pid_validator_t *)vqarray_get(dash_validator.pids, i); 
-      if (pv == NULL) continue; 
-      LOG_INFO_ARGS("%04X: %s EPT=%"PRId64" SAP=%d SAP Type=%d DURATION=%"PRId64"\n", 
-              pv->PID, content_component_table[pv->content_component], pv->EPT, pv->SAP, pv->SAP_type, pv->LPT - pv->EPT);
-      
-   }
+    fprintf(stdout, "RESULT: %s\n", dash_validator.status ? "PASS" : "FAIL");
+
+    // per PID
+
+    pid_validator_t* pv = NULL;
+    char* content_component_table[NUM_CONTENT_COMPONENTS] =
+    { "<unknown>", "video", "audio" };
+
+    for(int i = 0; i < vqarray_length(dash_validator.pids); i++) {
+        pv = (pid_validator_t*)vqarray_get(dash_validator.pids, i);
+        if(pv == NULL) {
+            continue;
+        }
+        LOG_INFO_ARGS("%04X: %s EPT=%"PRId64" SAP=%d SAP Type=%d DURATION=%"PRId64"\n",
+                      pv->PID, content_component_table[pv->content_component], pv->EPT, pv->SAP, pv->SAP_type,
+                      pv->LPT - pv->EPT);
+
+    }
 
 }
