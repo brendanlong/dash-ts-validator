@@ -106,7 +106,7 @@ typedef struct {
 
    int status;
 
-   uint64_t payload_pos_in_stream;  // byte location of payload in transport stream
+   uint64_t pos_in_stream;  // byte location of payload in transport stream
 
 } ts_packet_t;
 

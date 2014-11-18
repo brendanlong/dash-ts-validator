@@ -97,7 +97,7 @@ int pes_read_vec(pes_packet_t *pes, const buf_t *vec, int buf_count, uint64_t pe
       return 0;
    }
 
-   pes->payload_pos_in_stream = pes_pos_in_stream + header_bytes;
+   pes->payload_pos_in_stream = pes_pos_in_stream;
    pes->payload = pes->buf + header_bytes; 
    pes->payload_len =  pes->buf_len - header_bytes; 
    

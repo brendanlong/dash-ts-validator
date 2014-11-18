@@ -108,7 +108,7 @@ int pes_demux_process_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_in
             if (i==0)
             {
                 // first packet in queue
-                pes_pos_in_stream = tsp->payload_pos_in_stream;
+                pes_pos_in_stream = tsp->pos_in_stream;
             }
 
             if ((tsp != NULL) && (tsp->header.adaptation_field_control & TS_PAYLOAD)) 

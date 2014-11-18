@@ -205,7 +205,7 @@ int ts_read(ts_packet_t *ts, uint8_t *buf, size_t buf_size, uint64_t packet_num)
    
    if (ts->header.adaptation_field_control & TS_PAYLOAD) 
    {
-      ts->payload_pos_in_stream = packet_num * TS_SIZE + bs_pos(&b); 
+      ts->pos_in_stream = packet_num * TS_SIZE;
       ts->payload.len = TS_SIZE - bs_pos(&b); 
       ts->payload.bytes = malloc(ts->payload.len); 
       bs_read_bytes(&b, ts->payload.bytes, ts->payload.len);

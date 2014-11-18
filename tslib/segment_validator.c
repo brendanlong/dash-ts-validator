@@ -299,7 +299,7 @@ int validate_pes_packet(pes_packet_t *pes, elementary_stream_info_t *esi, vqarra
       return 0;
    }
 
-   if (g_p_dash_validator->segment_type == INITIALIZAION_SEGMENT)
+   if (g_p_dash_validator->segment_type == INITIALIZATION_SEGMENT)
    {
          LOG_ERROR("DASH Conformance: initialization segment cannot contain program stream"); 
          g_p_dash_validator->status = 0;
@@ -604,7 +604,7 @@ int doSegmentValidation(dash_validator_t *dash_validator, char *fname, dash_vali
    LOG_INFO_ARGS("%lld TS packets read", packets_read); 
    
 
-   if (g_p_dash_validator->segment_type == INITIALIZAION_SEGMENT)
+   if (g_p_dash_validator->segment_type == INITIALIZATION_SEGMENT)
    {
       mpeg2ts_program_t* m2p = vqarray_get(m2s->programs, 0);  // should be only one program
       printf ("m2p = %x\n", (unsigned int)m2p);
