@@ -52,7 +52,6 @@ int readIntFromSegInfoFile (FILE *segInfoFile, char * paramName, int *paramValue
 int readStringFromSegInfoFile (FILE *segInfoFile, char * paramName, char *paramValue);
 int readSegInfoFile(char * fname, int *numRepresentations, int *numSegments, char **segFileNames, int **segDurations,
                     int *expectedSAPType, int *maxVideoGapPTSTicks, int *maxAudioGapPTSTicks,
-                    int *segmentAlignment, int *subsegmentAlignment, int *bitstreamSwitching,
                     char *initializationSegment, char **representationIndexFileNames, char **segmentIndexFileNames, 
                     int *presentationTimeOffset, int *videoPID);
 char *trimWhitespace (char *string);
@@ -63,7 +62,6 @@ int checkPSIIdentical(dash_validator_t *dash_validator, int numDashValidators);
 static struct option long_options[] = { 
     { "verbose",	   no_argument,        NULL, 'v' }, 
     { "dash",	   optional_argument,  NULL, 'd' }, 
-    { "byte-range", required_argument,  NULL, 'b' }, 
     { "help",       no_argument,        NULL, 'h' }, 
 }; 
 
@@ -94,7 +92,7 @@ int main(int argc, char *argv[])
     }
 
 
-    while ((c = getopt_long(argc, argv, "vd::b:h", long_options, &long_options_index)) != -1) 
+    while ((c = getopt_long(argc, argv, "vd::h", long_options, &long_options_index)) != -1) 
     {
         switch (c) 
         {
@@ -133,39 +131,36 @@ int main(int argc, char *argv[])
     }
 
     // for all the 2D arrays in the following, see getArrayIndex for array ordering
-    int overallStatus = 1;
-    int numRepresentations;
-    int numSegments;
-    char *segFileNames = NULL;  // contains numRepresentations*numSegments filenames
-    int *segDurations = NULL; // contains numSegments durations
-    int expectedSAPType = 0;
-    int maxVideoGapPTSTicks = 0;
-    int maxAudioGapPTSTicks = 0;
-    int segmentAlignment = 0;
-    int subsegmentAlignment = 0;
-    int bitstreamSwitching = 0;
-    char initializationSegment[SEGMENT_FILE_NAME_MAX_LENGTH];
+    int overallStatus = 1;    // overall pass/fail, with 1=PASS, 0=FAIL
+    int numRepresentations;     // number of representations (one per bitrate) in the adaptation set
+    int numSegments;            // number of segments in each representation
+    char *segFileNames = NULL;  // contains numRepresentations*numSegments media filepaths (relative to exe)
+    int *segDurations = NULL;   // contains numSegments durations -- each representation has same durations
+    int expectedSAPType = 0;    // the SAP type expected at start of each segment -- if 0, then not tested
+    int maxVideoGapPTSTicks = 0;    // allowable gap in video stream between segments (in units of PTS ticks)
+    int maxAudioGapPTSTicks = 0;    // allowable gap in video stream between segments (in units of PTS ticks)
+    char initializationSegment[SEGMENT_FILE_NAME_MAX_LENGTH];  // intialization segment file path, if present
     initializationSegment[0] = 0;
-    int presentationTimeOffset = 0;
-    char * representationIndexFileNames = NULL;    // contains numRepresentations filenames
-    char * segmentIndexFileNames = NULL;    // contains numRepresentations*numSegments filenames, ordered with segments first, then representations
-    int videoPID = -1;
+    int presentationTimeOffset = 0; // starting time for segment 0 (in units of PTS ticks)
+    char * representationIndexFileNames = NULL;    // if present, contains numRepresentations index-file filepaths, one per representation.
+    char * segmentIndexFileNames = NULL;    // if present, contains numRepresentations*numSegments index-file filepaths, one per segment/representation
+    int videoPID = -1;  // PID of video stream in media segments
 
     // first step: read input file and get all test parameters
     if (readSegInfoFile(fname, &numRepresentations, &numSegments, &segFileNames, &segDurations,
-        &expectedSAPType, &maxVideoGapPTSTicks, &maxAudioGapPTSTicks,
-        &segmentAlignment, &subsegmentAlignment, &bitstreamSwitching, initializationSegment, 
+        &expectedSAPType, &maxVideoGapPTSTicks, &maxAudioGapPTSTicks, initializationSegment, 
         &representationIndexFileNames, &segmentIndexFileNames, &presentationTimeOffset, &videoPID) != 0)
     {
         return 1;
     }
     
+    // allocate memory for all the arrays -- see GetArrayIndex for array ordering
+
     dash_validator_t *dash_validator = calloc (numRepresentations * numSegments, sizeof (dash_validator_t));
     dash_validator_t *dash_validator_init_segment = calloc (1, sizeof (dash_validator_t));
-    dash_validator_init_segment->segment_type = INITIALIZAION_SEGMENT;
+    dash_validator_init_segment->segment_type = INITIALIZATION_SEGMENT;
 
-    // all arrays are ordered with segments first, then representations
-    int64_t *expectedStartTime = calloc (numRepresentations * (numSegments + 1), sizeof (int64_t));
+    int64_t *expectedStartTime = calloc (numRepresentations * numSegments, sizeof (int64_t));
     int64_t *expectedEndTime = calloc (numRepresentations * numSegments, sizeof (int64_t));
     int64_t *expectedDuration = calloc (numRepresentations * numSegments, sizeof (int64_t));
 
@@ -187,12 +182,11 @@ int main(int argc, char *argv[])
 
     int returnCode;
 
-    // if there is an initialization file, process it first in order to get the PAT and PMT tables
+    // if there is an initialization segment, process it first in order to get the PAT and PMT tables
     if (strlen(initializationSegment) != 0)
     {
-        returnCode = doSegmentValidation(dash_validator_init_segment, initializationSegment, 
-            NULL, NULL, 0);
-        if (returnCode != 0)
+        if (doSegmentValidation(dash_validator_init_segment, initializationSegment, 
+            NULL, NULL, 0) != 0)
         {
             LOG_ERROR_ARGS ("Validation of initialization segment %s FAILED.", initializationSegment);
             dash_validator_init_segment->status = 0;
@@ -213,9 +207,9 @@ int main(int argc, char *argv[])
         for (int repIndex=0; repIndex<numRepresentations; repIndex++)
         {
             data_segment_iframes_t *pIFramesTemp = pIFrames + getArrayIndex (repIndex, 0 /* segIndex */, numSegments);
-            returnCode = validateIndexSegment(representationIndexFileNames + repIndex*SEGMENT_FILE_NAME_MAX_LENGTH, 
-                numSegments, segDurations, pIFramesTemp, presentationTimeOffset, videoPID, conformance_level & TS_TEST_SIMPLE);
-            if (returnCode != 0)
+            if (validateIndexSegment(representationIndexFileNames + repIndex*SEGMENT_FILE_NAME_MAX_LENGTH, 
+                numSegments, segDurations, pIFramesTemp, presentationTimeOffset, videoPID, 
+                conformance_level & TS_TEST_SIMPLE) != 0)
             {
                 LOG_ERROR_ARGS("Validation of RepresentationIndexFile %s FAILED", 
                     representationIndexFileNames + repIndex*SEGMENT_FILE_NAME_MAX_LENGTH);
@@ -234,9 +228,8 @@ int main(int argc, char *argv[])
                 data_segment_iframes_t *pIFramesTemp = pIFrames + arrayIndex;
 
                 char *segmentIndexFileName = segmentIndexFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH;
-                returnCode = validateIndexSegment(segmentIndexFileName, 1, &(segDurations[segIndex]), pIFramesTemp,
-                    presentationTimeOffset, videoPID, conformance_level & TS_TEST_SIMPLE);
-                if (returnCode != 0)
+                if (validateIndexSegment(segmentIndexFileName, 1, &(segDurations[segIndex]), pIFramesTemp,
+                    presentationTimeOffset, videoPID, conformance_level & TS_TEST_SIMPLE) != 0)
                 {
                     LOG_ERROR_ARGS("Validation of SegmentIndexFile %s FAILED", segmentIndexFileName);
                     overallStatus = 0;
@@ -245,9 +238,12 @@ int main(int argc, char *argv[])
         }
     }
 
-    // validate media files for each segment
+    // Next, validate media files for each segment
     // store timing info for each segment so that segment-segment timing can be tested
-    expectedStartTime[0] = presentationTimeOffset;
+    for (int repIndex=0; repIndex < numRepresentations; repIndex++)
+    {
+      expectedStartTime[getArrayIndex (repIndex, 0, numSegments+1)] = presentationTimeOffset;
+    }
     
     char *segFileName = NULL;
     for (int segIndex=0; segIndex < numSegments; segIndex++)
@@ -255,6 +251,11 @@ int main(int argc, char *argv[])
         for (int repIndex=0; repIndex < numRepresentations; repIndex++)
         {
             int arrayIndex = getArrayIndex (repIndex, segIndex, numSegments);
+            if (segIndex == 0)
+            {
+               expectedStartTime[arrayIndex] = presentationTimeOffset;
+            }
+
             dash_validator[arrayIndex].conformance_level = conformance_level; 
 
             segFileName = segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH;
@@ -367,25 +368,18 @@ int main(int argc, char *argv[])
                     if (pv->content_component == VIDEO_CONTENT_COMPONENT)
                     {
                         dash_validator[arrayIndex].status = 0;
-                   }
+                    }
                     else if (pv->content_component == AUDIO_CONTENT_COMPONENT)
                     {
-                        float numDeltaFrames = (actualEndTime - expectedEndTime[arrayIndex])/1917.0;
-                        if (numDeltaFrames >= 4.0 || numDeltaFrames <= -4.0)
-                        {
-                            LOG_INFO_ARGS ("%s: FAIL: Num Audio Frames in Delta (%f) >= 4", segFileName, numDeltaFrames);
-                            dash_validator[arrayIndex].status = 0;
-                        }
-                        else
-                        {
-                            LOG_INFO_ARGS ("%s: Num Audio Frames in Delta (%f) < 4: OK", segFileName, numDeltaFrames);
-                        }
                     }
                 }
             }
 
             // fill in expected start time for next segment by setting it to the end time of this segment
-            expectedStartTime[getArrayIndex (repIndex, segIndex + 1, numSegments)] = expectedEndTime[arrayIndex];
+            if (segIndex != numSegments-1)
+            {
+               expectedStartTime[getArrayIndex (repIndex, segIndex + 1, numSegments)] = expectedEndTime[arrayIndex];
+            }
         }
 
         // segment cross checking: check that the gap between all adjacent segments is acceptably small
@@ -453,6 +447,7 @@ int main(int argc, char *argv[])
     }
 
 
+    // print out results
     for (int repIndex=0; repIndex < numRepresentations; repIndex++)
     {
         printAudioTimingMatrix(segFileNames, actualAudioStartTime, actualAudioEndTime,
@@ -476,7 +471,6 @@ int getArrayIndex (int repNum, int segNum, int numSegments)
 {
     return (segNum + repNum * numSegments);
 }
-
 
 void parseSegInfoFileLine (char *line, char *segFileNames, int segNum, int numSegments)
 {
@@ -528,7 +522,6 @@ int getNumRepresentations (char * fname, int *numRepresentations, int *numSegmen
         return -1;
     }
 
-    // discard header lines and read first line with segment filenames in it
     *numSegments = 0;
     while (1)
     {
@@ -706,7 +699,6 @@ void printAudioTimingMatrix(char* segFileNames, int64_t *actualAudioStartTime, i
 
 int readSegInfoFile(char * fname, int *numRepresentations, int *numSegments, char **segFileNames, int **segDurations,
                     int *expectedSAPType, int *maxVideoGapPTSTicks, int *maxAudioGapPTSTicks,
-                    int *segmentAlignment, int *subsegmentAlignment, int *bitstreamSwitching,
                     char *initializationSegment, char **representationIndexFileNames, char **segmentIndexFileNames, 
                     int *presentationTimeOffset, int *videoPID)
 {
@@ -802,30 +794,6 @@ int readSegInfoFile(char * fname, int *numRepresentations, int *numSegments, cha
                 LOG_ERROR_ARGS("Error parsing MaxVideoGap_PTSTicks in SegInfoFile %s", fname);
             }
             LOG_INFO_ARGS ("MaxVideoGap_PTSTicks = %d", *maxVideoGapPTSTicks);
-        }
-        else if (strncmp("SegmentAlignment", trimmedLine, strlen("SegmentAlignment")) == 0)
-        {
-            if (sscanf(temp+1, "%d", segmentAlignment) != 1)
-            {
-                LOG_ERROR_ARGS("Error parsing SegmentAlignment in SegInfoFile %s", fname);
-            }
-            LOG_INFO_ARGS ("SegmentAlignment = %d", *segmentAlignment);
-        }
-        else if (strncmp("SubsegmentAlignment", trimmedLine, strlen("SubsegmentAlignment")) == 0)
-        {
-            if (sscanf(temp+1, "%d", subsegmentAlignment) != 1)
-            {
-                LOG_ERROR_ARGS("Error parsing SubsegmentAlignment in SegInfoFile %s", fname);
-            }
-            LOG_INFO_ARGS ("SubsegmentAlignment = %d", *subsegmentAlignment);
-        }
-        else if (strncmp("BitstreamSwitching", trimmedLine, strlen("BitstreamSwitching")) == 0)
-        {
-            if (sscanf(temp+1, "%d", bitstreamSwitching) != 1)
-            {
-                LOG_ERROR_ARGS("Error parsing BitstreamSwitching in SegInfoFile %s", fname);
-            }
-            LOG_INFO_ARGS ("BitstreamSwitching = %d", *bitstreamSwitching);
         }
         else if (strncmp("InitializationSegment", trimmedLine, strlen("InitializationSegment")) == 0)
         {
@@ -1022,6 +990,8 @@ char *trimWhitespace (char *string)
 int checkPSIIdentical(dash_validator_t *dash_validator, int numDashValidators)
 {
     LOG_INFO ("Validating that PSI info is identical in each segment\n");
+
+    // check that each segment has the same videoPID, audioPID, PMT version, PMT program num, and PCR PID
 
     int videoPID;
     int audioPID;
