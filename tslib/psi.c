@@ -95,6 +95,7 @@ char* stream_desc(uint8_t stream_id)
     }
 }
 
+/*
 static inline uint32_t section_header_read(section_header_t* sh, bs_t* b)
 {
     sh->table_id = bs_read_u8(b);
@@ -104,6 +105,7 @@ static inline uint32_t section_header_read(section_header_t* sh, bs_t* b)
     sh->section_length = bs_read_u(b, 12);
     return sh->table_id;
 }
+*/
 
 program_association_section_t* program_association_section_new()
 {

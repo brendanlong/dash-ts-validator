@@ -8,7 +8,7 @@ INCLUDES = -I.
 LIBS =  -L. -lm
 
 CC = gcc
-CFLAGS += -std=c99 -g -O3 -fexpensive-optimizations -funroll-loops -fomit-frame-pointer -Wall -W -Wshadow -Wwrite-strings
+CFLAGS += -std=c99 -g -O3 -fexpensive-optimizations -funroll-loops -fomit-frame-pointer -Wall -W -Wshadow -Wwrite-strings -Wno-unused-parameter
 LD = gcc
 LDFLAGS += $(CFLAGS)
 

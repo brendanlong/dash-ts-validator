@@ -163,13 +163,13 @@ void read_dec_ref_pic_marking(h264_stream_t* h, bs_t* b);
 int read_nal_unit(h264_stream_t* h, uint8_t* buf, int size)
 {
     nal_t* nal = h->nal;
+    bs_t* b = 0;
 
     int nal_size = size, ret = -1, rbsp_size = size, rc;
     uint8_t* rbsp_buf = (uint8_t*)calloc(1, rbsp_size);
     if(!rbsp_buf) {
         goto read_nal_unit_wrap_up;
     }
-    bs_t* b = 0;
 
     if((rc = nal_to_rbsp(buf, &nal_size, rbsp_buf, &rbsp_size)) < 0) {  // handle conversion error
         goto read_nal_unit_wrap_up;

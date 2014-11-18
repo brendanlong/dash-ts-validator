@@ -59,7 +59,7 @@ static const unsigned int primes[] = {
 };
 const unsigned int prime_table_length = sizeof(primes) / sizeof(primes[0]);
 const float max_load_factor = 0.1;
-const int start_length = 16;
+const unsigned start_length = 16;
 
 /*****************************************************************************/
 hashtable_t* hashtable_new(unsigned int (*hashf)(void*), int (*eqf)(void*, void*))

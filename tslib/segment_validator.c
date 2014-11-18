@@ -216,7 +216,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
             pid_validator_dest->content_component = content_component;
             pid_validator_dest->ecm_pids = vqarray_new();
 
-            LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %x for PID %d", (unsigned int)pid_validator_dest,
+            LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %x for PID %d", (uintptr_t)pid_validator_dest,
                           PID);
             vqarray_add(dash_validator_dest->pids, pid_validator_dest);
             // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
@@ -517,7 +517,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
                                       201 /* GORP */);
         prog->pmt = dash_validator_init->initializaion_segment_pmt;
 
-        LOG_INFO_ARGS("Adding initialization PSI info...program = %x", (unsigned int)prog);
+        LOG_INFO_ARGS("Adding initialization PSI info...program = %x", (uintptr_t)prog);
         vqarray_add(m2s->programs, (void*)prog);
 
         int returnCode = copy_pmt_info(prog, dash_validator_init, g_p_dash_validator);
@@ -572,7 +572,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 
     if(g_p_dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         mpeg2ts_program_t* m2p = vqarray_get(m2s->programs, 0);  // should be only one program
-        printf("m2p = %x\n", (unsigned int)m2p);
+        printf("m2p = %x\n", (uintptr_t)m2p);
         g_p_dash_validator->initializaion_segment_pmt = m2p->pmt;
     }
 

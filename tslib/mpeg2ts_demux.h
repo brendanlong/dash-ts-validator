@@ -195,6 +195,8 @@ int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t PID,
  */
 int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t PID);
 
+int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* piNew);
+
 //int mpeg2ts_program_read_ts_packet(mpeg2ts_program_t *m2p, ts_packet_t *ts);
 int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s);
 

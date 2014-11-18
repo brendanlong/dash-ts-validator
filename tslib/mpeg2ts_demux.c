@@ -31,6 +31,7 @@
 #include "mpeg2ts_demux.h"
 #include "cas.h"
 #include "psi.h"
+#include "segment_validator.h"
 
 pid_info_t* pid_info_new()
 {

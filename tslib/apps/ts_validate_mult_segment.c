@@ -955,6 +955,6 @@ int checkPSIIdentical(dash_validator_t* dash_validator, int numDashValidators)
         }
     }
 
-    return 0;
+    return status;
 }
 
