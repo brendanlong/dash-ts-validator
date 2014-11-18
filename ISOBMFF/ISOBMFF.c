@@ -16,6 +16,7 @@
  */
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>
@@ -31,6 +32,8 @@
 #define ISOBMF_4BYTE_SZ 4
 #define ISOBMF_8BYTE_SZ 8
 
+#define BRAND_RISX 0x72697378
+#define BRAND_SISX 0x73697378
 
 void freeBoxes(int numBoxes, box_type_t *box_types, void ** box_data)
 {
@@ -114,10 +117,17 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     
     // check brand
     data_styp_t * styp = (data_styp_t *)box_data[boxIndex];
-    if (styp->major_brand != 0x72697378 /* 'risx' */)
+    bool found_risx = false;
+    for (unsigned i = 0; i < styp->num_compatible_brands; ++i) {
+        unsigned brand = styp->compatible_brands[i];
+        if (brand == BRAND_RISX) {
+            found_risx = true;
+        }
+    }
+    if (!found_risx)
     {
         LOG_INFO_ARGS ("styp brand = %x", styp->major_brand);
-        LOG_ERROR ("ERROR validating Representation Index Segment: styp brand not risx\n");
+        LOG_ERROR ("ERROR validating Representation Index Segment: styp compatible brands does not contain \"risx\"\n");
         returnCode = -1;
     }
 
@@ -400,7 +410,7 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t *box_types, void **
     
     // check brand
     data_styp_t * styp = (data_styp_t *)box_data[boxIndex];
-    if (styp->major_brand != 0x73697378 /* 'sisx' */)
+    if (styp->major_brand != BRAND_SISX)
     {
         LOG_INFO_ARGS ("styp brand = %x", styp->major_brand);
         LOG_ERROR ("ERROR validating Single Index Segment: styp brand not risx\n");
