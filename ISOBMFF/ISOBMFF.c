@@ -82,8 +82,8 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     /*
     A Representation Index Segment indexes all Media Segments of one Representation and is defined as follows:
 
-    -- Each Representation Index Segment shall begin with an ‘styp’ box, and the brand ‘risx’ shall be 
-    present in the ‘styp’ box. The conformance requirement of the brand ‘risx’ is defined by this subclause.
+    -- Each Representation Index Segment shall begin with an "styp" box, and the brand "risx" shall be
+    present in the "styp" box. The conformance requirement of the brand "risx" is defined by this subclause.
 
     -- Each Media Segment is indexed by one or more Segment Index box(es); the boxes for a 
     given Media Segment are contiguous;
@@ -368,17 +368,17 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t *box_types, void **
 /*
  A Single Index Segment indexes exactly one Media Segment and is defined as follows: 
 
- -- Each Single Index Segment shall begin with a ‘styp’ box, and the brand ‘sisx’ 
- shall be present in the ‘styp’ box. The conformance requirement of the brand ‘sisx’ is defined in this subclause. 
+ -- Each Single Index Segment shall begin with a "styp" box, and the brand "sisx"
+ shall be present in the "styp" box. The conformance requirement of the brand "sisx" is defined in this subclause.
  
  -- Each Single Index Segment shall contain one or more 'sidx' boxes which index one Media Segment. 
  
- -- A Single Index Segment may contain one or multiple ‘ssix’ boxes. If present, the ‘ssix’ 
- shall follow the ‘sidx’ box that documents the same Subsegment without any other ‘sidx’ preceding the ‘ssix'. 
+ -- A Single Index Segment may contain one or multiple "ssix" boxes. If present, the "ssix"
+ shall follow the "sidx" box that documents the same Subsegment without any other "sidx" preceding the "ssix".
  
- -- A Single Index Segment may contain one or multiple ‘pcrb’ boxes as defined in 6.4.7.2. 
- If present, ‘pcrb’ shall follow the ‘sidx’ box that documents the same Subsegments, i.e. a ‘pcrb’ 
- box provides PCR information for every subsegment indexed in the last ‘sidx’ box. 
+ -- A Single Index Segment may contain one or multiple "pcrb" boxes as defined in 6.4.7.2.
+ If present, "pcrb" shall follow the "sidx" box that documents the same Subsegments, i.e. a "pcrb"
+ box provides PCR information for every subsegment indexed in the last "sidx" box.
 
 */
 
@@ -924,7 +924,7 @@ aligned(8) class Box (unsigned int(32) boxtype, optional unsigned int(8)[16] ext
    else if (size==0) { 
       // box extends to end of file 
    } 
-   if (boxtype==‘uuid’) { 
+   if (boxtype=="uuid") {
       unsigned int(8)[16] usertype = extended_type; 
    } 
 }
@@ -936,7 +936,7 @@ aligned(8) class FullBox(unsigned int(32) boxtype, unsigned int(8) v, bit(24) f)
 }
 
 
-aligned(8) class SegmentIndexBox extends FullBox(‘sidx’, version, 0) { 
+aligned(8) class SegmentIndexBox extends FullBox("sidx", version, 0) {
    unsigned int(32) reference_ID; 
    unsigned int(32) timescale; 
    if (version==0) { 
@@ -1051,7 +1051,7 @@ void freePcrb(data_pcrb_t *pcrb)
 int parsePcrb (unsigned char *buffer, int bufferSz, data_pcrb_t *pcrb)
 {
     /*
-    aligned(8) class ProducerReferenceTimeBox extends FullBox(‘prft’, version, 0) 
+    aligned(8) class ProducerReferenceTimeBox extends FullBox("prft", version, 0)
     { 
         unsigned int(32) reference_track_ID; 
         unsigned int(64) ntp_timestamp; 
@@ -1135,7 +1135,7 @@ void freeEmsg(data_emsg_t *emsg)
 int parseSsix (unsigned char *buffer, int bufferSz, data_ssix_t *ssix)
 {
 /*
-aligned(8) class SubsegmentIndexBox extends FullBox(‘ssix’, 0, 0) { 
+aligned(8) class SubsegmentIndexBox extends FullBox("ssix", 0, 0) {
    unsigned int(32) subsegment_count; 
    for( i=1; i <= subsegment_count; i++) 
    { 
@@ -1192,7 +1192,7 @@ aligned(8) class SubsegmentIndexBox extends FullBox(‘ssix’, 0, 0) {
 int parseEmsg (unsigned char *buffer, int bufferSz, data_emsg_t *emsg)
 {
 /*
-aligned(8) class DASHEventMessageBox extends FullBox(‘emsg’, version = 0, flags = 0)
+aligned(8) class DASHEventMessageBox extends FullBox("emsg", version = 0, flags = 0)
 { 
     string scheme_id_uri; 
     string value; 
