@@ -39,7 +39,7 @@ typedef enum {
 
 typedef enum {
    MEDIA_SEGMENT = 0x00,
-   INITIALIZAION_SEGMENT, 
+   INITIALIZATION_SEGMENT, 
    REPRESENTATION_INDEX_SEGMENT
 } segment_type_t; 
 
