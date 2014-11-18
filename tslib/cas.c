@@ -66,7 +66,7 @@ int ca_system_process_ts_packet(ts_packet_t *ts, elementary_stream_info_t *es_in
    
    for (int i = 0; i < vqarray_length(cas_list); i++) 
    {
-      ca_system_t *cas = vqarray_get(cas->ecm_pids, i); 
+      ca_system_t *cas = vqarray_get(cas_list, i);
       if (cas == NULL) continue; 
       
       for (int j  = 0; j < vqarray_length(cas->ecm_pids); j++) 
