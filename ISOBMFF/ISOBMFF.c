@@ -32,9 +32,6 @@
 #define ISOBMF_4BYTE_SZ 4
 #define ISOBMF_8BYTE_SZ 8
 
-#define BRAND_RISX 0x72697378
-#define BRAND_SISX 0x73697378
-
 void freeBoxes(int numBoxes, box_type_t* box_types, void** box_data)
 {
 //   LOG_INFO("freeBoxes\n");

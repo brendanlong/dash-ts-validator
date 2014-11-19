@@ -19,14 +19,19 @@
 #define __H_ISOBMFF_CONFORMANCE
 
 
+typedef enum {
+    BRAND_RISX = 0x72697378,
+    BRAND_SISX = 0x73697378
+} brand_t;
+
 // styp, sidx, pcrb, ssix
 
 typedef struct {
     unsigned int size;
-    unsigned int major_brand;
+    brand_t major_brand;
     unsigned int minor_version;
     unsigned int num_compatible_brands;
-    unsigned int* compatible_brands;
+    brand_t* compatible_brands;
 
 } data_styp_t;
 
