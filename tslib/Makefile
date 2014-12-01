@@ -8,6 +8,7 @@ OBJS = $(SRCS:%.c=%.o)
 
 INCLUDES = -I . -I../common -I../libstructures/ -I../h264bitstream/ -I../ISOBMFF/  -I../logging/
 LIBS = -L../h264bitstream/.libs -lh264bitstream  -L../ISOBMFF -lisobmff  -L../logging/ -llogging   -L../libstructures/ -ldatastruct -lm
+DEPEND_LIBS = ../ISOBMFF/libisobmff.a ../logging/liblogging.a ../libstructures/libdatastruct.a
 
 CFLAGS  += $(INCLUDES)
 LDFLAGS += $(LIBS)
@@ -16,14 +17,14 @@ BINARIES = apps/ts_split apps/ts_validate_single_segment apps/ts_validate_mult_s
 
 all: $(BINARIES)
 
-apps/ts_split: apps/ts_split.o $(OBJS)
-	$(CC) $(CFLAGS) -o apps/ts_split $^ $(LIBS)
+apps/ts_split: apps/ts_split.o $(OBJS) $(DEPEND_LIBS)
+	$(CC) $(CFLAGS) -o apps/ts_split apps/ts_split.o $(OBJS) $(LIBS)
 
-apps/ts_validate_single_segment: apps/ts_validate_single_segment.o $(OBJS)
-	$(CC) $(CFLAGS) -o apps/ts_validate_single_segment $^ $(LIBS)
+apps/ts_validate_single_segment: apps/ts_validate_single_segment.o $(OBJS) $(DEPEND_LIBS)
+	$(CC) $(CFLAGS) -o apps/ts_validate_single_segment apps/ts_validate_single_segment.o $(OBJS) $(LIBS)
 
-apps/ts_validate_mult_segment: apps/ts_validate_mult_segment.o $(OBJS)
-	$(CC) $(CFLAGS) -o apps/ts_validate_mult_segment $^ $(LIBS)
+apps/ts_validate_mult_segment: apps/ts_validate_mult_segment.o $(OBJS) $(DEPEND_LIBS)
+	$(CC) $(CFLAGS) -o apps/ts_validate_mult_segment apps/ts_validate_mult_segment.o $(OBJS) $(LIBS)
 
 clean:
 	rm -f $(OBJS) apps/*.o $(BINARIES) *.P apps/*.P core
