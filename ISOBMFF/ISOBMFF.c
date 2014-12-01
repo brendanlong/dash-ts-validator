@@ -34,8 +34,6 @@
 
 void freeBoxes(int numBoxes, box_type_t* box_types, void** box_data)
 {
-//   LOG_INFO("freeBoxes\n");
-
     for(int i = 0; i < numBoxes; i++) {
         switch(box_types[i]) {
         case BOX_STYP: {
@@ -640,7 +638,6 @@ int readBoxes(char* fname, int* pNumBoxes, box_type_t** box_types_in, void** * b
 int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t** box_types_in,
                void** * box_data_in, int** box_sizes_in)
 {
-//    LOG_INFO ("readBoxes2\n");
     int numBoxes = 0;
     if(getNumBoxes(buffer, bufferSz, &numBoxes) != 0) {
         LOG_ERROR("ERROR validating Index Segment: Error reading number of boxes in buffer\n");
@@ -658,13 +655,11 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
     int index = 0;
 
     for(int i = 0; i < numBoxes; i++) {
-//       LOG_INFO_ARGS ("Reading box %d, index = %d\n", i, index);
         unsigned int size = 0;
         unsigned int type = 0;
         memcpy(&size, &(buffer[index]), ISOBMF_4BYTE_SZ);
         index += ISOBMF_4BYTE_SZ;
         size = ntohl(size);
-//       LOG_INFO_ARGS ("size: %u\n", size);
         box_sizes[i] = size;
 
         memcpy(&type, &(buffer[index]), ISOBMF_4BYTE_SZ);
@@ -672,7 +667,6 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
         type = ntohl(type);
         char strType[] = {0, 0, 0, 0, 0};
         convertUintToString(strType, type);
-//       LOG_INFO_ARGS ("type: %s\n", strType);
 
         unsigned int boxBufferSz = size - 8;
 
@@ -735,42 +729,29 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
 
 int getNumBoxes(unsigned char* buffer, int bufferSz, int* pNumBoxes)
 {
-//   LOG_INFO ("getNumBoxes\n");
-
     int index = 0;
 
     *pNumBoxes = 0;
     while(index < bufferSz) {
-//      LOG_INFO_ARGS ("Reading box: index = =% d\n", index);
-
         unsigned int size = 0;
         memcpy(&size, &(buffer[index]), ISOBMF_4BYTE_SZ);
         index += ISOBMF_4BYTE_SZ;
 
         size = ntohl(size);
-//       LOG_INFO_ARGS ("size: %u\n", size);
-
         index += (size - 4);
-
         (*pNumBoxes)++;
     }
-
     return 0;
 }
 
 void freeStyp(data_styp_t* styp)
 {
-//   LOG_INFO ("freeStyp\n");
-    if(styp->compatible_brands != NULL) {
-        free(styp->compatible_brands);
-    }
-
+    free(styp->compatible_brands);
     free(styp);
 }
 
 int parseStyp(unsigned char* buffer, int bufferSz, data_styp_t* styp)
 {
-//    LOG_INFO ("parseStyp\n");
     styp->size = bufferSz + 8;
 
     memcpy(&(styp->major_brand), buffer, ISOBMF_4BYTE_SZ);
@@ -795,11 +776,7 @@ int parseStyp(unsigned char* buffer, int bufferSz, data_styp_t* styp)
 
 void freeSidx(data_sidx_t* sidx)
 {
-//   LOG_INFO ("freeSidx\n");
-    if(sidx->references != NULL) {
-        free(sidx->references);
-    }
-
+    free(sidx->references);
     free(sidx);
 }
 
@@ -852,7 +829,6 @@ int parseSidx(unsigned char* buffer, int bufferSz, data_sidx_t* sidx)
     }
     }
     */
-//    LOG_INFO ("parseSidx\n");
     sidx->size = bufferSz + 8;
     int index = 0;
     sidx->version = buffer[index];
@@ -924,16 +900,11 @@ int parseSidx(unsigned char* buffer, int bufferSz, data_sidx_t* sidx)
         sidx->references[i].SAP_delta_time = sidx->references[i].SAP_delta_time & 0x0fffffff;
     }
 
-
-//    LOG_INFO_ARGS ("parseSidx: index = %d\n", index);
-
-
     return 0;
 }
 
 void freePcrb(data_pcrb_t* pcrb)
 {
-//    LOG_INFO ("freePcrb\n");
     free(pcrb);
 }
 
@@ -954,8 +925,6 @@ int parsePcrb(unsigned char* buffer, int bufferSz, data_pcrb_t* pcrb)
         }
     }
     */
-
-//    LOG_INFO ("parsePcrb\n");
     pcrb->size = bufferSz + 8;
 
     int index = 0;
@@ -990,24 +959,15 @@ int parsePcrb(unsigned char* buffer, int bufferSz, data_pcrb_t* pcrb)
 
 void freeSsix(data_ssix_t* ssix)
 {
-//    LOG_INFO ("freeSsix\n");
     for(int i = 0; i < ssix->subsegment_count; i++) {
-        if(ssix->subsegments[i].ranges != NULL) {
-            free(ssix->subsegments[i].ranges);
-        }
+        free(ssix->subsegments[i].ranges);
     }
-
-    if(ssix->subsegments != NULL) {
-        free(ssix->subsegments);
-    }
-
+    free(ssix->subsegments);
     free(ssix);
 }
 
 void freeEmsg(data_emsg_t* emsg)
 {
-//    LOG_INFO ("freeEmsg\n");
-
     free(emsg->scheme_id_uri);
     free(emsg->value);
     free(emsg->message_data);
@@ -1031,7 +991,6 @@ int parseSsix(unsigned char* buffer, int bufferSz, data_ssix_t* ssix)
        }
     }
     */
-//    LOG_INFO ("parseSsix\n");
     ssix->size = bufferSz + 8;
 
     int index = 0;
@@ -1069,7 +1028,6 @@ int parseSsix(unsigned char* buffer, int bufferSz, data_ssix_t* ssix)
         }
     }
 
-
     return 0;
 }
 
@@ -1087,8 +1045,6 @@ int parseEmsg(unsigned char* buffer, int bufferSz, data_emsg_t* emsg)
         unsigned int(8) message_data[];
     }
     */
-//    LOG_INFO ("parseEmsg\n");
-
     int index = 0;
     emsg->size = bufferSz + 8;
 
@@ -1190,7 +1146,6 @@ void printEmsg(data_emsg_t* emsg)
 void printStyp(data_styp_t* styp)
 {
     char strTemp[] = {0, 0, 0, 0, 0};
-
 
     printf("\n####### STYP ######\n");
 
@@ -1331,7 +1286,6 @@ int validateEmsgMsg(unsigned char* buffer, int bufferSz, unsigned int segmentDur
     }
 
     freeBoxes(numBoxes, box_types, box_data);
-
     return nReturnCode;
 }
 
@@ -1342,17 +1296,9 @@ void freeIFrames(data_segment_iframes_t* pIFrames, int numSegments)
     }
 
     for(int i = 0; i < numSegments; i++) {
-        if(pIFrames[i].pIFrameLocations_Time != NULL) {
-            free(pIFrames[i].pIFrameLocations_Time);
-        }
-        if(pIFrames[i].pIFrameLocations_Byte != NULL) {
-            free(pIFrames[i].pIFrameLocations_Byte);
-        }
-        if(pIFrames[i].pStartsWithSAP != NULL) {
-            free(pIFrames[i].pStartsWithSAP);
-        }
-        if(pIFrames[i].pSAPType != NULL) {
-            free(pIFrames[i].pSAPType);
-        }
+        free(pIFrames[i].pIFrameLocations_Time);
+        free(pIFrames[i].pIFrameLocations_Byte);
+        free(pIFrames[i].pStartsWithSAP);
+        free(pIFrames[i].pSAPType);
     }
 }
