@@ -1,12 +1,7 @@
 SHELL = /bin/sh
 
 CC = gcc
-CFLAGS = -std=c99 -O0 -g -Wall -Wno-unused-variable -Wno-format
-
-LD = gcc
-LDFLAGS += -g -static
-
-RM = rm -f
+CFLAGS = -std=c99 -O0 -g -Wall -Wno-unused-variable -Wno-format -MD
 
 SRCS = $(wildcard *.c) 
 OBJS = $(SRCS:%.c=%.o)
@@ -21,14 +16,23 @@ BINARIES = apps/ts_split apps/ts_validate_single_segment apps/ts_validate_mult_s
 
 all: $(BINARIES)
 
-apps/ts_split: apps/ts_split.c $(OBJS)
+apps/ts_split: apps/ts_split.o $(OBJS)
 	$(CC) $(CFLAGS) -o apps/ts_split $^ $(LIBS)
 
-apps/ts_validate_single_segment: apps/ts_validate_single_segment.c $(OBJS)
+apps/ts_validate_single_segment: apps/ts_validate_single_segment.o $(OBJS)
 	$(CC) $(CFLAGS) -o apps/ts_validate_single_segment $^ $(LIBS)
 
-apps/ts_validate_mult_segment: apps/ts_validate_mult_segment.c $(OBJS)
+apps/ts_validate_mult_segment: apps/ts_validate_mult_segment.o $(OBJS)
 	$(CC) $(CFLAGS) -o apps/ts_validate_mult_segment $^ $(LIBS)
 
 clean:
-	rm -f $(OBJS) $(BINARIES) core
+	rm -f $(OBJS) apps/*.o $(BINARIES) *.P apps/*.P core
+
+%.o : %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+	@cp $*.d $*.P; \
+	  sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
+	      -e '/^$$/ d' -e 's/$$/ :/' < $*.d >> $*.P; \
+	  rm -f $*.d
+
+-include $(SRCS:%.c=%.P) $(wildcard apps/*.P)
