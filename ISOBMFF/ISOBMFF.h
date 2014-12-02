@@ -119,11 +119,11 @@ typedef struct {
 } data_segment_iframes_t;
 
 typedef enum {
-    BOX_STYP = 0,
-    BOX_SIDX,
-    BOX_PCRB,
-    BOX_SSIX,
-    BOX_EMSG
+    BOX_TYPE_EMSG = 0x656d7367,
+    BOX_TYPE_PCRB = 0x70637262,
+    BOX_TYPE_SIDX = 0x73696478,
+    BOX_TYPE_SSIX = 0x73736978,
+    BOX_TYPE_STYP = 0x73747970
 } box_type_t;
 
 

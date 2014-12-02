@@ -36,27 +36,27 @@ void freeBoxes(int numBoxes, box_type_t* box_types, void** box_data)
 {
     for(int i = 0; i < numBoxes; i++) {
         switch(box_types[i]) {
-        case BOX_STYP: {
+        case BOX_TYPE_STYP: {
             data_styp_t* styp = (data_styp_t*) box_data[i];
             freeStyp(styp);
             break;
         }
-        case BOX_SIDX: {
+        case BOX_TYPE_SIDX: {
             data_sidx_t* sidx = (data_sidx_t*) box_data[i];
             freeSidx(sidx);
             break;
         }
-        case BOX_PCRB: {
+        case BOX_TYPE_PCRB: {
             data_pcrb_t* pcrb = (data_pcrb_t*) box_data[i];
             freePcrb(pcrb);
             break;
         }
-        case BOX_SSIX: {
+        case BOX_TYPE_SSIX: {
             data_ssix_t* ssix = (data_ssix_t*) box_data[i];
             freeSsix(ssix);
             break;
         }
-        case BOX_EMSG: {
+        case BOX_TYPE_EMSG: {
             data_emsg_t* emsg = (data_emsg_t*) box_data[i];
             freeEmsg(emsg);
             break;
@@ -97,7 +97,7 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     }
 
     // first box must be a styp
-    if(box_types[boxIndex] != BOX_STYP) {
+    if(box_types[boxIndex] != BOX_TYPE_STYP) {
         LOG_ERROR("ERROR validating Representation Index Segment: first box not a styp\n");
         returnCode = -1;
     }
@@ -120,11 +120,10 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
     boxIndex++;
 
     // second box must be a sidx that references other sidx boxes
-    if(box_types[boxIndex] != BOX_SIDX) {
+    if(box_types[boxIndex] != BOX_TYPE_SIDX) {
         LOG_ERROR("ERROR validating Representation Index Segment: second box not a sidx\n");
         returnCode = -1;
     }
-
 
     // walk all references: they should all be of type 1 and should point to sidx boxes
     data_sidx_t* masterSidx = (data_sidx_t*)box_data[boxIndex];
@@ -160,7 +159,7 @@ segment duration.  Expected %d, actual %d\n", segmentDurations[i], ref.subsegmen
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
     while(boxIndex < numBoxes) {
-        if(box_types[boxIndex] == BOX_SIDX) {
+        if(box_types[boxIndex] == BOX_TYPE_SIDX) {
             ssixPresent = 0;
             pcrbPresent = 0;
 
@@ -207,7 +206,7 @@ Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
             }
         } else {
             // must be a ssix or pcrb box
-            if(box_types[boxIndex] == BOX_SSIX) {
+            if(box_types[boxIndex] == BOX_TYPE_SSIX) {
                 data_ssix_t* ssix = (data_ssix_t*)box_data[boxIndex];
                 referenced_size += ssix->size;
                 LOG_INFO("Validating ssix box");
@@ -217,7 +216,7 @@ Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
                 } else {
                     ssixPresent = 1;
                 }
-            } else if(box_types[boxIndex] == BOX_PCRB) {
+            } else if(box_types[boxIndex] == BOX_TYPE_PCRB) {
                 data_pcrb_t* pcrb = (data_pcrb_t*)box_data[boxIndex];
                 referenced_size += pcrb->size;
                 LOG_INFO("Validating pcrb box");
@@ -265,7 +264,7 @@ expected %d, found %d\n", numSegments, segmentIndex);
     uint64_t nextIFrameByteLocation = 0;
     segmentStartTime = presentationTimeOffset;
     while(boxIndex < numBoxes) {
-        if(box_types[boxIndex] == BOX_SIDX) {
+        if(box_types[boxIndex] == BOX_TYPE_SIDX) {
             data_sidx_t* sidx = (data_sidx_t*)box_data[boxIndex];
 
             if(numNestedSidx > 0) {
@@ -355,7 +354,7 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** 
     }
 
     // first box must be a styp
-    if(box_types[boxIndex] != BOX_STYP) {
+    if(box_types[boxIndex] != BOX_TYPE_STYP) {
         LOG_ERROR("ERROR validating Single Index Segment: first box not a styp\n");
         returnCode = -1;
     }
@@ -379,7 +378,7 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** 
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
     while(boxIndex < numBoxes) {
-        if(box_types[boxIndex] == BOX_SIDX) {
+        if(box_types[boxIndex] == BOX_TYPE_SIDX) {
             ssixPresent = 0;
             pcrbPresent = 0;
 
@@ -412,7 +411,7 @@ Expected %d, actual %d\n", videoPID, sidx->reference_ID);
             }
         } else {
             // must be a ssix or pcrb box
-            if(box_types[boxIndex] == BOX_SSIX) {
+            if(box_types[boxIndex] == BOX_TYPE_SSIX) {
                 data_ssix_t* ssix = (data_ssix_t*)box_data[boxIndex];
                 referenced_size += ssix->size;
                 LOG_INFO("Validating ssix box");
@@ -422,7 +421,7 @@ Expected %d, actual %d\n", videoPID, sidx->reference_ID);
                 } else {
                     ssixPresent = 1;
                 }
-            } else if(box_types[boxIndex] == BOX_PCRB) {
+            } else if(box_types[boxIndex] == BOX_TYPE_PCRB) {
                 data_pcrb_t* pcrb = (data_pcrb_t*)box_data[boxIndex];
                 referenced_size += pcrb->size;
                 LOG_INFO("Validating pcrb box");
@@ -459,7 +458,7 @@ Expected %d, actual %d\n", videoPID, sidx->reference_ID);
     uint64_t nextIFrameByteLocation = 0;
     segmentStartTime = presentationTimeOffset;
     while(boxIndex < numBoxes) {
-        if(box_types[boxIndex] == BOX_SIDX) {
+        if(box_types[boxIndex] == BOX_TYPE_SIDX) {
             data_sidx_t* sidx = (data_sidx_t*)box_data[boxIndex];
 
             if(numNestedSidx > 0) {
@@ -527,29 +526,24 @@ void printBoxes(int numBoxes, box_type_t* box_types, void** box_data)
 {
     for(int i = 0; i < numBoxes; i++) {
         switch(box_types[i]) {
-        case BOX_STYP: {
-            data_styp_t* styp = (data_styp_t*) box_data[i];
-            printStyp(styp);
+        case BOX_TYPE_STYP: {
+            printStyp((data_styp_t*)box_data[i]);
             break;
         }
-        case BOX_SIDX: {
-            data_sidx_t* sidx = (data_sidx_t*) box_data[i];
-            printSidx(sidx);
+        case BOX_TYPE_SIDX: {
+            printSidx((data_sidx_t*)box_data[i]);
             break;
         }
-        case BOX_PCRB: {
-            data_pcrb_t* pcrb = (data_pcrb_t*) box_data[i];
-            printPcrb(pcrb);
+        case BOX_TYPE_PCRB: {
+            printPcrb((data_pcrb_t*)box_data[i]);
             break;
         }
-        case BOX_SSIX: {
-            data_ssix_t* ssix = (data_ssix_t*) box_data[i];
-            printSsix(ssix);
+        case BOX_TYPE_SSIX: {
+            printSsix((data_ssix_t*)box_data[i]);
             break;
         }
-        case BOX_EMSG: {
-            data_emsg_t* emsg = (data_emsg_t*) box_data[i];
-            printEmsg(emsg);
+        case BOX_TYPE_EMSG: {
+            printEmsg((data_emsg_t*)box_data[i]);
             break;
         }
         }
@@ -677,7 +671,7 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
                 LOG_ERROR("ERROR validating Index Segment: ERROR parsing styp box\n");
                 return -1;
             }
-            box_types[i] = BOX_STYP;
+            box_types[i] = BOX_TYPE_STYP;
             box_data[i] = (void*) styp;
         } else if(strcmp(strType, "sidx") == 0) {
             data_sidx_t* sidx = (data_sidx_t*)malloc(sizeof(data_sidx_t));
@@ -687,6 +681,7 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
                 return -1;
             }
             box_types[i] = BOX_SIDX;
+            box_types[i] = BOX_TYPE_SIDX;
             box_data[i] = (void*) sidx;
         } else if(strcmp(strType, "pcrb") == 0) {
             data_pcrb_t* pcrb = (data_pcrb_t*)malloc(sizeof(data_pcrb_t));
@@ -695,7 +690,7 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
                 LOG_ERROR("ERROR validating Index Segment: ERROR parsing pcrb box\n");
                 return -1;
             }
-            box_types[i] = BOX_PCRB;
+            box_types[i] = BOX_TYPE_PCRB;
             box_data[i] = (void*) pcrb;
         } else if(strcmp(strType, "ssix") == 0) {
             data_ssix_t* ssix = (data_ssix_t*)malloc(sizeof(data_ssix_t));
@@ -704,7 +699,7 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
                 LOG_ERROR("ERROR validating Index Segment: ERROR parsing ssix box\n");
                 return -1;
             }
-            box_types[i] = BOX_SSIX;
+            box_types[i] = BOX_TYPE_SSIX;
             box_data[i] = (void*) ssix;
         } else if(strcmp(strType, "emsg") == 0) {
             data_emsg_t* emsg = (data_emsg_t*)malloc(sizeof(data_emsg_t));
@@ -713,7 +708,7 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
                 LOG_ERROR("ERROR validating EMSG: ERROR parsing emsg box\n");
                 return -1;
             }
-            box_types[i] = BOX_EMSG;
+            box_types[i] = BOX_TYPE_EMSG;
             box_data[i] = (void*) emsg;
         } else {
             LOG_ERROR_ARGS("ERROR validating EMSG: Invalid box type found: %s\n", strType);
@@ -1269,7 +1264,7 @@ int validateEmsgMsg(unsigned char* buffer, int bufferSz, unsigned int segmentDur
     printBoxes(numBoxes, box_types, box_data);
 
     for(int i = 0; i < numBoxes; i++) {
-        if(box_types[i] != BOX_EMSG) {
+        if(box_types[i] != BOX_TYPE_EMSG) {
             LOG_ERROR("ERROR validating EMSG: Invalid box type found\n");
             freeBoxes(numBoxes, box_types, box_data);
             return -1;
