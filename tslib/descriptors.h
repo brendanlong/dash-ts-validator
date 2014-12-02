@@ -34,7 +34,6 @@
 #include <stdint.h>
 
 #include "bs.h"
-#include "common.h"
 #include "vqarray.h"
 #include "log.h"
 

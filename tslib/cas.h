@@ -34,7 +34,6 @@
 #include <stdint.h>
 
 #include "bs.h"
-#include "common.h"
 #include "ts.h"
 #include "pes.h"
 #include "psi.h"
@@ -48,7 +47,7 @@ extern "C"
 #include <stdint.h>
 
 #include "bs.h"
-#include "common.h"
+#include "libts_common.h"
 #include "ts.h"
 #include "vqarray.h"
 #include "descriptors.h"

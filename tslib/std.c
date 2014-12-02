@@ -72,10 +72,6 @@ int stc_put_ts_packet(stc_t* stc, ts_packet_t* ts)
 
     if(real_pcr < PCR_MAX) {
         // we have a vald PCR
-
-        SKIT_PRINT_UINT64(real_pcr / 300);
-        SKIT_PRINT_DOUBLE(stc->pcr_rate);
-
         if(stc->prev_pcr < PCR_MAX) {
             // this is the first PCR we're seeing in this stream
             stc->prev_pcr = real_pcr;

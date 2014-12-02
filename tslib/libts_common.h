@@ -31,12 +31,18 @@
 #include <stdint.h>
 
 #include "bs.h"
-#include "common.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+
+#define ARRAYSIZE(x)   ((sizeof(x))/(sizeof((x)[0])))
+
+typedef struct {
+    uint8_t* bytes;
+    size_t   len;
+} buf_t;
 
 /**
  * Read a 90KHz timestamp in MPEG syntax (e.g. PTS/DTS)

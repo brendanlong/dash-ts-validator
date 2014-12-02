@@ -32,7 +32,7 @@
 #include <stdint.h>
 
 #include "bs.h"
-#include "common.h"
+#include "libts_common.h"
 
 #ifdef __cplusplus
 extern "C"

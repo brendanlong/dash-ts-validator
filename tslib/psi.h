@@ -28,14 +28,12 @@
  */
 
 
-
 #ifndef _PSI_H_
 #define _PSI_H_
 
 #include <stdint.h>
 
 #include "bs.h"
-#include "common.h"
 #include "vqarray.h"
 
 typedef enum {

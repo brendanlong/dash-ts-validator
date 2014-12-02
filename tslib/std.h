@@ -34,7 +34,6 @@
 #include <stdint.h>
 
 #include "vqarray.h"
-#include "common.h"
 #include "ts.h"
 #include "libts_common.h"
 #include "log.h"

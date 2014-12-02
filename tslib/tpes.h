@@ -33,7 +33,6 @@
 #include <stdint.h>
 
 #include "bs.h"
-#include "common.h"
 #include "ts.h"
 #include "pes.h"
 #include "psi.h"
@@ -43,13 +42,6 @@
 extern "C"
 {
 #endif
-
-#include <stdint.h>
-
-#include "bs.h"
-#include "common.h"
-#include "ts.h"
-#include "vqarray.h"
 
 
 typedef int (*pes_processor_t)(pes_packet_t*, elementary_stream_info_t*, vqarray_t*, void*);

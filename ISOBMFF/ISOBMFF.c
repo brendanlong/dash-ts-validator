@@ -24,7 +24,6 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 
-#include "common.h"
 #include "ISOBMFF.h"
 #include "log.h"
 

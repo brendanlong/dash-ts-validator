@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 
-CFLAGS = -std=c99 -g -Wall -I$(top_srcdir)/common
+CFLAGS = -std=c99 -g -Wall
 
 SUBDIRS = h264bitstream
 
