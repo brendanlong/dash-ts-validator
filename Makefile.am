@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 
-CFLAGS = -std=c99 -Wall -I$(top_srcdir)/common
+CFLAGS = -std=c99 -g -Wall -I$(top_srcdir)/common
 
 SUBDIRS = h264bitstream
 
@@ -17,7 +17,7 @@ libstructures_libdatastruct_a_SOURCES = libstructures/binheap.c \
         libstructures/hashtable_itr.c libstructures/varray.c \
         libstructures/hashtable_str.c libstructures/hashtable_str_rj.c \
         libstructures/vqarray.c libstructures/hashtable.c
-libstructures_libdatastruct_a_CFLAGS = -Wno-unused-variable -std=c99 -g -O3 \
+libstructures_libdatastruct_a_CFLAGS = -Wno-unused-variable -O3 \
         -fexpensive-optimizations -funroll-loops -fomit-frame-pointer
 
 
