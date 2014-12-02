@@ -39,9 +39,9 @@ typedef struct {
 varray_t* varray_new();
 void varray_free(varray_t* v);
 void varray_clear(varray_t* v);
-inline int varray_length(varray_t* v);
-inline varray_elem_t* varray_get(varray_t* v, int i);
-inline void varray_set(varray_t* v, int i, varray_elem_t* e);
+int varray_length(varray_t* v);
+varray_elem_t* varray_get(varray_t* v, int i);
+void varray_set(varray_t* v, int i, varray_elem_t* e);
 void varray_insert(varray_t* v, int i, varray_elem_t* e);
 void varray_remove(varray_t* v, int i);
 void varray_add(varray_t* v, varray_elem_t* e);
