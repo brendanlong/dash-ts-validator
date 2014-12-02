@@ -154,10 +154,16 @@ int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes,
     // check brand
     data_styp_t* styp = (data_styp_t*)box_data[boxIndex];
     bool foundRisx = false;
+    bool foundSsss = false;
     for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
         uint32_t brand = styp->compatible_brands[i];
         if(brand == BRAND_RISX) {
             foundRisx = true;
+        } else if (brand == BRAND_SSSS) {
+            foundSsss = true;
+        }
+        if (foundRisx && foundSsss) {
+            break;
         }
     }
     if(!foundRisx) {
@@ -269,6 +275,16 @@ Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
                 returnCode = -1;
             } else {
                 ssixPresent = true;
+            }
+            if(pcrbPresent) {
+                LOG_ERROR("ERROR validating Representation Index Segment: pcrb occurred before ssix. 6.4.6.4 says "
+                        "\"The Subsegment Index box (‘ssix’) [...] shall follow immediately after the ‘sidx’ box that "
+                        "documents the same Subsegment. [...] If the 'pcrb' box is present, it shall follow 'ssix'.\"\n");
+                returnCode = -1;
+            }
+            if(!foundSsss) {
+                LOG_ERROR("ERROR validating Representation Index Segment: Saw ssix box, but 'ssss' is not in compatible brands. See 6.4.6.4.\n");
+                returnCode = -1;
             }
             break;
         }
