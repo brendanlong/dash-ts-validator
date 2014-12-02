@@ -83,7 +83,6 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
         if(packets_in_queue > 0) {
             // we have something in the queue
             // chances are this is a PES packet
-            int i;
             ts_packet_t* tsp = vqarray_get(pdm->ts_queue, 0);
             if(tsp->header.payload_unit_start_indicator == 0) {
                 // the queue doesn't start with a complete TS packet

@@ -68,7 +68,6 @@ pid_validator_t* dash_validator_find_pid(int PID)
 int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 {
     pid_info_t* pi = NULL;
-    pid_info_t* pi2 = NULL;
     if(m2p == NULL || m2p->pmt == NULL) {  // if we don't have any PSI, there's nothing we can do
         return 0;
     }
@@ -91,7 +90,6 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         if((pi = vqarray_get(m2p->pids, i)) != NULL) {
             int process_pid = 0;
             int content_component = 0;
-            int parse_high_level_syntax = 0;
             int PID = pi->es_info->elementary_PID;
 
             pid_validator_t* pid_validator = dash_validator_find_pid(PID);
@@ -187,7 +185,6 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
     for(int i = 0; i < vqarray_length(dash_validator_source->pids); i++) {
         if((pid_validator_src = vqarray_get(dash_validator_source->pids, i)) != NULL) {
             int content_component = 0;
-            int parse_high_level_syntax = 0;
             int PID = pid_validator_src->PID;
 
             // hook PES validation to PES demuxer
@@ -216,7 +213,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
             pid_validator_dest->content_component = content_component;
             pid_validator_dest->ecm_pids = vqarray_new();
 
-            LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %x for PID %d", (uintptr_t)pid_validator_dest,
+            LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
                           PID);
             vqarray_add(dash_validator_dest->pids, pid_validator_dest);
             // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
@@ -517,7 +514,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
                                       201 /* GORP */);
         prog->pmt = dash_validator_init->initializaion_segment_pmt;
 
-        LOG_INFO_ARGS("Adding initialization PSI info...program = %x", (uintptr_t)prog);
+        LOG_INFO_ARGS("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
         vqarray_add(m2s->programs, (void*)prog);
 
         int returnCode = copy_pmt_info(prog, dash_validator_init, g_p_dash_validator);
@@ -547,7 +544,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
             int res = 0;
             ts_packet_t* ts = ts_new();
             if((res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read)) < TS_SIZE) {
-                LOG_ERROR_ARGS("Error parsing TS packet %lld (%d)", packets_read, res);
+                LOG_ERROR_ARGS("Error parsing TS packet %"PRIo64" (%d)", packets_read, res);
                 g_p_dash_validator->status = 0;
                 break;
             }
@@ -567,12 +564,12 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
     // need to reset the mpeg stream to be sure to process the last PES packet
     mpeg2ts_stream_reset(m2s);
 
-    LOG_INFO_ARGS("%lld TS packets read", packets_read);
+    LOG_INFO_ARGS("%"PRIo64" TS packets read", packets_read);
 
 
     if(g_p_dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         mpeg2ts_program_t* m2p = vqarray_get(m2s->programs, 0);  // should be only one program
-        printf("m2p = %x\n", (uintptr_t)m2p);
+        printf("m2p = %"PRIxPTR"\n", (uintptr_t)m2p);
         g_p_dash_validator->initializaion_segment_pmt = m2p->pmt;
     }
 

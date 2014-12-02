@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 
-CFLAGS = -std=c99 -Wall -I$(top_srcdir)/common -Wno-unused-variable -Wno-format
+CFLAGS = -std=c99 -Wall -I$(top_srcdir)/common
 
 SUBDIRS = h264bitstream
 
