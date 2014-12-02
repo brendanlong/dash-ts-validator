@@ -153,16 +153,20 @@ int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes,
 
     // check brand
     data_styp_t* styp = (data_styp_t*)box_data[boxIndex];
-    bool found_risx = false;
-    for(unsigned i = 0; i < styp->num_compatible_brands; ++i) {
-        unsigned brand = styp->compatible_brands[i];
+    bool foundRisx = false;
+    for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
+        uint32_t brand = styp->compatible_brands[i];
         if(brand == BRAND_RISX) {
-            found_risx = true;
+            foundRisx = true;
         }
     }
-    if(!found_risx) {
-        LOG_INFO_ARGS("styp brand = %x", styp->major_brand);
+    if(!foundRisx) {
         LOG_ERROR("ERROR validating Representation Index Segment: styp compatible brands does not contain \"risx\"\n");
+        LOG_INFO("Brands found are:");
+        LOG_INFO_ARGS("styp major brand = %x", styp->major_brand);
+        for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
+            LOG_INFO_ARGS("styp compatible brand = %x", styp->compatible_brands[i]);
+        }
         returnCode = -1;
     }
 
@@ -199,8 +203,8 @@ segment duration.  Expected %d, actual %d\n", segmentDurations[i], ref.subsegmen
     boxIndex++;
 
     int segmentIndex = -1;
-    int ssixPresent = 0;
-    int pcrbPresent = 0;
+    bool ssixPresent = false;
+    bool pcrbPresent = false;
     int numNestedSidx = 0;
     unsigned int referenced_size = 0;
 
@@ -208,9 +212,10 @@ segment duration.  Expected %d, actual %d\n", segmentDurations[i], ref.subsegmen
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
     while(boxIndex < numBoxes) {
-        if(box_types[boxIndex] == BOX_TYPE_SIDX) {
-            ssixPresent = 0;
-            pcrbPresent = 0;
+        switch(box_types[boxIndex]) {
+        case BOX_TYPE_SIDX: {
+            ssixPresent = false;
+            pcrbPresent = false;
 
             data_sidx_t* sidx = (data_sidx_t*)box_data[boxIndex];
             if(numNestedSidx > 0) {
@@ -253,29 +258,35 @@ Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
                                      isSimpleProfile) != 0) {
                 returnCode = -1;
             }
-        } else {
-            // must be a ssix or pcrb box
-            if(box_types[boxIndex] == BOX_TYPE_SSIX) {
-                data_ssix_t* ssix = (data_ssix_t*)box_data[boxIndex];
-                referenced_size += ssix->size;
-                LOG_INFO("Validating ssix box");
-                if(ssixPresent) {
-                    LOG_ERROR("ERROR validating Representation Index Segment: More than one ssix box following sidx box\n");
-                    returnCode = -1;
-                } else {
-                    ssixPresent = 1;
-                }
-            } else if(box_types[boxIndex] == BOX_TYPE_PCRB) {
-                data_pcrb_t* pcrb = (data_pcrb_t*)box_data[boxIndex];
-                referenced_size += pcrb->size;
-                LOG_INFO("Validating pcrb box");
-                if(pcrbPresent) {
-                    LOG_ERROR("ERROR validating Representation Index Segment: More than one pcrb box following sidx box\n");
-                    returnCode = -1;
-                } else {
-                    pcrbPresent = 1;
-                }
+            break;
+        }
+        case BOX_TYPE_SSIX: {
+            data_ssix_t* ssix = (data_ssix_t*)box_data[boxIndex];
+            referenced_size += ssix->size;
+            LOG_INFO("Validating ssix box");
+            if(ssixPresent) {
+                LOG_ERROR("ERROR validating Representation Index Segment: More than one ssix box following sidx box\n");
+                returnCode = -1;
+            } else {
+                ssixPresent = true;
             }
+            break;
+        }
+        case BOX_TYPE_PCRB: {
+            data_pcrb_t* pcrb = (data_pcrb_t*)box_data[boxIndex];
+            referenced_size += pcrb->size;
+            LOG_INFO("Validating pcrb box");
+            if(pcrbPresent) {
+                LOG_ERROR("ERROR validating Representation Index Segment: More than one pcrb box following sidx box\n");
+                returnCode = -1;
+            } else {
+                pcrbPresent = true;
+            }
+            break;
+        }
+        default:
+            LOG_ERROR_ARGS("Invalid box type: %x\n", box_types[boxIndex]);
+            break;
         }
         boxIndex++;
     }
