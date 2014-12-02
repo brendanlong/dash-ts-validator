@@ -127,11 +127,11 @@ typedef enum {
 } box_type_t;
 
 
-int parseStyp(unsigned char* buffer, int bufferSz, data_styp_t* styp);
-int parseSidx(unsigned char* buffer, int bufferSz, data_sidx_t* sidx);
-int parsePcrb(unsigned char* buffer, int bufferSz, data_pcrb_t* pcrb);
-int parseSsix(unsigned char* buffer, int bufferSz, data_ssix_t* ssix);
-int parseEmsg(unsigned char* buffer, int bufferSz, data_emsg_t* emsg);
+int parseStyp(unsigned char* buffer, int bufferSize, data_styp_t* styp);
+int parseSidx(unsigned char* buffer, int bufferSize, data_sidx_t* sidx);
+int parsePcrb(unsigned char* buffer, int bufferSize, data_pcrb_t* pcrb);
+int parseSsix(unsigned char* buffer, int bufferSize, data_ssix_t* ssix);
+int parseEmsg(unsigned char* buffer, int bufferSize, data_emsg_t* emsg);
 
 void printStyp(data_styp_t* styp);
 void printSidx(data_sidx_t* sidx);
@@ -154,18 +154,18 @@ void convertUintToString(char* str, unsigned int uintStr);
  * ntohll is a standard function */
 uint64_t isobmff_ntohll(uint64_t num);
 
-int getNumBoxes(unsigned char* buffer, int bufferSz, int* pNumBoxes);
-void printBoxes(int numBoxes, box_type_t* box_types, void** box_data);
-void freeBoxes(int numBoxes, box_type_t* box_types, void** box_data);
-int readBoxes(char* fname, int* pNumBoxes, box_type_t** box_types_in, void** * box_data_in,
+int getNumBoxes(unsigned char* buffer, int bufferSize, size_t* numBoxes);
+void printBoxes(size_t numBoxes, box_type_t* box_types, void** box_data);
+void freeBoxes(size_t numBoxes, box_type_t* box_types, void** box_data);
+int readBoxes(char* fname, size_t* numBoxes, box_type_t** box_types_in, void** * box_data_in,
               int** box_sizes_in);
-int readBoxes2(unsigned char* buffer, int buuferSz, int* pNumBoxes, box_type_t** box_types_in,
+int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type_t** box_types_in,
                void** * box_data_in, int** box_sizes_in);
 
-int validateIndexSegment(char* fname, int numSegments, int* segmentDurations,
+int validateIndexSegment(char* fname, size_t numSegments, int* segmentDurations,
                          data_segment_iframes_t* pIFrames,
                          int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile);
-int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_type_t* box_types,
+int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes, box_type_t* box_types,
         void** box_data,
         int* box_sizes, int* segmentDurations, data_segment_iframes_t* pIFrames, int presentationTimeOffset,
         int videoPID,
@@ -175,7 +175,7 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** 
                                     data_segment_iframes_t* pIFrames, int presentationTimeOffset, int videoPID,
                                     unsigned char isSimpleProfile);
 
-int validateEmsgMsg(unsigned char* buffer, int bufferSz, unsigned int segmentDuration);
+int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentDuration);
 
 int analyzeSidxReferences(data_sidx_t* sidx, int* pNumIFrames, int* pNumNestedSidx,
                           unsigned char isSimpleProfile);

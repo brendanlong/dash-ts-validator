@@ -32,9 +32,9 @@
 #define ISOBMF_4BYTE_SZ 4
 #define ISOBMF_8BYTE_SZ 8
 
-void freeBoxes(int numBoxes, box_type_t* box_types, void** box_data)
+void freeBoxes(size_t numBoxes, box_type_t* box_types, void** box_data)
 {
-    for(int i = 0; i < numBoxes; i++) {
+    for(size_t i = 0; i < numBoxes; i++) {
         switch(box_types[i]) {
         case BOX_TYPE_STYP: {
             data_styp_t* styp = (data_styp_t*) box_data[i];
@@ -65,7 +65,7 @@ void freeBoxes(int numBoxes, box_type_t* box_types, void** box_data)
     }
 }
 
-int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_type_t* box_types,
+int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes, box_type_t* box_types,
         void** box_data,
         int* box_sizes, int* segmentDurations, data_segment_iframes_t* pIFrames, int presentationTimeOffset,
         int videoPID,
@@ -133,7 +133,7 @@ int validateRepresentationIndexSegmentBoxes(int numSegments, int numBoxes, box_t
 video PID.  Expected %d, actual %d\n", videoPID, masterReferenceID);
         returnCode = -1;
     }
-    for(int i = 0; i < masterSidx->reference_count; i++) {
+    for(size_t i = 0; i < masterSidx->reference_count; i++) {
         data_sidx_reference_t ref = masterSidx->references[i];
         if(ref.reference_type != 1) {
             LOG_ERROR("ERROR validating Representation Index Segment: reference type not 1\n");
@@ -228,7 +228,6 @@ Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
                 }
             }
         }
-
         boxIndex++;
     }
 
@@ -251,7 +250,7 @@ Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].re
 
     if((segmentIndex + 1) != numSegments) {
         LOG_ERROR_ARGS("ERROR validating Representation Index Segment: Invalid number of segment sidx boxes following master sidx box: \
-expected %d, found %d\n", numSegments, segmentIndex);
+expected %zu, found %d\n", numSegments, segmentIndex);
         returnCode = -1;
     }
 
@@ -522,9 +521,9 @@ sidx boxes have either media references or sidx references, but not both.");
     return 0;
 }
 
-void printBoxes(int numBoxes, box_type_t* box_types, void** box_data)
+void printBoxes(size_t numBoxes, box_type_t* box_types, void** box_data)
 {
-    for(int i = 0; i < numBoxes; i++) {
+    for(size_t i = 0; i < numBoxes; i++) {
         switch(box_types[i]) {
         case BOX_TYPE_STYP: {
             printStyp((data_styp_t*)box_data[i]);
@@ -550,19 +549,18 @@ void printBoxes(int numBoxes, box_type_t* box_types, void** box_data)
     }
 }
 
-
-int validateIndexSegment(char* fname, int numSegments, int* segmentDurations,
+int validateIndexSegment(char* fname, size_t numSegments, int* segmentDurations,
                          data_segment_iframes_t* pIFrames,
                          int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile)
 {
     LOG_INFO_ARGS("validateIndexSegment: %s", fname);
-    int numBoxes;
+    size_t numBoxes;
     box_type_t* box_types;
     void** box_data;
     int* box_sizes;
 
-    int nReturnCode = readBoxes(fname, &numBoxes, &box_types, &box_data, &box_sizes);
-    if(nReturnCode != 0) {
+    int returnCode = readBoxes(fname, &numBoxes, &box_types, &box_data, &box_sizes);
+    if(returnCode != 0) {
         LOG_ERROR("ERROR validating Index Segment: Error reading boxes from file\n");
         return -1;
     }
@@ -574,10 +572,10 @@ int validateIndexSegment(char* fname, int numSegments, int* segmentDurations,
         LOG_ERROR("ERROR validating Index Segment: Invalid number of segments");
         return -1;
     } else if(numSegments == 1) {
-        nReturnCode = validateSingleIndexSegmentBoxes(numBoxes, box_types, box_data, box_sizes,
+        returnCode = validateSingleIndexSegmentBoxes(numBoxes, box_types, box_data, box_sizes,
                       segmentDurations[0], pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
     } else {
-        nReturnCode = validateRepresentationIndexSegmentBoxes(numSegments, numBoxes, box_types, box_data,
+        returnCode = validateRepresentationIndexSegmentBoxes(numSegments, numBoxes, box_types, box_data,
                       box_sizes,
                       segmentDurations, pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
     }
@@ -585,8 +583,8 @@ int validateIndexSegment(char* fname, int numSegments, int* segmentDurations,
     freeBoxes(numBoxes, box_types, box_data);
 
     printf("\n\n");
-    for(int i = 0; i < numSegments; i++) {
-        printf("data_segment_iframes %d: doIFrameValidation = %d, numIFrames = %d\n",
+    for(size_t i = 0; i < numSegments; i++) {
+        printf("data_segment_iframes %zu: doIFrameValidation = %d, numIFrames = %d\n",
                i, pIFrames[i].doIFrameValidation, pIFrames[i].numIFrames);
         for(int j = 0; j < pIFrames[i].numIFrames; j++) {
             printf("   pIFrameLocations_Time[%d] = %d, \tpIFrameLocations_Byte[%d] = %"PRId64"\n", j,
@@ -594,11 +592,11 @@ int validateIndexSegment(char* fname, int numSegments, int* segmentDurations,
         }
     }
 
-    return nReturnCode;
+    return returnCode;
 }
 
 
-int readBoxes(char* fname, int* pNumBoxes, box_type_t** box_types_in, void** * box_data_in,
+int readBoxes(char* fname, size_t* numBoxes, box_type_t** box_types_in, void** * box_data_in,
               int** box_sizes_in)
 {
     struct stat st;
@@ -613,10 +611,10 @@ int readBoxes(char* fname, int* pNumBoxes, box_type_t** box_types_in, void** * b
         return -1;
     }
 
-    int bufferSz = st.st_size;
-    unsigned char* buffer = (unsigned char*)malloc(bufferSz);
+    int bufferSize = st.st_size;
+    unsigned char* buffer = malloc(bufferSize);
 
-    if(fread(buffer, 1, bufferSz, indexFile) != bufferSz) {
+    if(fread(buffer, 1, bufferSize, indexFile) != bufferSize) {
         free(buffer);
         fclose(indexFile);
         return -1;
@@ -624,31 +622,29 @@ int readBoxes(char* fname, int* pNumBoxes, box_type_t** box_types_in, void** * b
 
     fclose(indexFile);
 
-    int returnCode = readBoxes2(buffer, bufferSz, pNumBoxes, box_types_in, box_data_in, box_sizes_in);
+    int returnCode = readBoxes2(buffer, bufferSize, numBoxes, box_types_in, box_data_in, box_sizes_in);
     free(buffer);
     return returnCode;
 }
 
-int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t** box_types_in,
+int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type_t** box_types_in,
                void** * box_data_in, int** box_sizes_in)
 {
-    int numBoxes = 0;
-    if(getNumBoxes(buffer, bufferSz, &numBoxes) != 0) {
+    if(getNumBoxes(buffer, bufferSize, numBoxes) != 0) {
         LOG_ERROR("ERROR validating Index Segment: Error reading number of boxes in buffer\n");
         return -1;
     }
-    *pNumBoxes = numBoxes;
 
-    box_type_t* box_types = (box_type_t*)malloc(numBoxes * sizeof(box_type_t));
-    void** box_data = (void**)malloc(numBoxes * sizeof(void*));
-    int* box_sizes = (int*)malloc(numBoxes * sizeof(int));
+    box_type_t* box_types = malloc((*numBoxes) * sizeof(box_type_t));
+    void** box_data = malloc((*numBoxes) * sizeof(void*));
+    int* box_sizes = malloc((*numBoxes) * sizeof(int));
     *box_types_in = box_types;
     *box_data_in = box_data;
     *box_sizes_in = box_sizes;
 
     int index = 0;
 
-    for(int i = 0; i < numBoxes; i++) {
+    for(int i = 0; i < *numBoxes; i++) {
         unsigned int size = 0;
         unsigned int type = 0;
         memcpy(&size, &(buffer[index]), ISOBMF_4BYTE_SZ);
@@ -662,11 +658,11 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
         char strType[] = {0, 0, 0, 0, 0};
         convertUintToString(strType, type);
 
-        unsigned int boxBufferSz = size - 8;
+        unsigned int boxBufferSize = size - 8;
 
         if(strcmp(strType, "styp") == 0) {
-            data_styp_t* styp = (data_styp_t*)malloc(sizeof(data_styp_t));
-            int nReturnCode = parseStyp(&(buffer[index]), boxBufferSz, styp);
+            data_styp_t* styp = malloc(sizeof(data_styp_t));
+            int nReturnCode = parseStyp(&(buffer[index]), boxBufferSize, styp);
             if(nReturnCode != 0) {
                 LOG_ERROR("ERROR validating Index Segment: ERROR parsing styp box\n");
                 return -1;
@@ -674,8 +670,8 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
             box_types[i] = BOX_TYPE_STYP;
             box_data[i] = (void*) styp;
         } else if(strcmp(strType, "sidx") == 0) {
-            data_sidx_t* sidx = (data_sidx_t*)malloc(sizeof(data_sidx_t));
-            int nReturnCode = parseSidx(&(buffer[index]), boxBufferSz, sidx);
+            data_sidx_t* sidx = malloc(sizeof(data_sidx_t));
+            int nReturnCode = parseSidx(&(buffer[index]), boxBufferSize, sidx);
             if(nReturnCode != 0) {
                 LOG_ERROR("ERROR validating Index Segment: ERROR parsing sidx box\n");
                 return -1;
@@ -684,8 +680,8 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
             box_types[i] = BOX_TYPE_SIDX;
             box_data[i] = (void*) sidx;
         } else if(strcmp(strType, "pcrb") == 0) {
-            data_pcrb_t* pcrb = (data_pcrb_t*)malloc(sizeof(data_pcrb_t));
-            int nReturnCode = parsePcrb(&(buffer[index]), boxBufferSz, pcrb);
+            data_pcrb_t* pcrb = malloc(sizeof(data_pcrb_t));
+            int nReturnCode = parsePcrb(&(buffer[index]), boxBufferSize, pcrb);
             if(nReturnCode != 0) {
                 LOG_ERROR("ERROR validating Index Segment: ERROR parsing pcrb box\n");
                 return -1;
@@ -693,8 +689,8 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
             box_types[i] = BOX_TYPE_PCRB;
             box_data[i] = (void*) pcrb;
         } else if(strcmp(strType, "ssix") == 0) {
-            data_ssix_t* ssix = (data_ssix_t*)malloc(sizeof(data_ssix_t));
-            int nReturnCode = parseSsix(&(buffer[index]), boxBufferSz, ssix);
+            data_ssix_t* ssix = malloc(sizeof(data_ssix_t));
+            int nReturnCode = parseSsix(&(buffer[index]), boxBufferSize, ssix);
             if(nReturnCode != 0) {
                 LOG_ERROR("ERROR validating Index Segment: ERROR parsing ssix box\n");
                 return -1;
@@ -702,8 +698,8 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
             box_types[i] = BOX_TYPE_SSIX;
             box_data[i] = (void*) ssix;
         } else if(strcmp(strType, "emsg") == 0) {
-            data_emsg_t* emsg = (data_emsg_t*)malloc(sizeof(data_emsg_t));
-            int nReturnCode = parseEmsg(&(buffer[index]), boxBufferSz, emsg);
+            data_emsg_t* emsg = malloc(sizeof(data_emsg_t));
+            int nReturnCode = parseEmsg(&(buffer[index]), boxBufferSize, emsg);
             if(nReturnCode != 0) {
                 LOG_ERROR("ERROR validating EMSG: ERROR parsing emsg box\n");
                 return -1;
@@ -714,27 +710,25 @@ int readBoxes2(unsigned char* buffer, int bufferSz, int* pNumBoxes, box_type_t**
             LOG_ERROR_ARGS("ERROR validating EMSG: Invalid box type found: %s\n", strType);
             return -1;
         }
-
-        index += boxBufferSz;
+        index += boxBufferSize;
     }
 
     return 0;
 }
 
-
-int getNumBoxes(unsigned char* buffer, int bufferSz, int* pNumBoxes)
+int getNumBoxes(unsigned char* buffer, int bufferSize, size_t* numBoxes)
 {
     int index = 0;
 
-    *pNumBoxes = 0;
-    while(index < bufferSz) {
+    *numBoxes = 0;
+    while(index < bufferSize) {
         unsigned int size = 0;
         memcpy(&size, &(buffer[index]), ISOBMF_4BYTE_SZ);
         index += ISOBMF_4BYTE_SZ;
 
         size = ntohl(size);
         index += (size - 4);
-        (*pNumBoxes)++;
+        (*numBoxes)++;
     }
     return 0;
 }
@@ -1123,8 +1117,8 @@ void printEmsg(data_emsg_t* emsg)
     printf("id = %d\n", emsg->id);
 
     printf("message_data:\n");
-    int i = 0;
-    for(i = 0; i < emsg->message_data_sz; i++) {
+    size_t i = 0;
+    for(i = 0; i < emsg->message_data_size; i++) {
         printf("0x%x ", emsg->message_data[i]);
         if(i % 8 == 7) {
             printf("\n");
@@ -1149,10 +1143,10 @@ void printStyp(data_styp_t* styp)
 
     printf("minor_version = %u\n", styp->minor_version);
 
-    printf("num_compatible_brands = %u\n", styp->num_compatible_brands);
-    for(int i = 0; i < styp->num_compatible_brands; i++) {
+    printf("num_compatible_brands = %zu\n", styp->num_compatible_brands);
+    for(size_t i = 0; i < styp->num_compatible_brands; i++) {
         convertUintToString(strTemp, styp->compatible_brands[i]);
-        printf("    %d: %s\n", i, strTemp);
+        printf("    %zu: %s\n", i, strTemp);
     }
     printf("###################\n\n");
 }
@@ -1173,7 +1167,7 @@ void printSidx(data_sidx_t* sidx)
     printf("reserved = %u\n", sidx->reserved);
     printf("reference_count = %u\n", sidx->reference_count);
 
-    for(int i = 0; i < sidx->reference_count; i++) {
+    for(size_t i = 0; i < sidx->reference_count; i++) {
         printSidxReference(&(sidx->references[i]));
     }
 
@@ -1197,7 +1191,7 @@ void printSsixSubsegment(data_ssix_subsegment_t* subsegment)
     printf("    SsixSubsegment:\n");
 
     printf("        ranges_count = %u\n", subsegment->ranges_count);
-    for(int i = 0; i < subsegment->ranges_count; i++) {
+    for(size_t i = 0; i < subsegment->ranges_count; i++) {
         printf("            level = %u, range_size = %u\n", subsegment->ranges[i].level,
                subsegment->ranges[i].range_size);
     }
@@ -1246,16 +1240,16 @@ uint64_t isobmff_ntohll(uint64_t num)
     return num2;
 }
 
-int validateEmsgMsg(unsigned char* buffer, int bufferSz, unsigned int segmentDuration)
+int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentDuration)
 {
     LOG_INFO("validateEmsgMsg\n");
 
-    int numBoxes;
+    size_t numBoxes;
     box_type_t* box_types;
     void** box_data;
     int* box_sizes;
 
-    int nReturnCode = readBoxes2(buffer, bufferSz, &numBoxes, &box_types, &box_data, &box_sizes);
+    int nReturnCode = readBoxes2(buffer, bufferSize, &numBoxes, &box_types, &box_data, &box_sizes);
     if(nReturnCode != 0) {
         LOG_ERROR("ERROR validating EMSG: Error reading boxes\n");
         return -1;
