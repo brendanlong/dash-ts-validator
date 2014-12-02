@@ -21,89 +21,88 @@
 
 typedef enum {
     BRAND_RISX = 0x72697378,
-    BRAND_SISX = 0x73697378
+    BRAND_SISX = 0x73697378,
+    BRAND_SSSS = 0x73737373
 } brand_t;
 
 // styp, sidx, pcrb, ssix
 
 typedef struct {
-    unsigned int size;
-    brand_t major_brand;
-    unsigned int minor_version;
-    unsigned int num_compatible_brands;
-    brand_t* compatible_brands;
-
+    uint32_t size;
+    uint32_t major_brand;
+    uint32_t minor_version;
+    size_t num_compatible_brands;
+    uint32_t* compatible_brands;
 } data_styp_t;
 
 typedef struct {
-    unsigned char reference_type;
-    unsigned int referenced_size;
-    unsigned int subsegment_duration;
-    unsigned char starts_with_SAP;
-    unsigned char SAP_type;
-    unsigned int SAP_delta_time;
+    uint8_t reference_type;
+    uint32_t referenced_size;
+    uint32_t subsegment_duration;
+    uint8_t starts_with_SAP;
+    uint8_t SAP_type;
+    uint32_t SAP_delta_time;
 
 } data_sidx_reference_t;
 
 typedef struct {
-    unsigned int size;
-    unsigned char version;
-    unsigned int flags;
-    unsigned int reference_ID;
-    unsigned int timescale;
+    uint32_t size;
+    uint8_t version;
+    uint32_t flags;
+    uint32_t reference_ID;
+    uint32_t timescale;
     uint64_t earliest_presentation_time;
     uint64_t first_offset;
 
-    unsigned short reserved;
-    unsigned short reference_count;
+    uint16_t reserved;
+    uint16_t reference_count;
     data_sidx_reference_t* references;
 
 } data_sidx_t;
 
 typedef struct {
-    unsigned char level;
-    unsigned int range_size;
+    uint8_t level;
+    uint32_t range_size;
 
 } data_ssix_subsegment_range_t;
 
 typedef struct {
-    unsigned int ranges_count;
+    uint32_t ranges_count;
     data_ssix_subsegment_range_t* ranges;
 
 } data_ssix_subsegment_t;
 
 typedef struct {
-    unsigned int size;
-    unsigned char version;
-    unsigned int flags;
-    unsigned int subsegment_count;
-
+    uint32_t size;
+    uint8_t version;
+    uint32_t flags;
+    uint32_t subsegment_count;
     data_ssix_subsegment_t* subsegments;
 
 } data_ssix_t;
 
 typedef struct {
-    unsigned int size;
-    unsigned char version;
-    unsigned int flags;
-    unsigned int reference_track_ID;
+    uint32_t size;
+    uint8_t version;
+    uint32_t flags;
+    uint32_t reference_track_ID;
     uint64_t ntp_timestamp;
     uint64_t media_time;
 
 } data_pcrb_t;
 
 typedef struct {
-    unsigned int size;
-    unsigned char version;
-    unsigned int flags;
+    uint32_t size;
+    uint8_t version;
+    uint32_t flags;
     char* scheme_id_uri;
     char* value;
-    unsigned int timescale;
-    unsigned int presentation_time_delta;
-    unsigned int event_duration;
-    unsigned int id;
-    unsigned char* message_data;
-    int message_data_sz;
+    uint32_t timescale;
+    uint32_t presentation_time_delta;
+    uint32_t event_duration;
+    uint32_t id;
+    uint8_t* message_data;
+    size_t message_data_size;
 
 } data_emsg_t;
 
@@ -149,10 +148,6 @@ void printSidxReference(data_sidx_reference_t* reference);
 void printSsixSubsegment(data_ssix_subsegment_t* subsegment);
 
 void convertUintToString(char* str, unsigned int uintStr);
-
-/* don't name this "ntohll" or it will cause build failures on platforms where
- * ntohll is a standard function */
-uint64_t isobmff_ntohll(uint64_t num);
 
 int getNumBoxes(unsigned char* buffer, int bufferSize, size_t* numBoxes);
 void printBoxes(size_t numBoxes, box_type_t* box_types, void** box_data);

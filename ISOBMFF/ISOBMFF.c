@@ -28,9 +28,58 @@
 #include "ISOBMFF.h"
 #include "log.h"
 
-#define ISOBMF_2BYTE_SZ 2
-#define ISOBMF_4BYTE_SZ 4
-#define ISOBMF_8BYTE_SZ 8
+static uint8_t readUint8(uint8_t** buffer)
+{
+    uint8_t result;
+    memcpy(&result, *buffer, sizeof(result));
+    *buffer += sizeof(result);
+    return result;
+}
+
+static uint16_t readUint16(uint8_t** buffer)
+{
+    uint16_t result;
+    memcpy(&result, *buffer, sizeof(result));
+    *buffer += sizeof(result);
+    return ntohs(result);
+}
+
+static uint32_t readUint24(uint8_t** buffer)
+{
+    uint32_t result;
+    memcpy(&result, *buffer, 3);
+    *buffer += 3;
+    return ntohl(result >> 8);
+}
+
+static uint32_t readUint32(uint8_t** buffer)
+{
+    uint32_t result;
+    memcpy(&result, *buffer, sizeof(result));
+    *buffer += sizeof(result);
+    return ntohl(result);
+}
+
+static uint64_t readUint64(uint8_t** buffer)
+{
+    uint64_t result;
+    memcpy(&result, *buffer, sizeof(result));
+    *buffer += sizeof(result);
+    return (((uint64_t)ntohl(result)) << 32) + (uint64_t)ntohl(
+                        result >> 32);
+}
+
+static char* readString(uint8_t** buffer, uint8_t* end)
+{
+    for(size_t i = 0; *buffer < end; ++i, ++(*buffer)) {
+        if ((*buffer)[i] == 0) {
+            char* result = malloc(i);
+            memcpy(result, *buffer, i);
+            return result;
+        }
+    }
+    return NULL;
+}
 
 void freeBoxes(size_t numBoxes, box_type_t* box_types, void** box_data)
 {
@@ -642,75 +691,46 @@ int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type
     *box_data_in = box_data;
     *box_sizes_in = box_sizes;
 
-    int index = 0;
-
     for(int i = 0; i < *numBoxes; i++) {
-        unsigned int size = 0;
-        unsigned int type = 0;
-        memcpy(&size, &(buffer[index]), ISOBMF_4BYTE_SZ);
-        index += ISOBMF_4BYTE_SZ;
-        size = ntohl(size);
-        box_sizes[i] = size;
-
-        memcpy(&type, &(buffer[index]), ISOBMF_4BYTE_SZ);
-        index += ISOBMF_4BYTE_SZ;
-        type = ntohl(type);
-        char strType[] = {0, 0, 0, 0, 0};
-        convertUintToString(strType, type);
+        uint32_t size = readUint32(&buffer);
+        box_types[i] = readUint32(&buffer);
 
         unsigned int boxBufferSize = size - 8;
 
-        if(strcmp(strType, "styp") == 0) {
-            data_styp_t* styp = malloc(sizeof(data_styp_t));
-            int nReturnCode = parseStyp(&(buffer[index]), boxBufferSize, styp);
-            if(nReturnCode != 0) {
-                LOG_ERROR("ERROR validating Index Segment: ERROR parsing styp box\n");
-                return -1;
-            }
-            box_types[i] = BOX_TYPE_STYP;
-            box_data[i] = (void*) styp;
-        } else if(strcmp(strType, "sidx") == 0) {
-            data_sidx_t* sidx = malloc(sizeof(data_sidx_t));
-            int nReturnCode = parseSidx(&(buffer[index]), boxBufferSize, sidx);
-            if(nReturnCode != 0) {
-                LOG_ERROR("ERROR validating Index Segment: ERROR parsing sidx box\n");
-                return -1;
-            }
-            box_types[i] = BOX_SIDX;
-            box_types[i] = BOX_TYPE_SIDX;
-            box_data[i] = (void*) sidx;
-        } else if(strcmp(strType, "pcrb") == 0) {
-            data_pcrb_t* pcrb = malloc(sizeof(data_pcrb_t));
-            int nReturnCode = parsePcrb(&(buffer[index]), boxBufferSize, pcrb);
-            if(nReturnCode != 0) {
-                LOG_ERROR("ERROR validating Index Segment: ERROR parsing pcrb box\n");
-                return -1;
-            }
-            box_types[i] = BOX_TYPE_PCRB;
-            box_data[i] = (void*) pcrb;
-        } else if(strcmp(strType, "ssix") == 0) {
-            data_ssix_t* ssix = malloc(sizeof(data_ssix_t));
-            int nReturnCode = parseSsix(&(buffer[index]), boxBufferSize, ssix);
-            if(nReturnCode != 0) {
-                LOG_ERROR("ERROR validating Index Segment: ERROR parsing ssix box\n");
-                return -1;
-            }
-            box_types[i] = BOX_TYPE_SSIX;
-            box_data[i] = (void*) ssix;
-        } else if(strcmp(strType, "emsg") == 0) {
-            data_emsg_t* emsg = malloc(sizeof(data_emsg_t));
-            int nReturnCode = parseEmsg(&(buffer[index]), boxBufferSize, emsg);
-            if(nReturnCode != 0) {
-                LOG_ERROR("ERROR validating EMSG: ERROR parsing emsg box\n");
-                return -1;
-            }
-            box_types[i] = BOX_TYPE_EMSG;
-            box_data[i] = (void*) emsg;
-        } else {
-            LOG_ERROR_ARGS("ERROR validating EMSG: Invalid box type found: %s\n", strType);
+        bool invalid = false;
+        int returnCode = -1;
+        switch(box_types[i]) {
+        case BOX_TYPE_STYP:
+            box_data[i] = malloc(sizeof(data_styp_t));
+            returnCode = parseStyp(buffer, boxBufferSize, (data_styp_t*)box_data[i]);
+            break;
+        case BOX_TYPE_SIDX:
+            box_data[i] = malloc(sizeof(data_sidx_t));
+            returnCode = parseSidx(buffer, boxBufferSize, (data_sidx_t*)box_data[i]);
+            break;
+        case BOX_TYPE_PCRB:
+            box_data[i] = malloc(sizeof(data_pcrb_t));
+            returnCode = parsePcrb(buffer, boxBufferSize, (data_pcrb_t*)box_data[i]);
+            break;
+        case BOX_TYPE_SSIX:
+            box_data[i] = malloc(sizeof(data_ssix_t));
+            returnCode = parseSsix(buffer, boxBufferSize, (data_ssix_t*)box_data[i]);
+            break;
+        case BOX_TYPE_EMSG:
+            box_data[i] = malloc(sizeof(data_emsg_t));
+            returnCode = parseEmsg(buffer, boxBufferSize, (data_emsg_t*)box_data[i]);
+            break;
+        default:
+            invalid = true;
+            break;
+        }
+        if(returnCode != 0) {
+            char strType[] = {0, 0, 0, 0, 0};
+            convertUintToString(strType, box_types[i]);
+            LOG_ERROR_ARGS("ERROR validating Index Segment: ERROR parsing %s box%s\n", strType, invalid ? " (unknown box type)" : "");
             return -1;
         }
-        index += boxBufferSize;
+        buffer += boxBufferSize;
     }
 
     return 0;
@@ -718,18 +738,60 @@ int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type
 
 int getNumBoxes(unsigned char* buffer, int bufferSize, size_t* numBoxes)
 {
-    int index = 0;
-
+    uint8_t* bufferEnd = buffer + bufferSize;
     *numBoxes = 0;
-    while(index < bufferSize) {
-        unsigned int size = 0;
-        memcpy(&size, &(buffer[index]), ISOBMF_4BYTE_SZ);
-        index += ISOBMF_4BYTE_SZ;
-
-        size = ntohl(size);
-        index += (size - 4);
+    while(buffer < bufferEnd) {
+        uint32_t size = readUint32(&buffer);
+        buffer += size - 4;
         (*numBoxes)++;
     }
+    return 0;
+}
+
+typedef struct {
+    uint32_t size;
+} box_t;
+
+int parseBox(uint8_t** buffer, int bufferSize, box_t* box)
+{
+    /*
+    aligned(8) class Box (unsigned int(32) boxtype, optional unsigned int(8)[16] extended_type) {
+        unsigned int(32) size;
+        unsigned int(32) type = boxtype;
+        if (size == 1) {
+            unsigned int(64) largesize;
+        } else if (size == 0) {
+            // box extends to end of file
+        }
+        if (boxtype == "uuid") {
+            unsigned int(8)[16] usertype = extended_type;
+        }
+    }
+    */
+    box->size = bufferSize + 8;
+    return 0;
+}
+
+typedef struct {
+    box_t box;
+    uint8_t version;
+    uint32_t flags;
+} fullbox_t;
+
+int parseFullBox(uint8_t** buffer, int bufferSize, fullbox_t* box)
+{
+    /*
+    aligned(8) class FullBox(unsigned int(32) boxtype, unsigned int(8) v, bit(24) f) extends Box(boxtype) {
+        unsigned int(8) version = v;
+        bit(24) flags = f;
+    }
+    */
+    int result = parseBox(buffer, bufferSize, (box_t*)box);
+    if (result != 0) {
+        return result;
+    }
+    box->version = readUint8(buffer);
+    box->flags = readUint24(buffer);
     return 0;
 }
 
@@ -739,27 +801,27 @@ void freeStyp(data_styp_t* styp)
     free(styp);
 }
 
-int parseStyp(unsigned char* buffer, int bufferSz, data_styp_t* styp)
+int parseStyp(unsigned char* buffer, int bufferSize, data_styp_t* styp)
 {
-    styp->size = bufferSz + 8;
-
-    memcpy(&(styp->major_brand), buffer, ISOBMF_4BYTE_SZ);
-    styp->major_brand = ntohl(styp->major_brand);
-
-    memcpy(&(styp->minor_version), buffer + ISOBMF_4BYTE_SZ, ISOBMF_4BYTE_SZ);
-    styp->minor_version = ntohl(styp->minor_version);
-
-    styp->num_compatible_brands = (bufferSz - 8) / ISOBMF_4BYTE_SZ;
+    /*
+    "A segment type has the same format as an 'ftyp' box [4.3], except that it takes the box type 'styp'."
+    aligned(8) class FileTypeBox extends Box(‘ftyp’) {
+        unsigned int(32) major_brand;
+        unsigned int(32) minor_version;
+        unsigned int(32) compatible_brands[];
+    }
+    */
+    styp->size = bufferSize + 8;
+    styp->major_brand = readUint32(&buffer);
+    styp->minor_version = readUint32(&buffer);
+    styp->num_compatible_brands = (bufferSize - 8) / 4;
 
     if(styp->num_compatible_brands != 0) {
-        styp->compatible_brands = (unsigned int*)malloc(styp->num_compatible_brands * sizeof(unsigned int));
+        styp->compatible_brands = malloc(styp->num_compatible_brands * sizeof(uint32_t));
         for(int i = 0; i < styp->num_compatible_brands; i++) {
-            unsigned int* compatible_brand_temp = styp->compatible_brands + ISOBMF_4BYTE_SZ * i;
-            memcpy(compatible_brand_temp, buffer + 8 + ISOBMF_4BYTE_SZ * i, ISOBMF_4BYTE_SZ);
-            *compatible_brand_temp = ntohl(*compatible_brand_temp);
+            styp->compatible_brands[i] = readUint32(&buffer);
         }
     }
-
     return 0;
 }
 
@@ -769,126 +831,60 @@ void freeSidx(data_sidx_t* sidx)
     free(sidx);
 }
 
-int parseSidx(unsigned char* buffer, int bufferSz, data_sidx_t* sidx)
+int parseSidx(unsigned char* buffer, int bufferSize, data_sidx_t* sidx)
 {
     /*
-    aligned(8) class Box (unsigned int(32) boxtype, optional unsigned int(8)[16] extended_type)
-    {
-    unsigned int(32) size;
-    unsigned int(32) type = boxtype;
-    if (size==1) {
-      unsigned int(64) largesize;
-    }
-    else if (size==0) {
-      // box extends to end of file
-    }
-    if (boxtype=="uuid") {
-      unsigned int(8)[16] usertype = extended_type;
-    }
-    }
-
-
-    aligned(8) class FullBox(unsigned int(32) boxtype, unsigned int(8) v, bit(24) f) extends Box(boxtype) {
-    unsigned int(8) version = v;
-    bit(24) flags = f;
-    }
-
-
     aligned(8) class SegmentIndexBox extends FullBox("sidx", version, 0) {
-    unsigned int(32) reference_ID;
-    unsigned int(32) timescale;
-    if (version==0) {
-      unsigned int(32) earliest_presentation_time;
-      unsigned int(32) first_offset;
-    }
-    else {
-      unsigned int(64) earliest_presentation_time;
-      unsigned int(64) first_offset;
-    }
-    unsigned int(16) reserved = 0;
-    unsigned int(16) reference_count;
-    for(i=1; i <= reference_count; i++)
-    {
-      bit (1) reference_type;
-      unsigned int(31) referenced_size;
-      unsigned int(32) subsegment_duration;
-      bit(1) starts_with_SAP;
-      unsigned int(3) SAP_type;
-      unsigned int(28) SAP_delta_time;
-    }
+        unsigned int(32) reference_ID;
+        unsigned int(32) timescale;
+        if (version == 0) {
+            unsigned int(32) earliest_presentation_time;
+            unsigned int(32) first_offset;
+        } else {
+            unsigned int(64) earliest_presentation_time;
+            unsigned int(64) first_offset;
+        }
+        unsigned int(16) reserved = 0;
+        unsigned int(16) reference_count;
+        for(i = 1; i <= reference_count; i++) {
+            bit (1) reference_type;
+            unsigned int(31) referenced_size;
+            unsigned int(32) subsegment_duration;
+            bit(1) starts_with_SAP;
+            unsigned int(3) SAP_type;
+            unsigned int(28) SAP_delta_time;
+        }
     }
     */
-    sidx->size = bufferSz + 8;
-    int index = 0;
-    sidx->version = buffer[index];
-    index++;
+    int result = parseFullBox(&buffer, bufferSize, (fullbox_t*)sidx);
+    if(result != 0) {
+        return result;
+    }
 
-    memcpy(&(sidx->flags), buffer + index, 3);
-    sidx->flags = ntohl(sidx->flags >> 8);
-    index += 3;
-
-    memcpy(&(sidx->reference_ID), buffer + index, ISOBMF_4BYTE_SZ);
-    sidx->reference_ID = ntohl(sidx->reference_ID);
-    index += ISOBMF_4BYTE_SZ;
-
-    memcpy(&(sidx->timescale), buffer + index, ISOBMF_4BYTE_SZ);
-    sidx->timescale = ntohl(sidx->timescale);
-    index += ISOBMF_4BYTE_SZ;
+    sidx->reference_ID = readUint32(&buffer);
+    sidx->timescale = readUint32(&buffer);
 
     if(sidx->version == 0) {
-        unsigned int earliest_presentation_time;
-        memcpy(&earliest_presentation_time, buffer + index, ISOBMF_4BYTE_SZ);
-        sidx->earliest_presentation_time = ntohl(earliest_presentation_time);
-        index += ISOBMF_4BYTE_SZ;
-
-        unsigned int first_offset;
-        memcpy(&first_offset, buffer + index, ISOBMF_4BYTE_SZ);
-        sidx->first_offset = ntohl(first_offset);
-        index += ISOBMF_4BYTE_SZ;
+        sidx->earliest_presentation_time = readUint32(&buffer);
+        sidx->first_offset = readUint32(&buffer);
     } else {
-        memcpy(&(sidx->earliest_presentation_time), buffer + index, ISOBMF_8BYTE_SZ);
-        sidx->earliest_presentation_time = isobmff_ntohll(sidx->earliest_presentation_time);
-        index += ISOBMF_8BYTE_SZ;
-
-        memcpy(&(sidx->first_offset), buffer + index, ISOBMF_8BYTE_SZ);
-        sidx->first_offset = isobmff_ntohll(sidx->first_offset);
-        index += ISOBMF_8BYTE_SZ;
+        sidx->earliest_presentation_time = readUint64(&buffer);
+        sidx->first_offset = readUint64(&buffer);
     }
 
-    memcpy(&(sidx->reserved), buffer + index, ISOBMF_2BYTE_SZ);
-    sidx->reserved = ntohs(sidx->reserved);
-    index += ISOBMF_2BYTE_SZ;
+    sidx->reserved = readUint16(&buffer);
+    sidx->reference_count = readUint16(&buffer);
 
-    memcpy(&(sidx->reference_count), buffer + index, ISOBMF_2BYTE_SZ);
-    sidx->reference_count = ntohs(sidx->reference_count);
-    index += ISOBMF_2BYTE_SZ;
-
-    sidx->references = (data_sidx_reference_t*) malloc(sidx->reference_count * sizeof(
+    sidx->references = malloc(sidx->reference_count * sizeof(
                            data_sidx_reference_t));
-
-    for(int i = 0; i < sidx->reference_count; i++) {
-        sidx->references[i].reference_type = buffer[index] >> 7;
-        memcpy(&(sidx->references[i].referenced_size), buffer + index, ISOBMF_4BYTE_SZ);
-        index += ISOBMF_4BYTE_SZ;
-        sidx->references[i].referenced_size = ntohl(sidx->references[i].referenced_size);
-        //      printf ("RAW referenced_size = %x\n", sidx->references[i].referenced_size);
-
-        sidx->references[i].referenced_size = sidx->references[i].referenced_size & 0x7fffffff;
-
-        memcpy(&(sidx->references[i].subsegment_duration), buffer + index, ISOBMF_4BYTE_SZ);
-        index += ISOBMF_4BYTE_SZ;
-        sidx->references[i].subsegment_duration = ntohl(sidx->references[i].subsegment_duration);
-
-        sidx->references[i].starts_with_SAP = ((buffer[index]) >> 7);
-        sidx->references[i].SAP_type = ((buffer[index] >> 4) & 0x7);
-        memcpy(&(sidx->references[i].SAP_delta_time), buffer + index, ISOBMF_4BYTE_SZ);
-        index += ISOBMF_4BYTE_SZ;
-        sidx->references[i].SAP_delta_time = ntohl(sidx->references[i].SAP_delta_time);
-        //      printf ("RAW SAP_delta_time = %x\n", sidx->references[i].SAP_delta_time);
-
-        sidx->references[i].SAP_delta_time = sidx->references[i].SAP_delta_time & 0x0fffffff;
+    for(size_t i = 0; i < sidx->reference_count; i++) {
+        sidx->references[i].reference_type = (*buffer) >> 7;
+        sidx->references[i].referenced_size = readUint32(&buffer) & 0x7fffffff;
+        sidx->references[i].subsegment_duration = readUint32(&buffer);
+        sidx->references[i].starts_with_SAP = ((*buffer) >> 7);
+        sidx->references[i].SAP_type = ((*buffer) >> 4) & 0x7;
+        sidx->references[i].SAP_delta_time = readUint32(&buffer) & 0x0fffffff;
     }
-
     return 0;
 }
 
@@ -897,52 +893,33 @@ void freePcrb(data_pcrb_t* pcrb)
     free(pcrb);
 }
 
-int parsePcrb(unsigned char* buffer, int bufferSz, data_pcrb_t* pcrb)
+int parsePcrb(unsigned char* buffer, int bufferSize, data_pcrb_t* pcrb)
 {
     /*
     aligned(8) class ProducerReferenceTimeBox extends FullBox("prft", version, 0)
     {
         unsigned int(32) reference_track_ID;
         unsigned int(64) ntp_timestamp;
-        if (version==0)
-        {
+        if (version == 0) {
             unsigned int(32) media_time;
-        }
-        else
-        {
+        } else {
             unsigned int(64) media_time;
         }
     }
     */
-    pcrb->size = bufferSz + 8;
-
-    int index = 0;
-    pcrb->version = buffer[index];
-    index++;
-
-    memcpy(&(pcrb->flags), buffer + index, 3);
-    pcrb->flags = ntohl(pcrb->flags);
-    index += 3;
-
-    memcpy(&(pcrb->reference_track_ID), buffer + index, ISOBMF_4BYTE_SZ);
-    pcrb->reference_track_ID = ntohl(pcrb->reference_track_ID);
-    index += ISOBMF_4BYTE_SZ;
-
-    memcpy(&(pcrb->ntp_timestamp), buffer + index, ISOBMF_8BYTE_SZ);
-    pcrb->ntp_timestamp = isobmff_ntohll(pcrb->ntp_timestamp);
-    index += ISOBMF_8BYTE_SZ;
-
-    if(pcrb->version == 0) {
-        unsigned int media_time;
-        memcpy(&media_time, buffer + index, ISOBMF_4BYTE_SZ);
-        index += ISOBMF_4BYTE_SZ;
-        pcrb->media_time = ntohl(media_time);
-    } else {
-        memcpy(&(pcrb->media_time), buffer + index, ISOBMF_8BYTE_SZ);
-        pcrb->media_time = isobmff_ntohll(pcrb->media_time);
-        index += ISOBMF_8BYTE_SZ;
+    int result = parseFullBox(&buffer, bufferSize, (fullbox_t*)pcrb);
+    if (result != 0) {
+        return result;
     }
 
+    pcrb->reference_track_ID = readUint32(&buffer);
+    pcrb->ntp_timestamp = readUint64(&buffer);
+
+    if(pcrb->version == 0) {
+        pcrb->media_time = readUint32(&buffer);
+    } else {
+        pcrb->media_time = readUint64(&buffer);
+    }
     return 0;
 }
 
@@ -964,15 +941,15 @@ void freeEmsg(data_emsg_t* emsg)
     free(emsg);
 }
 
-int parseSsix(unsigned char* buffer, int bufferSz, data_ssix_t* ssix)
+int parseSsix(unsigned char* buffer, int bufferSize, data_ssix_t* ssix)
 {
     /*
     aligned(8) class SubsegmentIndexBox extends FullBox("ssix", 0, 0) {
        unsigned int(32) subsegment_count;
-       for( i=1; i <= subsegment_count; i++)
+       for(i = 1; i <= subsegment_count; i++)
        {
           unsigned int(32) ranges_count;
-          for ( j=1; j <= range_count; j++)
+          for (j = 1; j <= range_count; j++)
           {
              unsigned int(8) level;
              unsigned int(24) range_size;
@@ -980,47 +957,29 @@ int parseSsix(unsigned char* buffer, int bufferSz, data_ssix_t* ssix)
        }
     }
     */
-    ssix->size = bufferSz + 8;
-
-    int index = 0;
-    ssix->version = buffer[index];
-    index++;
-
-    memcpy(&(ssix->flags), buffer + index, 3);
-    ssix->flags = (ntohl(ssix->flags) >> 8);
-    index += 3;
-
-    memcpy(&(ssix->subsegment_count), buffer + index, ISOBMF_4BYTE_SZ);
-    ssix->subsegment_count = ntohl(ssix->subsegment_count);
-    index += ISOBMF_4BYTE_SZ;
-
-    ssix->subsegments = (data_ssix_subsegment_t*) malloc(ssix->subsegment_count * sizeof(
-                            data_ssix_subsegment_t));
-
-    for(int i = 0; i < ssix->subsegment_count; i++) {
-        memcpy(&(ssix->subsegments[i].ranges_count), buffer + index, ISOBMF_4BYTE_SZ);
-        ssix->subsegments[i].ranges_count = ntohl(ssix->subsegments[i].ranges_count);
-        index += ISOBMF_4BYTE_SZ;
-
-        ssix->subsegments[i].ranges = (data_ssix_subsegment_range_t*) malloc(
-                                          ssix->subsegments[i].ranges_count *
-                                          sizeof(data_ssix_subsegment_range_t));
-
-        for(int ii = 0; ii < ssix->subsegments[i].ranges_count; ii++) {
-            ssix->subsegments[i].ranges[ii].level = buffer[index];
-            index++;
-
-            memcpy(&(ssix->subsegments[i].ranges[ii].range_size), buffer + index, 3);
-            index += 3;
-            ssix->subsegments[i].ranges[ii].range_size = (ntohl(ssix->subsegments[i].ranges[ii].range_size) >>
-                    8);
-        }
+    int result = parseFullBox(&buffer, bufferSize, (fullbox_t*)ssix);
+    if(result != 0) {
+        return result;
     }
 
+    ssix->subsegment_count = readUint32(&buffer);
+    ssix->subsegments = malloc(ssix->subsegment_count * sizeof(
+                            data_ssix_subsegment_t));
+
+    for(size_t i = 0; i < ssix->subsegment_count; i++) {
+        ssix->subsegments[i].ranges_count = readUint32(&buffer);
+        ssix->subsegments[i].ranges = malloc(
+                                          ssix->subsegments[i].ranges_count *
+                                          sizeof(data_ssix_subsegment_range_t));
+        for(size_t ii = 0; ii < ssix->subsegments[i].ranges_count; ii++) {
+            ssix->subsegments[i].ranges[ii].level = readUint8(&buffer);
+            ssix->subsegments[i].ranges[ii].range_size = readUint24(&buffer);
+        }
+    }
     return 0;
 }
 
-int parseEmsg(unsigned char* buffer, int bufferSz, data_emsg_t* emsg)
+int parseEmsg(unsigned char* buffer, int bufferSize, data_emsg_t* emsg)
 {
     /*
     aligned(8) class DASHEventMessageBox extends FullBox("emsg", version = 0, flags = 0)
@@ -1034,72 +993,34 @@ int parseEmsg(unsigned char* buffer, int bufferSz, data_emsg_t* emsg)
         unsigned int(8) message_data[];
     }
     */
-    int index = 0;
-    emsg->size = bufferSz + 8;
-
-    emsg->version = buffer[index];
-    index++;
-
-    memcpy(&(emsg->flags), buffer + index, 3);
-    emsg->flags = ntohl(emsg->flags >> 8);
-    index += 3;
-
-    // look for null in buffer
-    int i = index;
-    int nullFound = 0;
-    while(i < bufferSz) {
-        if(buffer[i++] == 0) {
-            nullFound = 1;
-            break;
-        }
+    uint8_t* bufferEnd = buffer + bufferSize;
+    int result = parseFullBox(&buffer, bufferSize, (fullbox_t*)emsg);
+    if(result != 0) {
+        return result;
     }
-    if(!nullFound) {
+
+    emsg->scheme_id_uri = readString(&buffer, bufferEnd);
+    if(emsg->scheme_id_uri == NULL) {
         LOG_ERROR("ERROR validating EMSG: Null terminator for scheme_id_uri not found in parseEmsg\n");
         return -1;
     }
-    emsg->scheme_id_uri = (char*) malloc(i - index);
-    memcpy(emsg->scheme_id_uri, buffer + index, i - index);
-    index = i;
 
-    // look for null in buffer
-    i = index;
-    nullFound = 0;
-    while(i < bufferSz) {
-        if(buffer[i++] == 0) {
-            nullFound = 1;
-            break;
-        }
-    }
-    if(!nullFound) {
+    emsg->value = readString(&buffer, bufferEnd);
+    if(emsg->scheme_id_uri == NULL) {
         LOG_ERROR("ERROR validating EMSG: Null terminator for value not found in parseEmsg\n");
         return -1;
     }
-    emsg->value = (char*) malloc(i - index);
-    memcpy(emsg->value, buffer + index, i - index);
-    index = i;
 
-    memcpy(&(emsg->timescale), buffer + index, ISOBMF_4BYTE_SZ);
-    emsg->timescale = ntohl(emsg->timescale);
-    index += ISOBMF_4BYTE_SZ;
+    emsg->timescale = readUint32(&buffer);
+    emsg->presentation_time_delta = readUint32(&buffer);
+    emsg->event_duration = readUint32(&buffer);
+    emsg->id = readUint32(&buffer);
 
-    memcpy(&(emsg->presentation_time_delta), buffer + index, ISOBMF_4BYTE_SZ);
-    emsg->presentation_time_delta = ntohl(emsg->presentation_time_delta);
-    index += ISOBMF_4BYTE_SZ;
-
-    memcpy(&(emsg->event_duration), buffer + index, ISOBMF_4BYTE_SZ);
-    emsg->event_duration = ntohl(emsg->event_duration);
-    index += ISOBMF_4BYTE_SZ;
-
-    memcpy(&(emsg->id), buffer + index, ISOBMF_4BYTE_SZ);
-    emsg->id = ntohl(emsg->id);
-    index += ISOBMF_4BYTE_SZ;
-
-    unsigned char* message_data;
-    emsg->message_data_sz = bufferSz - index;
-    if(emsg->message_data_sz != 0) {
-        emsg->message_data = (unsigned char*) malloc(emsg->message_data_sz);
-        memcpy(emsg->message_data, buffer + index, emsg->message_data_sz);
-        index += emsg->message_data_sz;
+    emsg->message_data_size = bufferEnd - buffer;
+    if(emsg->message_data_size != 0) {
+        emsg->message_data = malloc(emsg->message_data_size);
+        memcpy(emsg->message_data, buffer, emsg->message_data_size);
+        buffer += emsg->message_data_size;
     }
 
     return 0;
@@ -1231,13 +1152,6 @@ void convertUintToString(char* str, unsigned int uintStr)
     str[1] = (uintStr >> 16) & 0xff;
     str[2] = (uintStr >>  8) & 0xff;
     str[3] = (uintStr >>  0) & 0xff;
-}
-
-uint64_t isobmff_ntohll(uint64_t num)
-{
-    uint64_t num2 = (((uint64_t)ntohl((unsigned int)num)) << 32) + (uint64_t)ntohl((unsigned int)(
-                        num >> 32));
-    return num2;
 }
 
 int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentDuration)
