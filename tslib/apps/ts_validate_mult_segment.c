@@ -83,7 +83,6 @@ static void usage(char* name)
             options);
 }
 
-
 int main(int argc, char* argv[])
 {
     int c, long_options_index;
@@ -97,7 +96,6 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-
     while((c = getopt_long(argc, argv, "vd::h", long_options, &long_options_index)) != -1) {
         switch(c) {
         case 'd':
@@ -106,8 +104,7 @@ int main(int argc, char* argv[])
                 if(!strcmp(optarg, "simple")) {
                     conformance_level |= TS_TEST_SIMPLE;
                     conformance_level |= TS_TEST_MAIN;
-                }
-                if(!strcmp(optarg, "main")) {
+                } else if(!strcmp(optarg, "main")) {
                     conformance_level |= TS_TEST_MAIN;
                 }
             }
