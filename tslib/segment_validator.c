@@ -19,7 +19,7 @@ int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
         return 0;
     }
 
-    if(g_p_dash_validator->use_initializaion_segment) {
+    if(g_p_dash_validator->use_initialization_segment) {
         LOG_ERROR("DASH Conformance: No PAT allowed if initialization segment is used");
         g_p_dash_validator->status = 0;
         return 0;
@@ -72,7 +72,7 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         return 0;
     }
 
-    if(g_p_dash_validator->use_initializaion_segment) {
+    if(g_p_dash_validator->use_initialization_segment) {
         LOG_ERROR("DASH Conformance: No PMT allowed if initialization segment is used");
         g_p_dash_validator->status = 0;
         return 0;

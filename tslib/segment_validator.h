@@ -2,6 +2,7 @@
 
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <assert.h>
@@ -72,7 +73,7 @@ typedef struct {
     int status; // 0 == fail
     uint32_t psi_tables_seen;
     segment_type_t segment_type;
-    int use_initializaion_segment;
+    bool use_initialization_segment;
     program_map_section_t* initializaion_segment_pmt;      /// parsed PMT
 } dash_validator_t;
 

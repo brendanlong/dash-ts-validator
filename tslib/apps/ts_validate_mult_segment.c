@@ -257,7 +257,7 @@ int main(int argc, char* argv[])
             data_segment_iframes_t* pIFramesTemp = pIFrames + arrayIndex;
 
             if(strlen(initializationSegment) != 0) {
-                dash_validator[arrayIndex].use_initializaion_segment = 1;
+                dash_validator[arrayIndex].use_initialization_segment = true;
 
                 returnCode = doSegmentValidation(&(dash_validator[arrayIndex]), segFileName,
                                                  dash_validator_init_segment, pIFramesTemp, segDurations[segIndex]);
