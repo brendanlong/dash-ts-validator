@@ -1,8 +1,6 @@
-
 /*
 ** Copyright (C) 2014  Cable Television Laboratories, Inc.
 ** Contact: http://www.cablelabs.com/
-
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -15,25 +13,20 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
 #include <unistd.h>
+#include <libxml/parser.h>
 #include "log.h"
 
 #include "segment_validator.h"
 #include "ISOBMFF.h"
+#include "mpd.h"
+
 
 #define SEGMENT_FILE_NAME_MAX_LENGTH    512
-#define SEGMENT_FILE_NUM_HEADER_LINES    8
 
-
-int getNumRepresentations(char* fname, int* numRepresentations, int* numSegments);
-void parseSegInfoFileLine(char* line, char* segFileNames, int segNum, int numSegments);
-void parseRepresentationIndexFileLine(char* line, char* representationIndexFileNames,
-                                      int numRepresentations);
 
 void printAudioGapMatrix(int numRepresentations, int numSegments, int64_t* lastVideoEndTime,
                          int64_t* actualVideoStartTime,
@@ -51,19 +44,8 @@ void printAudioTimingMatrix(char* segFileNames, int64_t* actualAudioStartTime,
                             int64_t* expectedStartTime, int64_t* expectedEndTime, int numSegments, int numRepresentations,
                             int repNum);
 
-int getArrayIndex(int repNum, int segNum, int numSegments);
-
-int readIntFromSegInfoFile(FILE* segInfoFile, char* paramName, int* paramValue);
-int readStringFromSegInfoFile(FILE* segInfoFile, char* paramName, char* paramValue);
-int readSegInfoFile(char* fname, int* numRepresentations, int* numSegments, char** segFileNames,
-                    int** segDurations,
-                    int* expectedSAPType, int* maxVideoGapPTSTicks, int* maxAudioGapPTSTicks,
-                    char* initializationSegment, char** representationIndexFileNames, char** segmentIndexFileNames,
-                    int* presentationTimeOffset, int* videoPID);
-char* trimWhitespace(char* string);
-
 int checkPSIIdentical(dash_validator_t* dash_validator, int numDashValidators);
-
+int getArrayIndex(int repNum, int segNum, int numSegments);
 
 static struct option long_options[] = {
     { "verbose",	   no_argument,        NULL, 'v' },
@@ -122,8 +104,8 @@ int main(int argc, char* argv[])
     }
 
     // read segment_info file (tab-delimited) which lists segment file paths
-    char* fname = argv[optind];
-    if(fname == NULL || fname[0] == 0) {
+    char* file_name = argv[optind];
+    if(file_name == NULL || file_name[0] == 0) {
         LOG_ERROR("No segment_info file provided");
         usage(argv[0]);
         return 1;
@@ -131,63 +113,16 @@ int main(int argc, char* argv[])
 
     // for all the 2D arrays in the following, see getArrayIndex for array ordering
     int overallStatus = 1;    // overall pass/fail, with 1=PASS, 0=FAIL
-    int numRepresentations;     // number of representations (one per bitrate) in the adaptation set
-    int numSegments;            // number of segments in each representation
-    char* segFileNames =
-        NULL;  // contains numRepresentations*numSegments media filepaths (relative to exe)
-    int* segDurations =
-        NULL;   // contains numSegments durations -- each representation has same durations
-    int expectedSAPType =
-        0;    // the SAP type expected at start of each segment -- if 0, then not tested
-    int maxVideoGapPTSTicks =
-        0;    // allowable gap in video stream between segments (in units of PTS ticks)
-    int maxAudioGapPTSTicks =
-        0;    // allowable gap in video stream between segments (in units of PTS ticks)
-    char initializationSegment[SEGMENT_FILE_NAME_MAX_LENGTH];  // intialization segment file path, if present
-    initializationSegment[0] = 0;
-    int presentationTimeOffset = 0; // starting time for segment 0 (in units of PTS ticks)
-    char* representationIndexFileNames =
-        NULL;     // if present, contains numRepresentations index-file filepaths, one per representation.
-    char* segmentIndexFileNames =
-        NULL;     // if present, contains numRepresentations*numSegments index-file filepaths, one per segment/representation
-    int videoPID = -1;  // PID of video stream in media segments
 
-    // first step: read input file and get all test parameters
-    if(readSegInfoFile(fname, &numRepresentations, &numSegments, &segFileNames, &segDurations,
-                       &expectedSAPType, &maxVideoGapPTSTicks, &maxAudioGapPTSTicks, initializationSegment,
-                       &representationIndexFileNames, &segmentIndexFileNames, &presentationTimeOffset, &videoPID) != 0) {
-        return 1;
+    int returnCode = 0;
+    mpd_t* mpd = read_mpd(file_name);
+    if (mpd == NULL) {
+        goto cleanup;
     }
 
-    // allocate memory for all the arrays -- see GetArrayIndex for array ordering
-
-    dash_validator_t* dash_validator = calloc(numRepresentations * numSegments,
-                                       sizeof(dash_validator_t));
-    dash_validator_t* dash_validator_init_segment = calloc(1, sizeof(dash_validator_t));
-    dash_validator_init_segment->segment_type = INITIALIZATION_SEGMENT;
-
-    int64_t* expectedStartTime = calloc(numRepresentations * numSegments, sizeof(int64_t));
-    int64_t* expectedEndTime = calloc(numRepresentations * numSegments, sizeof(int64_t));
-    int64_t* expectedDuration = calloc(numRepresentations * numSegments, sizeof(int64_t));
-
-    int64_t* actualAudioStartTime = calloc(numRepresentations * numSegments, sizeof(int64_t));
-    int64_t* actualVideoStartTime = calloc(numRepresentations * numSegments, sizeof(int64_t));
-    int64_t* actualAudioEndTime = calloc(numRepresentations * numSegments, sizeof(int64_t));
-    int64_t* actualVideoEndTime = calloc(numRepresentations * numSegments, sizeof(int64_t));
-
-    int64_t* lastAudioEndTime = calloc(numRepresentations * (numSegments + 1), sizeof(int64_t));
-    int64_t* lastVideoEndTime = calloc(numRepresentations * (numSegments + 1), sizeof(int64_t));
-
-    data_segment_iframes_t* pIFrames = calloc(numSegments * numRepresentations,
-                                       sizeof(data_segment_iframes_t));
-
-
+    /*
     char* content_component_table[NUM_CONTENT_COMPONENTS] =
     { "<unknown>", "video", "audio" };
-
-    ///////////////////////////////////
-
-    int returnCode;
 
     // if there is an initialization segment, process it first in order to get the PAT and PMT tables
     if(strlen(initializationSegment) != 0) {
@@ -201,14 +136,47 @@ int main(int argc, char* argv[])
             overallStatus = 0;
         }
     }
+    */
 
     // next process index files, either representation index files or single segment index files
     // the index files contain iFrame locations which are stored here and then validated when the actual
     // media segments are processed later
 
+    for (size_t p_i = 0; p_i < mpd->periods->length; ++p_i) {
+        period_t* period = varray_get(mpd->periods, p_i);
+        for (size_t a_i = 0; a_i < period->adaptation_sets->length; ++a_i) {
+            adaptation_set_t* adaptation_set = varray_get(period->adaptation_sets, a_i);
+            for (size_t r_i = 0; r_i < adaptation_set->representations->length; ++r_i) {
+                representation_t* representation = varray_get(adaptation_set->representations, r_i);
+                if (representation->index_file_name == NULL) {
+                    continue;
+                }
+                int* segment_durations = malloc(sizeof(int) * representation->segments->length);
+                uint64_t first_segment_start = 0;
+                for (size_t s_i = 0; s_i < representation->segments->length; ++s_i) {
+                    segment_t* segment = varray_get(representation->segments, s_i);
+                    if (s_i == 0) {
+                        first_segment_start = segment->start;
+                    }
+                    segment_durations[s_i] = segment->duration;
+                }
+                if (validateIndexSegment(representation->index_file_name,
+                        representation->segments->length, segment_durations,
+                        representation->segment_iframes, representation->presentation_time_offset + first_segment_start,
+                        adaptation_set->video_pid,
+                        conformance_level & TS_TEST_SIMPLE) != 0) {
+                    LOG_ERROR_ARGS("Validation of RepresentationIndex %s FAILED", PRINT_STR(representation->index_file_name));
+                    overallStatus = 0;
+                }
+                free(segment_durations);
+            }
+        }
+    }
+
+    /*
     if(strlen(&(representationIndexFileNames[0])) != 0) {
         for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-            data_segment_iframes_t* pIFramesTemp = pIFrames + getArrayIndex(repIndex, 0 /* segIndex */,
+            data_segment_iframes_t* pIFramesTemp = pIFrames + getArrayIndex(repIndex, 0 ,
                                                    numSegments);
             if(validateIndexSegment(representationIndexFileNames + repIndex * SEGMENT_FILE_NAME_MAX_LENGTH,
                                     numSegments, segDurations, pIFramesTemp, presentationTimeOffset, videoPID,
@@ -267,7 +235,7 @@ int main(int argc, char* argv[])
             }
 
             if(returnCode != 0) {
-                return returnCode;
+                goto cleanup;
             }
 
             // GORP: what if there is no video in the segment??
@@ -429,108 +397,18 @@ int main(int argc, char* argv[])
     // get overall pass/fail status: 1=PASS, 0=FAIL
     for(int i = 0; i < numRepresentations * numSegments; i++) {
         overallStatus = overallStatus && dash_validator[i].status;
-    }
-    LOG_INFO_ARGS("\nOVERALL TEST RESULT: %s", (overallStatus == 1) ? "PASS" : "FAIL");
+    }*/
+    LOG_INFO_ARGS("\nOVERALL TEST RESULT: %s", overallStatus ? "PASS" : "FAIL");
+
+cleanup:
+    mpd_free(mpd);
+    xmlCleanupParser();
+    return returnCode;
 }
 
 int getArrayIndex(int repNum, int segNum, int numSegments)
 {
     return (segNum + repNum * numSegments);
-}
-
-void parseSegInfoFileLine(char* line, char* segFileNames, int segNum, int numSegments)
-{
-    if(strlen(line) == 0) {
-        return;
-    }
-
-    char* pch = strtok(line, ",\r\n");
-    int repNum = 0;
-
-    while(pch != NULL) {
-        int arrayIndex = getArrayIndex(repNum, segNum, numSegments);
-
-        sscanf(pch, "%s", segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH);
-        LOG_INFO_ARGS("fileNames[%d][%d] = %s", segNum, repNum,
-                      segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH);
-        pch = strtok(NULL, ",\r\n");
-        repNum++;
-    }
-}
-
-void parseRepresentationIndexFileLine(char* line, char* representationIndexFileNames,
-                                      int numRepresentations)
-{
-    int repIndex = 0;
-
-    if(strlen(line) == 0) {
-        return;
-    }
-
-    char* pch = strtok(line, ",\r\n");
-    while(pch != NULL) {
-        sscanf(pch, "%s", representationIndexFileNames + repIndex * SEGMENT_FILE_NAME_MAX_LENGTH);
-        pch = strtok(NULL, ",\r\n");
-        repIndex++;
-    }
-}
-
-int getNumRepresentations(char* fname, int* numRepresentations, int* numSegments)
-{
-    char line[SEGMENT_FILE_NAME_MAX_LENGTH];
-    FILE* segInfoFile = fopen(fname, "r");
-    if(!segInfoFile) {
-        LOG_ERROR_ARGS("Couldn't open segInfoFile %s\n", fname);
-        return -1;
-    }
-
-    *numSegments = 0;
-    while(1) {
-        if(fgets(line, sizeof(line), segInfoFile) == NULL) {
-            if(feof(segInfoFile) != 0) {
-                break;
-            } else {
-                LOG_ERROR_ARGS("ERROR: cannot read line from SegInfoFile %s\n", fname);
-                return -1;
-            }
-        }
-
-        if(strncmp("Segment.", line, strlen("Segment.")) == 0) {
-            int segmentIndex = 0;
-            char* temp1 = strchr(line, '.');
-            char* temp2 = strchr(line, '=');
-
-            // parse to get num reps
-            char* temp3 = temp2;
-            *numRepresentations = 1;
-            while(1) {
-                char* temp4 = strchr(temp3, ',');
-                if(temp4 == NULL) {
-                    break;
-                }
-
-                temp3 = temp4 + 1;
-                (*numRepresentations)++;
-            }
-
-            temp2 = 0;  // terminate string
-            if(sscanf(temp1 + 1, "%d", &segmentIndex) != 1) {
-                LOG_ERROR("ERROR parsing segment index\n");
-                return -1;
-            }
-
-            if(segmentIndex > (*numSegments)) {
-                *numSegments = segmentIndex;
-            }
-        }
-    }
-
-    fclose(segInfoFile);
-
-    LOG_INFO_ARGS("NumRepresentations = %d", *numRepresentations);
-    LOG_INFO_ARGS("NumSegments = %d", *numSegments);
-
-    return 0;
 }
 
 void printAudioGapMatrix(int numRepresentations, int numSegments, int64_t* lastAudioEndTime,
@@ -642,242 +520,6 @@ void printAudioTimingMatrix(char* segFileNames, int64_t* actualAudioStartTime,
                actualAudioStartTime[arrayIndex] - expectedStartTime[arrayIndex],
                actualAudioEndTime[arrayIndex] - expectedEndTime[arrayIndex]);
     }
-}
-
-int readSegInfoFile(char* fname, int* numRepresentations, int* numSegments, char** segFileNames,
-                    int** segDurations,
-                    int* expectedSAPType, int* maxVideoGapPTSTicks, int* maxAudioGapPTSTicks,
-                    char* initializationSegment, char** representationIndexFileNames, char** segmentIndexFileNames,
-                    int* presentationTimeOffset, int* videoPID)
-{
-    char representationIndexSegmentString[1024];
-
-    if(getNumRepresentations(fname, numRepresentations, numSegments) < 0) {
-        LOG_ERROR("Error reading segment_info file");
-        return -1;
-    }
-
-    FILE* segInfoFile = fopen(fname, "r");
-    if(!segInfoFile) {
-        LOG_ERROR_ARGS("Couldn't open segInfoFile %s\n", fname);
-        return 0;
-    }
-
-    char line[SEGMENT_FILE_NAME_MAX_LENGTH];
-    *segFileNames = (char*)calloc((*numRepresentations) * (*numSegments), SEGMENT_FILE_NAME_MAX_LENGTH);
-    *segDurations = (int*)calloc(*numSegments, sizeof(int));
-    *representationIndexFileNames = calloc(*numRepresentations, SEGMENT_FILE_NAME_MAX_LENGTH);
-    *segmentIndexFileNames = calloc((*numSegments) * (*numRepresentations),
-                                    SEGMENT_FILE_NAME_MAX_LENGTH);
-
-
-    while(1) {
-        if(fgets(line, sizeof(line), segInfoFile) == NULL) {
-            if(feof(segInfoFile) != 0) {
-                return 0;
-            } else {
-                LOG_ERROR_ARGS("ERROR: cannot read line from SegInfoFile %s\n", fname);
-                return -1;
-            }
-        }
-
-
-        char* trimmedLine = trimWhitespace(line);
-
-        if(strncmp("#", trimmedLine, strlen("#")) == 0 || strlen(trimmedLine) == 0) {
-            // comment -- skip line
-            continue;
-        }
-
-        char* temp = strchr(trimmedLine, '=');
-        if(temp == NULL) {
-            LOG_ERROR_ARGS("Error parsing line in SegInfoFile %s", fname);
-            continue;
-        }
-
-        if(strncmp("PresentationTimeOffset_PTSTicks", trimmedLine,
-                   strlen("PresentationTimeOffset_PTSTicks")) == 0) {
-            if(sscanf(temp + 1, "%d", presentationTimeOffset) != 1) {
-                LOG_ERROR_ARGS("Error parsing PresentationTimeOffset_PTSTicks in SegInfoFile %s", fname);
-            }
-            LOG_INFO_ARGS("PresentationTimeOffset_PTSTicks = %d", *presentationTimeOffset);
-        } else if(strncmp("VideoPID", trimmedLine, strlen("VideoPID")) == 0) {
-            if(sscanf(temp + 1, "%d", videoPID) != 1) {
-                LOG_ERROR_ARGS("Error parsing VideoPID in SegInfoFile %s", fname);
-            }
-            LOG_INFO_ARGS("VideoPID = %d", *videoPID);
-        } else if(strncmp("ExpectedSAPType", trimmedLine, strlen("ExpectedSAPType")) == 0) {
-            if(sscanf(temp + 1, "%d", expectedSAPType) != 1) {
-                LOG_ERROR_ARGS("Error parsing ExpectedSAPType in SegInfoFile %s", fname);
-            }
-            LOG_INFO_ARGS("ExpectedSAPType = %d", *expectedSAPType);
-        } else if(strncmp("MaxAudioGap_PTSTicks", trimmedLine, strlen("MaxAudioGap_PTSTicks")) == 0) {
-            if(sscanf(temp + 1, "%d", maxAudioGapPTSTicks) != 1) {
-                LOG_ERROR_ARGS("Error parsing MaxVideoGap_PTSTicks in SegInfoFile %s", fname);
-            }
-            LOG_INFO_ARGS("MaxAudioGap_PTSTicks = %d", *maxAudioGapPTSTicks);
-        } else if(strncmp("MaxVideoGap_PTSTicks", trimmedLine, strlen("MaxVideoGap_PTSTicks")) == 0) {
-            if(sscanf(temp + 1, "%d", maxVideoGapPTSTicks) != 1) {
-                LOG_ERROR_ARGS("Error parsing MaxVideoGap_PTSTicks in SegInfoFile %s", fname);
-            }
-            LOG_INFO_ARGS("MaxVideoGap_PTSTicks = %d", *maxVideoGapPTSTicks);
-        } else if(strncmp("InitializationSegment", trimmedLine, strlen("InitializationSegment")) == 0) {
-            char* temp2 = trimWhitespace(temp + 1);
-            if(strlen(temp2) != 0) {
-                if(sscanf(temp2, "%s", initializationSegment) != 1) {
-                    LOG_ERROR_ARGS("Error parsing InitializationSegment in SegInfoFile %s", fname);
-                }
-                LOG_INFO_ARGS("InitializationSegment = %s", initializationSegment);
-            } else {
-                LOG_INFO("No InitializationSegment");
-            }
-        } else if(strncmp("RepresentationIndexSegment", trimmedLine,
-                          strlen("RepresentationIndexSegment")) == 0) {
-            char* temp2 = trimWhitespace(temp + 1);
-            if(sscanf(temp2, "%s", representationIndexSegmentString) != 1) {
-                LOG_ERROR_ARGS("Error parsing RepresentationIndexSegment in SegInfoFile %s", fname);
-            } else {
-                parseRepresentationIndexFileLine(representationIndexSegmentString, *representationIndexFileNames,
-                                                 *numRepresentations);
-
-                for(int i = 0; i < *numRepresentations; i++) {
-                    LOG_INFO_ARGS("RepresentationIndexFile[%d] = %s", i,
-                                  (*representationIndexFileNames) + i * SEGMENT_FILE_NAME_MAX_LENGTH);
-                }
-            }
-        } else if(strncmp("Segment.", trimmedLine, strlen("Segment.")) == 0) {
-            int segmentIndex = 0;
-            char* temp1 = strchr(trimmedLine, '.');
-            *temp = 0;
-            char* temp3 = trimWhitespace(temp + 1);
-            if(sscanf(temp1 + 1, "%d", &segmentIndex) != 1) {
-                LOG_ERROR_ARGS("Error parsing Segment line in SegInfoFile %s", fname);
-            } else {
-                segmentIndex -= 1;
-                parseSegInfoFileLine(temp3, *segFileNames, segmentIndex, *numSegments);
-//               LOG_INFO_ARGS ("segDuration[%d] = %d", segmentIndex, (*segDurations)[segmentIndex]);
-            }
-        } else if(strncmp("Segment_DurationPTSTicks.", trimmedLine,
-                          strlen("Segment_DurationPTSTicks.")) == 0) {
-            int segmentIndex = 0;
-            char* temp1 = strchr(trimmedLine, '.');
-            *temp = 0;
-            if(sscanf(temp1 + 1, "%d", &segmentIndex) != 1) {
-                LOG_ERROR_ARGS("Error parsing Segment_DurationPTSTicks line in SegInfoFile %s", fname);
-            } else {
-                segmentIndex -= 1;
-                if(sscanf(temp + 1, "%d", &((*segDurations)[segmentIndex])) != 1) {
-                    LOG_ERROR_ARGS("Error parsing segDuration in SegInfoFile %s", fname);
-                }
-
-                LOG_INFO_ARGS("segDuration[%d] = %d", segmentIndex, (*segDurations)[segmentIndex]);
-            }
-        } else if(strncmp("Segment_IndexFile.", trimmedLine, strlen("Segment_IndexFile.")) == 0) {
-            int segmentIndex = 0;
-            char* temp1 = strchr(trimmedLine, '.');
-            *temp = 0;
-            char* temp2 = trimWhitespace(temp + 1);
-            if(sscanf(temp1 + 1, "%d", &segmentIndex) != 1) {
-                LOG_ERROR_ARGS("Error parsing Segment_IndexFile line in SegInfoFile %s", fname);
-            } else {
-                segmentIndex -= 1;
-                parseSegInfoFileLine(temp2, *segmentIndexFileNames, segmentIndex, *numSegments);
-                for(int i = 0; i < *numRepresentations; i++) {
-                    int arrayIndex = getArrayIndex(i, segmentIndex, *numSegments);
-                    LOG_INFO_ARGS("Segment_IndexFile[%d][%d] = %s", segmentIndex, i,
-                                  (*segmentIndexFileNames) + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH);
-                }
-            }
-        }
-    }
-
-    return 0;
-}
-
-int readIntFromSegInfoFile(FILE* segInfoFile, char* paramName, int* paramValue)
-{
-    char line[1024];
-    char temp[1024];
-
-    strcpy(temp, paramName);
-    strcat(temp, " = %d\n");
-
-    if(fgets(line, sizeof(line), segInfoFile) == NULL) {
-        LOG_ERROR_ARGS("ERROR: cannot read %s from SegInfoFile\n", paramName);
-        return -1;
-    }
-    if(sscanf(line, temp, paramValue) != 1) {
-        LOG_ERROR_ARGS("ERROR: cannot parse %s from SegInfoFile\n", paramName);
-        return -1;
-    }
-    LOG_INFO_ARGS("%s = %d", paramName, *paramValue);
-
-    return 0;
-}
-
-int readStringFromSegInfoFile(FILE* segInfoFile, char* paramName, char* paramValue)
-{
-    char line[1024];
-    char temp[1024];
-
-    strcpy(temp, paramName);
-    strcat(temp, " = %s\n");
-
-    if(fgets(line, sizeof(line), segInfoFile) == NULL) {
-        LOG_ERROR_ARGS("ERROR: cannot read %s from SegInfoFile\n", paramName);
-        return -1;
-    }
-    if(sscanf(line, temp, paramValue) != 1) {
-        strcpy(temp, paramName);
-        strcat(temp, " =");
-        line [strlen(temp)] = 0;
-
-        if(strcmp(line, temp) == 0) {
-            paramValue[0] = 0;
-            return 0;
-        }
-
-        LOG_ERROR_ARGS("ERROR: cannot parse %s from SegInfoFile\n", paramName);
-        return -1;
-    }
-    LOG_INFO_ARGS("%s = %s", paramName, paramValue);
-
-
-    return 0;
-}
-
-char* trimWhitespace(char* string)
-{
-    int stringSz = strlen(string);
-    int index = 0;
-    while(index < stringSz) {
-        if(string[index] != ' ' && string[index] != '\t' && string[index] != '\n'
-                && string[index] != '\r') {
-            break;
-        }
-
-        index++;
-    }
-
-    char* newString = string + index;
-    if(index == stringSz) {
-        return newString;
-    }
-
-    stringSz = strlen(newString);
-    index = stringSz - 1;
-    while(index >= 0) {
-        if(newString[index] != ' ' && newString[index] != '\t' && newString[index] != '\n'
-                && newString[index] != '\r') {
-            break;
-        }
-
-        index--;
-    }
-
-    newString[index + 1] = 0;
-
-    return newString;
 }
 
 int checkPSIIdentical(dash_validator_t* dash_validator, int numDashValidators)

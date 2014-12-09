@@ -115,6 +115,8 @@ extern int tslib_loglevel;
 										fprintf(stdout, "\t\t[%s() @ %s:%d]\n", __FUNCTION__, __FILE__, __LINE__); } \
 									}
 
+#define PRINT_STR(str) (str ? (const char*)str : "(null)")
+#define PRINT_BOOL(b) (b ? "true" : "false")
 
 #ifdef __cplusplus
 }

@@ -45,7 +45,7 @@ static uint16_t readUint16(uint8_t** buffer)
 
 static uint32_t readUint24(uint8_t** buffer)
 {
-    uint32_t result;
+    uint32_t result = 0;
     memcpy(&result, *buffer, 3);
     *buffer += 3;
     return ntohl(result >> 8);
@@ -111,6 +111,8 @@ void freeBoxes(size_t numBoxes, box_type_t* box_types, void** box_data)
         }
         }
     }
+    free(box_types);
+    free(box_data);
 }
 
 int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes, box_type_t* box_types,
@@ -354,13 +356,13 @@ expected %zu, found %d\n", numSegments, segmentIndex);
                 nextIFrameByteLocation = sidx->first_offset;
                 if(segmentIndex < numSegments) {
                     pIFrames[segmentIndex].doIFrameValidation = 1;
-                    pIFrames[segmentIndex].pIFrameLocations_Time = (unsigned int*)calloc(
+                    pIFrames[segmentIndex].pIFrameLocations_Time = calloc(
                                 pIFrames[segmentIndex].numIFrames, sizeof(unsigned int));
-                    pIFrames[segmentIndex].pIFrameLocations_Byte = (uint64_t*)calloc(pIFrames[segmentIndex].numIFrames,
+                    pIFrames[segmentIndex].pIFrameLocations_Byte = calloc(pIFrames[segmentIndex].numIFrames,
                             sizeof(uint64_t));
-                    pIFrames[segmentIndex].pStartsWithSAP = (unsigned char*)calloc(pIFrames[segmentIndex].numIFrames,
+                    pIFrames[segmentIndex].pStartsWithSAP = calloc(pIFrames[segmentIndex].numIFrames,
                                                             sizeof(unsigned char));
-                    pIFrames[segmentIndex].pSAPType = (unsigned char*)calloc(pIFrames[segmentIndex].numIFrames,
+                    pIFrames[segmentIndex].pSAPType = calloc(pIFrames[segmentIndex].numIFrames,
                                                       sizeof(unsigned char));
                 }
             }
@@ -629,33 +631,31 @@ int validateIndexSegment(char* fname, size_t numSegments, int* segmentDurations,
                          int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile)
 {
     LOG_INFO_ARGS("validateIndexSegment: %s", fname);
-    size_t numBoxes;
-    box_type_t* box_types;
-    void** box_data;
-    int* box_sizes;
+    size_t numBoxes = 0;
+    box_type_t* box_types = NULL;
+    void** box_data = NULL;
+    int* box_sizes = NULL;
 
     int returnCode = readBoxes(fname, &numBoxes, &box_types, &box_data, &box_sizes);
     if(returnCode != 0) {
         LOG_ERROR("ERROR validating Index Segment: Error reading boxes from file\n");
-        return -1;
+        goto fail;
     }
 
     printBoxes(numBoxes, box_types, box_data);
 
     if(numSegments <= 0) {
-        freeBoxes(numBoxes, box_types, box_data);
         LOG_ERROR("ERROR validating Index Segment: Invalid number of segments");
-        return -1;
+        goto fail;
     } else if(numSegments == 1) {
         returnCode = validateSingleIndexSegmentBoxes(numBoxes, box_types, box_data, box_sizes,
                       segmentDurations[0], pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
     } else {
+        printf("Start\n");
         returnCode = validateRepresentationIndexSegmentBoxes(numSegments, numBoxes, box_types, box_data,
                       box_sizes,
                       segmentDurations, pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
     }
-
-    freeBoxes(numBoxes, box_types, box_data);
 
     printf("\n\n");
     for(size_t i = 0; i < numSegments; i++) {
@@ -667,39 +667,51 @@ int validateIndexSegment(char* fname, size_t numSegments, int* segmentDurations,
         }
     }
 
+cleanup:
+    freeBoxes(numBoxes, box_types, box_data);
+    free(box_sizes);
     return returnCode;
+fail:
+    returnCode = -1;
+    goto cleanup;
 }
 
 
 int readBoxes(char* fname, size_t* numBoxes, box_type_t** box_types_in, void** * box_data_in,
               int** box_sizes_in)
 {
+    FILE* indexFile = NULL;
+    unsigned char* buffer = NULL;
+    
     struct stat st;
     if(stat(fname, &st) != 0) {
         LOG_ERROR_ARGS("ERROR validating Index Segment: Error getting file size for %s\n", fname);
-        return -1;
+        goto fail;
     }
 
-    FILE* indexFile = fopen(fname, "r");
+    indexFile = fopen(fname, "r");
     if(!indexFile) {
         LOG_ERROR_ARGS("ERROR validating Index Segment: Couldn't open indexFile %s\n", fname);
-        return -1;
+        goto fail;
     }
 
     int bufferSize = st.st_size;
-    unsigned char* buffer = malloc(bufferSize);
+    buffer = malloc(bufferSize);
 
     if(fread(buffer, 1, bufferSize, indexFile) != bufferSize) {
-        free(buffer);
-        fclose(indexFile);
-        return -1;
+        goto fail;
     }
 
-    fclose(indexFile);
-
     int returnCode = readBoxes2(buffer, bufferSize, numBoxes, box_types_in, box_data_in, box_sizes_in);
+cleanup:
+    if (indexFile != NULL) {
+        fclose(indexFile);
+    }
     free(buffer);
     return returnCode;
+fail:
+    returnCode = -1;
+    goto cleanup;
 }
 
 int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type_t** box_types_in,
@@ -1230,4 +1242,5 @@ void freeIFrames(data_segment_iframes_t* pIFrames, int numSegments)
         free(pIFrames[i].pStartsWithSAP);
         free(pIFrames[i].pSAPType);
     }
+    free(pIFrames);
 }

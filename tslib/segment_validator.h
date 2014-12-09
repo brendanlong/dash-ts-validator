@@ -1,6 +1,3 @@
-
-
-
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,6 +28,7 @@
 
 #define PID_EMSG    0x04
 
+
 typedef enum {
     UNKNOWN_CONTENT_COMPONENT = 0x00,
     VIDEO_CONTENT_COMPONENT,
@@ -43,7 +41,6 @@ typedef enum {
     INITIALIZATION_SEGMENT,
     REPRESENTATION_INDEX_SEGMENT
 } segment_type_t;
-
 
 typedef struct {
     int PID;
@@ -76,6 +73,7 @@ typedef struct {
     bool use_initialization_segment;
     program_map_section_t* initializaion_segment_pmt;      /// parsed PMT
 } dash_validator_t;
+
 
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
 int pmt_processor(mpeg2ts_program_t* m2p, void* arg);

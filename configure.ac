@@ -18,6 +18,9 @@ AC_CHECK_LIB([isobmff], [validateIndexSegment])
 AC_CHECK_LIB([logging], [skit_log_struct])
 AC_CHECK_LIB([m], [cos])
 
+PKG_CHECK_MODULES(LIBXML2, [libxml-2.0])
+PKG_CHECK_MODULES(LIBPCRE, [libpcre >= 7.2])
+
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h inttypes.h stddef.h stdint.h stdlib.h string.h strings.h sys/time.h unistd.h])
 
