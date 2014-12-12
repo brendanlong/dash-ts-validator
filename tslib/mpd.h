@@ -1,9 +1,8 @@
-#ifndef MPD_H
-#define MPD_H
+#ifndef TSLIB_MPD_H
+#define TSLIB_MPD_H
 
+#include <glib.h>
 #include <stdbool.h>
-#include <stdint.h>
-#include <varray.h>
 
 #include "ISOBMFF.h"
 
@@ -21,7 +20,7 @@ typedef struct {
     char* index_file_name;
     uint8_t start_with_sap;
     uint64_t presentation_time_offset;
-    varray_t* segments;
+    GPtrArray* segments;
     data_segment_iframes_t* segment_iframes;
 } representation_t;
 
@@ -30,13 +29,13 @@ typedef struct {
     uint32_t segment_alignment;
     uint32_t subsegment_alignment;
     bool bitstream_switching;
-    varray_t* representations;
+    GPtrArray* representations;
 } adaptation_set_t;
 
 typedef struct {
     uint64_t start;
     uint64_t duration;
-    varray_t* adaptation_sets;
+    GPtrArray* adaptation_sets;
 } period_t;
 
 typedef enum {
@@ -52,7 +51,7 @@ typedef struct {
     int max_audio_gap_pts_ticks;
     char* initialization_segment;
     int presentation_time_offset;
-    varray_t* periods;
+    GPtrArray* periods;
 } mpd_t;
 
 mpd_t* mpd_new(void);

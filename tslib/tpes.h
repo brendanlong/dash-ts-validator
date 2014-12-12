@@ -1,5 +1,4 @@
 /*
-
  Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com>
  All rights reserved.
@@ -26,29 +25,28 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef TSLIB_TPES_H
+#define TSLIB_TPES_H
 
-#ifndef _TSLIB_TPES_H_
-#define _TSLIB_TPES_H_
-
-#include <stdint.h>
+#include <glib.h>
+#include <stdbool.h>
 
 #include "bs.h"
 #include "ts.h"
 #include "pes.h"
 #include "psi.h"
-#include "vqarray.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-
-typedef int (*pes_processor_t)(pes_packet_t*, elementary_stream_info_t*, vqarray_t*, void*);
+     
+typedef int (*pes_processor_t)(pes_packet_t*, elementary_stream_info_t*, GQueue*, void*);
 typedef int (*pes_arg_destructor_t)(void*);
 
 typedef struct {
-    vqarray_t* ts_queue;
+    GQueue* ts_queue;
     pes_processor_t process_pes_packet;
     void* pes_arg;
     pes_arg_destructor_t pes_arg_destructor;
@@ -58,7 +56,6 @@ typedef struct {
 pes_demux_t* pes_demux_new(pes_processor_t pes_processor);
 void pes_demux_free(pes_demux_t* pdm);
 int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
-
 
 #ifdef __cplusplus
 }

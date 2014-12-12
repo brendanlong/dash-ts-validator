@@ -3,8 +3,6 @@
  Written by Alex Giladi <alex.giladi@gmail.com> and Vlad Zbarsky <zbarsky@cornell.edu>
  All rights reserved.
 
-
-
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  * Redistributions of source code must retain the above copyright
@@ -27,15 +25,14 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #ifndef _TSLIB_DESCRIPTORS_H_
 #define _TSLIB_DESCRIPTORS_H_
 
-#include <stdint.h>
+#include <glib.h>
 
 #include "bs.h"
-#include "vqarray.h"
 #include "log.h"
+
 
 typedef enum {
     DESCRIPTOR_TAG_RESERVED = 0,
@@ -103,12 +100,10 @@ typedef struct {
     descriptor_destructor_t free_descriptor;
 } descriptor_table_entry_t;
 
-
 // "factory methods"
-int read_descriptor_loop(vqarray_t* desc_list, bs_t* b, int length);
-int write_descriptor_loop(vqarray_t* desc_list, bs_t* b);
-int print_descriptor_loop(vqarray_t* desc_list, int level, char* str, size_t str_len);
-
+int read_descriptor_loop(GPtrArray* desc_list, bs_t* b, int length);
+int write_descriptor_loop(GPtrArray* desc_list, bs_t* b);
+int print_descriptor_loop(GPtrArray* desc_list, int level, char* str, size_t str_len);
 
 descriptor_t* descriptor_new();
 void descriptor_free(descriptor_t* desc);
@@ -130,7 +125,6 @@ descriptor_t* language_descriptor_new(descriptor_t* desc);
 int language_descriptor_free(descriptor_t* desc);
 descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b);
 int language_descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len);
-
 
 typedef struct {
     descriptor_t descriptor;

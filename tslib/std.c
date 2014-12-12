@@ -1,6 +1,4 @@
-
 /*
-
  Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com>
  All rights reserved.
@@ -27,44 +25,36 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-
 #include "std.h"
 
-
 #include <math.h>
+
 
 stc_t* stc_new()
 {
     stc_t* stc = malloc(sizeof(stc_t));
     stc->prev_pcr = UINT64_MAX;
-    stc->ts_in = vqarray_new();
-    stc->ts_out = vqarray_new();
+    stc->ts_in = g_queue_new();
+    stc->ts_out = g_queue_new();
     stc->pcr_rate = -1.0;
     return stc;
 }
+
 void stc_free(stc_t* stc)
 {
     if(stc == NULL) {
         return;
     }
 
-    if(stc->ts_in != NULL) {
-        vqarray_foreach(stc->ts_in, (vqarray_functor_t)ts_free);
-        vqarray_free(stc->ts_in);
-    }
-
-    if(stc->ts_out != NULL) {
-        vqarray_foreach(stc->ts_out, (vqarray_functor_t)ts_free);
-        vqarray_free(stc->ts_out);
-    }
+    g_queue_free_full(stc->ts_in, (GDestroyNotify)ts_free);
+    g_queue_free_full(stc->ts_out, (GDestroyNotify)ts_free);
 
     free(stc);
 }
 
 int stc_put_ts_packet(stc_t* stc, ts_packet_t* ts)
 {
-    if(stc == NULL || ts == NULL) {
+    if(ts == NULL) {
         return 0;
     }
 
@@ -80,28 +70,28 @@ int stc_put_ts_packet(stc_t* stc, ts_packet_t* ts)
         } else {
             // adjust for mod42 operations
             uint64_t adj_pcr = (real_pcr > stc->prev_pcr) ? real_pcr : real_pcr + PCR_MAX;
-
             stc->pcr_rate = ((double)stc->num_bytes) / (adj_pcr - stc->prev_pcr);
 
-            ts_packet_t* qtsp = NULL;
-
-            for(int i = 1; (qtsp = vqarray_shift(stc->ts_in)) != NULL; i++) {
+            for(int i = 1; ; i++) {
+                ts_packet_t* qtsp = g_queue_pop_head(stc->ts_in);
+                if (!qtsp) {
+                    break;
+                }
                 qtsp->pcr_int = stc->prev_pcr + (uint64_t)llrint(i * TS_SIZE * stc->pcr_rate);
                 if(qtsp->pcr_int >= PCR_MAX) {
                     qtsp->pcr_int -= PCR_MAX;
                 }
                 qtsp->pcr_int = real_pcr; // debug
-                vqarray_add(stc->ts_out, qtsp);
+                g_queue_push_tail(stc->ts_out, qtsp);
             }
-
 
             stc->num_bytes = TS_SIZE;
             stc->prev_pcr = real_pcr;
         }
-        vqarray_add(stc->ts_in, ts);
+        g_queue_push_tail(stc->ts_in, ts);
     } else {
         stc->num_bytes += TS_SIZE;
-        vqarray_add(stc->ts_in, ts);
+        g_queue_push_tail(stc->ts_in, ts);
     }
 
     return 1;
@@ -109,28 +99,19 @@ int stc_put_ts_packet(stc_t* stc, ts_packet_t* ts)
 
 ts_packet_t* stc_get_ts_packet(stc_t* stc)
 {
-    if(stc == NULL) {
-        return NULL;
-    }
-    if(stc->ts_out == NULL) {
-        return NULL;
-    }
-    return (vqarray_shift(stc->ts_out));
+    return g_queue_pop_head(stc->ts_out);
 }
 
 void stc_flush(stc_t* stc)
 {
-
-    ts_packet_t* qtsp = NULL;
-
-    for(int i = 1; (qtsp = vqarray_shift(stc->ts_in)) != NULL; i++) {
+    for(int i = 1; ; i++) {
+        ts_packet_t* qtsp = g_queue_pop_head(stc->ts_in);
         if(isnormal(qtsp->pcr_int)) {
             qtsp->pcr_int = stc->prev_pcr + (uint64_t)llrint(i * TS_SIZE * stc->pcr_rate);
             if(qtsp->pcr_int >= PCR_MAX) {
                 qtsp->pcr_int -= PCR_MAX;
             }
         }
-
-        vqarray_add(stc->ts_out, qtsp);
+        g_queue_push_tail(stc->ts_out, qtsp);
     }
 }

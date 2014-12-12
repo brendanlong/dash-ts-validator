@@ -25,7 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mpd.h"
 
 
-#define SEGMENT_FILE_NAME_MAX_LENGTH    512
+#define SEGMENT_FILE_NAME_MAX_LENGTH    512 
 
 
 void printAudioGapMatrix(int numRepresentations, int numSegments, int64_t* lastVideoEndTime,
@@ -142,26 +142,26 @@ int main(int argc, char* argv[])
     // the index files contain iFrame locations which are stored here and then validated when the actual
     // media segments are processed later
 
-    for (size_t p_i = 0; p_i < mpd->periods->length; ++p_i) {
-        period_t* period = varray_get(mpd->periods, p_i);
-        for (size_t a_i = 0; a_i < period->adaptation_sets->length; ++a_i) {
-            adaptation_set_t* adaptation_set = varray_get(period->adaptation_sets, a_i);
-            for (size_t r_i = 0; r_i < adaptation_set->representations->length; ++r_i) {
-                representation_t* representation = varray_get(adaptation_set->representations, r_i);
+    for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
+        period_t* period = g_ptr_array_index(mpd->periods, p_i);
+        for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
+            adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
+            for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
+                representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
                 if (representation->index_file_name == NULL) {
                     continue;
                 }
-                int* segment_durations = malloc(sizeof(int) * representation->segments->length);
+                int* segment_durations = malloc(sizeof(int) * representation->segments->len);
                 uint64_t first_segment_start = 0;
-                for (size_t s_i = 0; s_i < representation->segments->length; ++s_i) {
-                    segment_t* segment = varray_get(representation->segments, s_i);
+                for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
+                    segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     if (s_i == 0) {
                         first_segment_start = segment->start;
                     }
                     segment_durations[s_i] = segment->duration;
                 }
                 if (validateIndexSegment(representation->index_file_name,
-                        representation->segments->length, segment_durations,
+                        representation->segments->len, segment_durations,
                         representation->segment_iframes, representation->presentation_time_offset + first_segment_start,
                         adaptation_set->video_pid,
                         conformance_level & TS_TEST_SIMPLE) != 0) {

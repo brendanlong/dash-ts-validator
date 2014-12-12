@@ -31,45 +31,38 @@
 #ifndef _TSLIB_CAS_H_
 #define _TSLIB_CAS_H_
 
-#include <stdint.h>
-
-#include "bs.h"
-#include "ts.h"
-#include "pes.h"
-#include "psi.h"
-#include "vqarray.h"
-
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
+
+#include <glib.h>
 #include <stdint.h>
 
 #include "bs.h"
-#include "libts_common.h"
-#include "ts.h"
-#include "vqarray.h"
 #include "descriptors.h"
+#include "libts_common.h"
+#include "pes.h"
+#include "psi.h"
+#include "ts.h"
 
 typedef struct {
     int PID;
     ts_packet_t* ecm;
-    vqarray_t* elementary_pids;
+    GPtrArray* elementary_pids;
 } ecm_pid_t;
 
 typedef struct {
     int id;
     int EMM_PID;
-    vqarray_t* ecm_pids;
+    GPtrArray* ecm_pids;
     buf_t emm;
 } ca_system_t;
 
 
-
 ca_system_t* ca_system_new(int CA_system_id);
 void ca_system_free(ca_system_t* cas);
-
 
 
 /**
@@ -83,9 +76,9 @@ void ca_system_free(ca_system_t* cas);
  *
  * @return 1 if processed.
  */
-int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
+int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, GPtrArray* cas_list);
 
-int ca_system_process_ca_descriptor(vqarray_t* cas_list, elementary_stream_info_t* esi,
+int ca_system_process_ca_descriptor(GPtrArray* cas_list, elementary_stream_info_t* esi,
                                     ca_descriptor_t* cad);
 
 #ifdef __cplusplus

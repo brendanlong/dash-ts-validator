@@ -26,15 +26,13 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-
 #ifndef _PSI_H_
 #define _PSI_H_
 
-#include <stdint.h>
+#include <glib.h>
 
 #include "bs.h"
-#include "vqarray.h"
+
 
 typedef enum {
     program_association_section = 0,
@@ -56,7 +54,6 @@ typedef enum {
 
 
 // PAT
-
 typedef struct {
     uint32_t program_number;
     uint32_t program_map_PID; // a.k.a. network pid for prog 0
@@ -94,7 +91,7 @@ typedef struct {
     uint32_t section_number;
     uint32_t last_section_number;
 
-    vqarray_t* descriptors;
+    GPtrArray* descriptors;
 
     uint32_t CRC_32;
 } conditional_access_section_t;
@@ -107,12 +104,11 @@ int conditional_access_section_print(const conditional_access_section_t* cas, ch
                                      size_t str_len);
 
 // PMT
-
 typedef struct {
     uint32_t stream_type;
     uint32_t elementary_PID;
     uint32_t ES_info_length;
-    vqarray_t* descriptors;
+    GPtrArray* descriptors;
 } elementary_stream_info_t;
 
 typedef struct {
@@ -126,8 +122,8 @@ typedef struct {
     uint32_t last_section_number;
     uint32_t PCR_PID;
     uint32_t program_info_length;
-    vqarray_t* descriptors;
-    vqarray_t* es_info;
+    GPtrArray* descriptors;
+    GPtrArray* es_info;
     uint32_t CRC_32;
 } program_map_section_t;
 
@@ -202,4 +198,4 @@ typedef struct {
     uint32_t section_length;
 } section_header_t;
 
-#endif // _PSI_H_
+#endif

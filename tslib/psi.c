@@ -25,10 +25,12 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include "psi.h"
+
+#include <stdbool.h>
 #include "bs.h"
 #include "libts_common.h"
 #include "ts.h"
-#include "psi.h"
 #include "descriptors.h"
 #include "section.h"
 #include "log.h"
@@ -120,9 +122,7 @@ void program_association_section_free(program_association_section_t* pas)
         return;
     }
 
-    if(pas->programs != NULL) {
-        free(pas->programs);
-    }
+    free(pas->programs);
     free(pas);
 }
 
@@ -251,7 +251,7 @@ int program_association_section_print(const program_association_section_t* pas, 
 elementary_stream_info_t* es_info_new()
 {
     elementary_stream_info_t* es = calloc(1, sizeof(elementary_stream_info_t));
-    es->descriptors = vqarray_new();
+    es->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
     return es;
 }
 
@@ -261,10 +261,7 @@ void es_info_free(elementary_stream_info_t* es)
         return;
     }
 
-    if(es->descriptors != NULL) {
-        vqarray_foreach(es->descriptors, (vqarray_functor_t)descriptor_free);
-        vqarray_free(es->descriptors);
-    }
+    g_ptr_array_free(es->descriptors, true);
     free(es);
 }
 
@@ -306,16 +303,16 @@ int es_info_print(elementary_stream_info_t* es, int level, char* str, size_t str
     return bytes;
 }
 
-int write_es_info_loop(vqarray_t* es_list, bs_t* b)
+int write_es_info_loop(GPtrArray* es_list, bs_t* b)
 {
     return 0; // TODO actually implement write_es_info_loop
 }
 
-int print_es_info_loop(vqarray_t* es_list, int level, char* str, size_t str_len)
+int print_es_info_loop(GPtrArray* es_list, int level, char* str, size_t str_len)
 {
     int bytes = 0;
-    for(int i = 0; i < vqarray_length(es_list); i++) {
-        elementary_stream_info_t* es = vqarray_get(es_list, i);
+    for(gsize i = 0; i < es_list->len; ++i) {
+        elementary_stream_info_t* es = g_ptr_array_index(es_list, i);
         if(es != NULL) {
             bytes += es_info_print(es, level, str + bytes, str_len - bytes);
         }
@@ -326,8 +323,8 @@ int print_es_info_loop(vqarray_t* es_list, int level, char* str, size_t str_len)
 program_map_section_t* program_map_section_new()
 {
     program_map_section_t* pms = calloc(1, sizeof(program_map_section_t));
-    pms->descriptors = vqarray_new();
-    pms->es_info = vqarray_new();
+    pms->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
+    pms->es_info = g_ptr_array_new_with_free_func((GDestroyNotify)es_info_free);
     return pms;
 }
 
@@ -337,22 +334,15 @@ void program_map_section_free(program_map_section_t* pms)
         return;
     }
 
-    if(pms->descriptors != NULL) {
-        vqarray_foreach(pms->descriptors, (vqarray_functor_t)descriptor_free);
-        vqarray_free(pms->descriptors);
-    }
-
-    if(pms->es_info) {
-        vqarray_foreach(pms->es_info, (vqarray_functor_t)es_info_free);
-        vqarray_free(pms->es_info);
-    }
+    g_ptr_array_free(pms->descriptors, true);
+    g_ptr_array_free(pms->es_info, true);
 
     free(pms);
 }
 
 int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t buf_size)
 {
-    if(pms == NULL || buf == NULL) {
+    if(buf == NULL) {
         SAFE_REPORT_TS_ERR(-1);
         return 0;
     }
@@ -427,7 +417,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     while(pms->section_length - (bs_pos(b) - section_start) > 4) {  // account for CRC
         elementary_stream_info_t* es = es_info_new();
         es_info_read(es, b);
-        vqarray_add(pms->es_info, es);
+        g_ptr_array_add(pms->es_info, es);
     }
 
     pms->CRC_32 = bs_read_u32(b);
@@ -452,7 +442,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 // int program_map_section_write(program_map_section_t *pms, uint8_t *buf, size_t buf_size);
 int program_map_section_print(program_map_section_t* pms, char* str, size_t str_len)
 {
-    if(pms == NULL || str == NULL || str_len < 2 || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+    if(str == NULL || str_len < 2 || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return 0;
     }
     int bytes = 0;
@@ -487,7 +477,7 @@ conditional_access_section_t* conditional_access_section_new()
 {
     conditional_access_section_t* cas = (conditional_access_section_t*)calloc(1,
                                         sizeof(conditional_access_section_t));
-    cas->descriptors = vqarray_new();
+    cas->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
     return cas;
 }
 
@@ -497,10 +487,7 @@ void conditional_access_section_free(conditional_access_section_t* cas)
         return;
     }
 
-    if(cas->descriptors != NULL) {
-        vqarray_foreach(cas->descriptors, (vqarray_functor_t)descriptor_free);
-        vqarray_free(cas->descriptors);
-    }
+    g_ptr_array_free(cas->descriptors, true);
     free(cas);
 }
 

@@ -29,7 +29,7 @@ bool read_period(xmlNode*, mpd_t*, char* base_url);
 bool read_adaptation_set(xmlNode*, period_t*, char* base_url);
 bool read_representation(xmlNode*, adaptation_set_t*, bool saw_mime_type, char* base_url);
 bool read_segment_list(xmlNode*, representation_t*, char* base_url);
-varray_t* read_segment_timeline(xmlNode*);
+GPtrArray* read_segment_timeline(xmlNode*);
 bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t duration, char* base_url);
 char* find_base_url(xmlNode*, char* parent_base_url);
 uint32_t read_optional_uint32(xmlNode*, const char* property_name);
@@ -44,7 +44,7 @@ const char INDENT_BUFFER[] = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
 mpd_t* mpd_new(void)
 {
     mpd_t* obj = calloc(1, sizeof(*obj));
-    obj->periods = varray_new();
+    obj->periods = g_ptr_array_new_with_free_func((GDestroyNotify)period_free);
     return obj;
 }
 
@@ -55,10 +55,7 @@ void mpd_free(mpd_t* obj)
     }
 
     free(obj->initialization_segment);
-    for (size_t i = 0; i < obj->periods->length; ++i) {
-        period_free(varray_get(obj->periods, i));
-    }
-    varray_free(obj->periods);
+    g_ptr_array_free(obj->periods, true);
 
     free(obj);
 }
@@ -86,16 +83,16 @@ void mpd_dump(const mpd_t* mpd)
         DUMP_PROPERTY(indent, "presentation_type: %d", mpd->presentation_type);
     }
 
-    for (size_t i = 0; i < mpd->periods->length; ++i) {
+    for (size_t i = 0; i < mpd->periods->len; ++i) {
         DUMP_PROPERTY(indent, "periods[%zu]:", i);
-        period_dump(varray_get(mpd->periods, i), indent);
+        period_dump(g_ptr_array_index(mpd->periods, i), indent);
     }
 }
 
 period_t* period_new(void)
 {
     period_t* obj = calloc(1, sizeof(*obj));
-    obj->adaptation_sets = varray_new();
+    obj->adaptation_sets = g_ptr_array_new_with_free_func((GDestroyNotify)adaptation_set_free);
     return obj;
 }
 
@@ -105,10 +102,7 @@ void period_free(period_t* obj)
         return;
     }
 
-    for (size_t i = 0; i < obj->adaptation_sets->length; ++i) {
-        adaptation_set_free(varray_get(obj->adaptation_sets, i));
-    }
-    varray_free(obj->adaptation_sets);
+    g_ptr_array_free(obj->adaptation_sets, true);
 
     free(obj);
 }
@@ -121,16 +115,16 @@ void period_dump(const period_t* period, unsigned indent)
     ++indent;
     DUMP_PROPERTY(indent, "start: %"PRIu64, period->start);
     DUMP_PROPERTY(indent, "duration: %"PRIu64, period->duration);
-    for (size_t i = 0; i < period->adaptation_sets->length; ++i) {
+    for (size_t i = 0; i < period->adaptation_sets->len; ++i) {
         DUMP_PROPERTY(indent, "adaptation_sets[%zu]:", i);
-        adaptation_set_dump(varray_get(period->adaptation_sets, i), indent);
+        adaptation_set_dump(g_ptr_array_index(period->adaptation_sets, i), indent);
     }
 }
 
 adaptation_set_t* adaptation_set_new(void)
 {
     adaptation_set_t* obj = calloc(1, sizeof(*obj));
-    obj->representations = varray_new();
+    obj->representations = g_ptr_array_new_with_free_func((GDestroyNotify)representation_free);
     return obj;
 }
 
@@ -140,10 +134,7 @@ void adaptation_set_free(adaptation_set_t* obj)
         return;
     }
 
-    for(size_t i = 0; i < obj->representations->length; ++i) {
-        representation_free(varray_get(obj->representations, i));
-    }
-    varray_free(obj->representations);
+    g_ptr_array_free(obj->representations, true);
 
     free(obj);
 }
@@ -157,16 +148,16 @@ void adaptation_set_dump(const adaptation_set_t* adaptation_set, unsigned indent
     DUMP_PROPERTY(indent, "segment_alignment: %"PRIu32, adaptation_set->segment_alignment);
     DUMP_PROPERTY(indent, "subsegment_alignment: %"PRIu32, adaptation_set->subsegment_alignment);
     DUMP_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(adaptation_set->bitstream_switching));
-    for (size_t i = 0; i < adaptation_set->representations->length; ++i) {
+    for (size_t i = 0; i < adaptation_set->representations->len; ++i) {
         DUMP_PROPERTY(indent, "representations[%zu]:", i);
-        representation_dump(varray_get(adaptation_set->representations, i), indent);
+        representation_dump(g_ptr_array_index(adaptation_set->representations, i), indent);
     }
 }
 
 representation_t* representation_new(void)
 {
     representation_t* obj = calloc(1, sizeof(*obj));
-    obj->segments = varray_new();
+    obj->segments = g_ptr_array_new_with_free_func((GDestroyNotify)segment_free);
     return obj;
 }
 
@@ -177,11 +168,8 @@ void representation_free(representation_t* obj)
     }
 
     g_free(obj->index_file_name);
-    freeIFrames(obj->segment_iframes, obj->segments->length);
-    for(size_t i = 0; i < obj->segments->length; ++i) {
-        segment_free(varray_get(obj->segments, i));
-    }
-    varray_free(obj->segments);
+    freeIFrames(obj->segment_iframes, obj->segments->len);
+    g_ptr_array_free(obj->segments, true);
 
     free(obj);
 }
@@ -195,9 +183,9 @@ void representation_dump(const representation_t* representation, unsigned indent
     DUMP_PROPERTY(indent, "index_file_name: %s", PRINT_STR(representation->index_file_name));
     DUMP_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
     DUMP_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
-    for (size_t i = 0; i < representation->segments->length; ++i) {
+    for (size_t i = 0; i < representation->segments->len; ++i) {
         DUMP_PROPERTY(indent, "segments[%zu]:", i);
-        segment_dump(varray_get(representation->segments, i), indent + 1);
+        segment_dump(g_ptr_array_index(representation->segments, i), indent + 1);
     }
 }
 
@@ -297,7 +285,7 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
     bool return_code = true;
 
     period_t* period = period_new();
-    varray_add(mpd->periods, period);
+    g_ptr_array_add(mpd->periods, period);
 
     period->start = read_duration(node, "start");
     period->duration = read_duration(node, "duration");
@@ -332,7 +320,7 @@ bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url)
     bool return_code = true;
 
     adaptation_set_t* adaptation_set = adaptation_set_new();
-    varray_add(period->adaptation_sets, adaptation_set);
+    g_ptr_array_add(period->adaptation_sets, adaptation_set);
 
     bool saw_mime_type = false;
     char* mime_type = xmlGetProp(node, "mimeType");
@@ -392,7 +380,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
     }
 
     representation_t* representation = representation_new();
-    varray_add(adaptation_set->representations, representation);
+    g_ptr_array_add(adaptation_set->representations, representation);
 
     start_with_sap = xmlGetProp(node, "startWithSAP");
     if (start_with_sap) {
@@ -421,7 +409,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
         }
     }
 
-    representation->segment_iframes = calloc(representation->segments->length,
+    representation->segment_iframes = calloc(representation->segments->len,
             sizeof(data_segment_iframes_t));
 
 cleanup:
@@ -439,7 +427,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
     bool return_code = true;
 
     /* Get SegmentTimeline first, since we need it to create segments */
-    varray_t* segment_timeline = NULL;
+    GPtrArray* segment_timeline = NULL;
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type == XML_ELEMENT_NODE && xmlStrEqual(cur_node->name, "SegmentTimeline")) {
             if (segment_timeline != NULL) {
@@ -477,7 +465,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
         }
         if (xmlStrEqual(cur_node->name, "SegmentURL")) {
             if (segment_timeline != NULL) {
-                segment_timeline_s_t* s = varray_get(segment_timeline, timeline_i);
+                segment_timeline_s_t* s = g_ptr_array_index(segment_timeline, timeline_i);
                 start = s->start;
                 duration = s->duration;
             }
@@ -502,10 +490,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
 cleanup:
     g_free(base_url);
     if (segment_timeline != NULL) {
-        for (size_t i = 0; i < segment_timeline->length; ++i) {
-            free(varray_get(segment_timeline, i));
-        }
-        varray_free(segment_timeline);
+        g_ptr_array_free(segment_timeline, true);
     }
     return return_code;
 fail:
@@ -513,9 +498,9 @@ fail:
     goto cleanup;
 }
 
-varray_t* read_segment_timeline(xmlNode* node)
+GPtrArray* read_segment_timeline(xmlNode* node)
 {
-    varray_t* timeline = varray_new();
+    GPtrArray* timeline = g_ptr_array_new_with_free_func(free);
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
             continue;
@@ -536,7 +521,7 @@ varray_t* read_segment_timeline(xmlNode* node)
                 s->start = start;
                 s->duration = duration;
                 start += duration;
-                varray_add(timeline, s);
+                g_ptr_array_add(timeline, s);
             }
         } else {
             LOG_DEBUG_ARGS("Ignoring element <%s> in <SegmentTimeline>.", cur_node->name);
@@ -548,7 +533,7 @@ varray_t* read_segment_timeline(xmlNode* node)
 bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t start, uint64_t duration, char* base_url)
 {
     segment_t* segment = segment_new();
-    varray_add(representation->segments, segment);
+    g_ptr_array_add(representation->segments, segment);
 
     segment->start = start;
     segment->duration = duration;

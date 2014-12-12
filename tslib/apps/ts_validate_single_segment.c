@@ -52,8 +52,6 @@ static void usage(char* name)
     fprintf(stderr, "\nUsage: \n%s [options] <input bitstream>\n\nOptions:\n%s\n", name, options);
 }
 
-
-
 int main(int argc, char* argv[])
 {
     int c, long_options_index;
@@ -63,14 +61,10 @@ int main(int argc, char* argv[])
     dash_validator_t dash_validator;
     memset(&dash_validator, 0, sizeof(dash_validator_t));
 
-//  mpeg2ts_stream_t *m2s = NULL;
-
-
     if(argc < 2) {
         usage(argv[0]);
         return 1;
     }
-
 
     while((c = getopt_long(argc, argv, "vdbh", long_options, &long_options_index)) != -1) {
         switch(c) {
@@ -134,11 +128,8 @@ int main(int argc, char* argv[])
     char* content_component_table[NUM_CONTENT_COMPONENTS] =
     { "<unknown>", "video", "audio" };
 
-    for(int i = 0; i < vqarray_length(dash_validator.pids); i++) {
-        pv = (pid_validator_t*)vqarray_get(dash_validator.pids, i);
-        if(pv == NULL) {
-            continue;
-        }
+    for(gsize i = 0; i < dash_validator.pids->len; ++i) {
+        pv = g_ptr_array_index(dash_validator.pids, i);
         LOG_INFO_ARGS("%04X: %s EPT=%"PRId64" SAP=%d SAP Type=%d DURATION=%"PRId64"\n",
                       pv->PID, content_component_table[pv->content_component], pv->EPT, pv->SAP, pv->SAP_type,
                       pv->LPT - pv->EPT);

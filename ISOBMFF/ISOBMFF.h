@@ -18,6 +18,7 @@
 #define __H_ISOBMFF_CONFORMANCE
 
 #include <stdlib.h>
+#include <stdint.h>
 
 
 typedef enum {

@@ -1,5 +1,4 @@
 /*
-
  Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com>
  All rights reserved.
@@ -26,11 +25,11 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef MPEG2TS_DEMUX_H
+#define MPEG2TS_DEMUX_H
 
-#ifndef _MPEG2TS_DEMUX_H_
-#define _MPEG2TS_DEMUX_H_
-
-#include <stdint.h>
+#include <glib.h>
+#include <stdbool.h>
 
 #include "bs.h"
 #include "ts.h"
@@ -38,7 +37,6 @@
 #include "psi.h"
 #include "cas.h"
 #include "descriptors.h"
-#include "vqarray.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -56,11 +54,11 @@ typedef int (*pmt_processor_t)(struct _mpeg2ts_program_*, void*);
 typedef int (*arg_destructor_t)(void*);
 
 struct _mpeg2ts_program_ {
-    uint32_t PID;            /// PMT PID
+    uint32_t PID; // PMT PID
     uint32_t program_number;
 
-    vqarray_t* pids; /// list of PIDs belonging to this program
-    /// each element is of type pid_info_t
+    GHashTable* pids; // PIDs belonging to this program
+    // each element is of type pid_info_t
 
     struct {
         int64_t first_pcr;
@@ -68,34 +66,33 @@ struct _mpeg2ts_program_ {
         int64_t pcr[2];
         int32_t packets_from_last_pcr;
         double pcr_rate;
-    } pcr_info; /// information on STC clock state
+    } pcr_info; // information on STC clock state
 
-    program_map_section_t* pmt;      /// parsed PMT
-    pmt_processor_t pmt_processor;   /// callback called after PMT was processed
-    void* arg;                       /// argument for PMT callback
-    arg_destructor_t arg_destructor; /// destructor for the callback argument
+    program_map_section_t* pmt;      // parsed PMT
+    pmt_processor_t pmt_processor;   // callback called after PMT was processed
+    void* arg;                       // argument for PMT callback
+    arg_destructor_t arg_destructor; // destructor for the callback argument
 };
 
-
 struct _mpeg2ts_stream_ {
-    program_association_section_t* pat; /// PAT
-    conditional_access_section_t* cat;  /// CAT
-    pat_processor_t pat_processor;      /// callback called after PAT was processed
-    cat_processor_t cat_processor;      /// callback called after CAT was processed
-    vqarray_t* programs;                /// list of programs in this multiplex
-    vqarray_t* ca_systems;              /// list of conditional access systems in this multiplex
-    void* arg;                          /// argument for PAT/CAT callbacks
-    arg_destructor_t arg_destructor;    /// destructor for the callback argument
+    program_association_section_t* pat; // PAT
+    conditional_access_section_t* cat;  // CAT
+    pat_processor_t pat_processor;      // callback called after PAT was processed
+    cat_processor_t cat_processor;      // callback called after CAT was processed
+    GPtrArray* programs;                // list of programs in this multiplex
+    GPtrArray* ca_systems;              // list of conditional access systems in this multiplex
+    void* arg;                          // argument for PAT/CAT callbacks
+    arg_destructor_t arg_destructor;    // destructor for the callback argument
 };
 
 typedef struct _mpeg2ts_stream_  mpeg2ts_stream_t;
 typedef struct _mpeg2ts_program_ mpeg2ts_program_t;
 
 typedef struct {
-    void* arg;                            /// argument for ts packet processor
-    arg_destructor_t arg_destructor;      /// destructor for arg
+    void* arg;                            // argument for ts packet processor
+    arg_destructor_t arg_destructor;      // destructor for arg
     ts_pid_processor_t
-    process_ts_packet; /// ts packet processor, needs to be registered with mpeg2ts_program
+    process_ts_packet; // ts packet processor, needs to be registered with mpeg2ts_program
 } demux_pid_handler_t;
 
 typedef struct {

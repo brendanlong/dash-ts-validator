@@ -25,37 +25,37 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include "libts_common.h"
 #include "ts.h"
 #include "descriptors.h"
 #include "log.h"
 
+
 // "factory methods"
-int read_descriptor_loop(vqarray_t* desc_list, bs_t* b, int length)
+int read_descriptor_loop(GPtrArray* desc_list, bs_t* b, int length)
 {
     int desc_start = bs_pos(b);
 
     while(length > bs_pos(b) - desc_start) {
         descriptor_t* desc = descriptor_new();
         desc = descriptor_read(desc, b);
-        vqarray_add(desc_list, desc);
+        g_ptr_array_add(desc_list, desc);
     }
 
     return bs_pos(b) - desc_start;
 }
 
-int write_descriptor_loop(vqarray_t* desc_list, bs_t* b)
+int write_descriptor_loop(GPtrArray* desc_list, bs_t* b)
 {
     // TODO actually implement descriptor loop writing
     return 0;
 }
 
-int print_descriptor_loop(vqarray_t* desc_list, int level, char* str, size_t str_len)
+int print_descriptor_loop(GPtrArray* desc_list, int level, char* str, size_t str_len)
 {
     int bytes = 0;
-    for(int i = 0; i < vqarray_length(desc_list); i++) {
-        descriptor_t* desc = vqarray_get(desc_list, i);
+    for(gsize i = 0; i < desc_list->len; ++i) {
+        descriptor_t* desc = g_ptr_array_index(desc_list, i);
         if(desc != NULL) {
             bytes += descriptor_print(desc, level, str + bytes, str_len - bytes);
         }

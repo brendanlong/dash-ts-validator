@@ -1,25 +1,17 @@
 ACLOCAL_AMFLAGS = -I m4
 
-CFLAGS = -std=c99 -g -Wall $(GLIB_CFLAGS)
+CFLAGS = -std=c99 -g -Wall $(GLIB_CFLAGS) -Werror
 LDFLAGS = $(GLIB_LIBS)
 
 SUBDIRS = h264bitstream
 
 noinst_LIBRARIES = logging/liblogging.a ISOBMFF/libisobmff.a \
-        libstructures/libdatastruct.a tslib/libts.a
+        tslib/libts.a
 noinst_PROGRAMS = tslib/apps/ts_split tslib/apps/ts_validate_mult_segment \
         tslib/apps/ts_validate_single_segment
 
 
 logging_liblogging_a_SOURCES = logging/log.c
-
-
-libstructures_libdatastruct_a_SOURCES = libstructures/binheap.c \
-        libstructures/hashtable_itr.c libstructures/varray.c \
-        libstructures/hashtable_str.c libstructures/hashtable_str_rj.c \
-        libstructures/vqarray.c libstructures/hashtable.c
-libstructures_libdatastruct_a_CFLAGS = -Wno-unused-variable -O3 \
-        -fexpensive-optimizations -funroll-loops -fomit-frame-pointer
 
 
 ISOBMFF_libisobmff_a_SOURCES = ISOBMFF/ISOBMFF.c
@@ -31,14 +23,13 @@ tslib_libts_a_SOURCES = tslib/cas.c tslib/descriptors.c tslib/mpd.c \
         tslib/mpeg2ts_demux.c tslib/psi.c tslib/segment_validator.c tslib/tpes.c
 tslib_libts_a_CFLAGS = -I$(top_srcdir)/logging -I$(top_srcdir)/libstructures \
         -I$(top_srcdir)/h264bitstream -I$(top_srcdir)/ISOBMFF $(LIBXML2_CFLAGS) \
-        $(LIBPCRE_CFLAGS) -Wfatal-errors
+        $(LIBPCRE_CFLAGS)
 
 tslib_CFLAGS = -I$(top_srcdir)/tslib -I$(top_srcdir)/logging \
         -I$(top_srcdir)/libstructures -I$(top_srcdir)/h264bitstream \
         -I$(top_srcdir)/ISOBMFF
 tslib_LDADD = tslib/libts.a ISOBMFF/libisobmff.a \
-        libstructures/libdatastruct.a logging/liblogging.a \
-        h264bitstream/libh264bitstream.la
+        logging/liblogging.a h264bitstream/libh264bitstream.la
 
 tslib_apps_ts_split_SOURCES = tslib/apps/ts_split.c
 tslib_apps_ts_split_CFLAGS = $(tslib_CFLAGS)

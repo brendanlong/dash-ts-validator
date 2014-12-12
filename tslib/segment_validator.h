@@ -1,21 +1,19 @@
-#include <stdlib.h>
+#include <glib.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <assert.h>
-#include "libts_common.h"
-#include "ts.h"
-#include "psi.h"
-#include "mpeg2ts_demux.h"
-#include "log.h"
-#include "pes.h"
-#include "tpes.h"
-#include "vqarray.h"
-
 #include "ISOBMFF.h"
+#include "libts_common.h"
+#include "log.h"
+#include "mpeg2ts_demux.h"
+#include "pes.h"
+#include "psi.h"
+#include "tpes.h"
+#include "ts.h"
 
-#ifndef __H_SEGMENT_VALIDATOR
-#define __H_SEGMENT_VALIDATOR
+
+#ifndef SEGMENT_VALIDATOR_H
+#define SEGMENT_VALIDATOR_H
 
 #define TS_STATE_PAT   0x01
 #define TS_STATE_PMT   0x02
@@ -53,7 +51,7 @@ typedef struct {
     uint64_t ts_cnt;
     int content_component;
     int continuity_counter;
-    vqarray_t* ecm_pids;
+    GPtrArray* ecm_pids;
 } pid_validator_t;
 
 typedef struct {
@@ -61,7 +59,7 @@ typedef struct {
     int64_t  last_pcr;
     long segment_start;
     long segment_end;
-    vqarray_t* pids;
+    GPtrArray* pids;
     int PCR_PID;
     int videoPID;
     int audioPID;
@@ -78,7 +76,7 @@ typedef struct {
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
 int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
 int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
-int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, vqarray_t* ts_queue,
+int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
                         void* arg);
 int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
                         dash_validator_t* dash_validator_init,

@@ -27,54 +27,69 @@
  */
 
 #include <assert.h>
+#include <stdbool.h>
 
 #include "cas.h"
 #include "libts_common.h"
 #include "log.h"
-#include "vqarray.h"
 
+
+ecm_pid_t* ecm_pid_new(int pid, elementary_stream_info_t* esi)
+{
+    ecm_pid_t* ep = malloc(sizeof(ecm_pid_t));
+    ep->PID = pid;
+    ep->elementary_pids = g_ptr_array_new();
+    g_ptr_array_add(ep->elementary_pids, esi);
+    ep->ecm = NULL;
+    return ep;
+}
+
+void ecm_pid_free(ecm_pid_t* ep)
+{
+    if (ep == NULL) {
+        return;
+    }
+    if(ep->ecm != NULL) {
+        ts_free(ep->ecm);
+    }
+    g_ptr_array_free(ep->elementary_pids, true);
+    free(ep);
+}
 
 ca_system_t* ca_system_new(int CA_system_id)
 {
     ca_system_t* cas = calloc(1, sizeof(ca_system_t));
     cas->id = CA_system_id;
-    cas->ecm_pids = vqarray_new();
+    cas->ecm_pids = g_ptr_array_new_with_free_func((GDestroyNotify)ecm_pid_free);
     return cas;
 }
 
 void ca_system_free(ca_system_t* cas)
 {
-    ecm_pid_t* ep = NULL;
-
-    while((ep = vqarray_shift(cas->ecm_pids)) != NULL) {
-        if(ep->ecm != NULL) {
-            ts_free(ep->ecm);
-        }
-        free(ep);
+    if (cas == NULL) {
+        return;
     }
-    vqarray_free(cas->ecm_pids);
+    g_ptr_array_free(cas->ecm_pids, true);
     free(cas);
 }
 
 
 // FIXME: for now, we ignore EMMs
 
-int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg)
+int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, GPtrArray* cas_list)
 {
-    if(ts == NULL || arg == NULL) {
+    if(ts == NULL || cas_list == NULL) {
         return 0;
     }
-    vqarray_t* cas_list = (vqarray_t*)arg;
-    ecm_pid_t* ep = NULL;
 
-    for(int i = 0; i < vqarray_length(cas_list); i++) {
-        ca_system_t* cas = vqarray_get(cas_list, i);
+    for(gsize i = 0; i < cas_list->len; ++i) {
+        ca_system_t* cas = g_ptr_array_index(cas_list, i);
         if(cas == NULL) {
             continue;
         }
 
-        for(int j  = 0; j < vqarray_length(cas->ecm_pids); j++) {
-            ep = vqarray_get(cas->ecm_pids, j);
+        for(int j  = 0; j < cas->ecm_pids->len; j++) {
+            ecm_pid_t* ep = g_ptr_array_index(cas->ecm_pids, j);
             if(ep != NULL) {
                 if(ep->PID == ts->header.PID) {
                     ts_free(ep->ecm);
@@ -91,22 +106,18 @@ int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
     return 0;
 }
 
-int ca_system_process_ca_descriptor(vqarray_t* cas_list, elementary_stream_info_t* esi,
+int ca_system_process_ca_descriptor(GPtrArray* cas_list, elementary_stream_info_t* esi,
                                     ca_descriptor_t* cad)
 {
-    int i = 0;
     ca_system_t* cas = NULL;
 
     if(cas_list == NULL) {
         return 0;
     }
 
-    for(int i = 0; i < vqarray_length(cas_list); i++) {
-        cas = vqarray_get(cas->ecm_pids, i);
-        if(cas == NULL) {
-            continue;
-        }
-        if(cas->id == cad->CA_system_ID) {
+    for(gsize i = 0; i < cas_list->len; ++i) {
+        cas = g_ptr_array_index(cas->ecm_pids, i);
+        if(cas && cas->id == cad->CA_system_ID) {
             break;
         }
     }
@@ -126,11 +137,11 @@ int ca_system_process_ca_descriptor(vqarray_t* cas_list, elementary_stream_info_
 
     ecm_pid_t* ep = NULL;
 
-    for(i = 0; i < vqarray_length(cas->ecm_pids); i++) {
-        ecm_pid_t* ep = vqarray_get(cas->ecm_pids, i);
+    for(gsize i = 0; i < cas->ecm_pids->len; i++) {
+        ecm_pid_t* ep = g_ptr_array_index(cas->ecm_pids, i);
         if((ep != NULL) && (ep->PID == cad->CA_PID)) {
-            for(int j = 0; j < vqarray_length(ep->elementary_pids); j++) {
-                elementary_stream_info_t* tmp = vqarray_get(ep->elementary_pids, i);
+            for(gsize j = 0; j < ep->elementary_pids->len; j++) {
+                elementary_stream_info_t* tmp = g_ptr_array_index(ep->elementary_pids, i);
                 if(tmp->elementary_PID == esi->elementary_PID) {
                     return 1;
                 }
@@ -140,12 +151,8 @@ int ca_system_process_ca_descriptor(vqarray_t* cas_list, elementary_stream_info_
 
     // we have a new ECM PID
     if(ep == NULL) {
-        ep = malloc(sizeof(ecm_pid_t));
-        ep->PID = cad->CA_PID;
-        ep->elementary_pids = vqarray_new();
-        vqarray_push(ep->elementary_pids, esi);
-        ep->ecm = NULL;
-        vqarray_push(cas->ecm_pids, ep);
+        ep = ecm_pid_new(cad->CA_PID, esi);
+        g_ptr_array_add(cas->ecm_pids, ep);
     }
 
     return 1;
@@ -156,12 +163,11 @@ ts_packet_t* ca_system_get_ecm(ca_system_t* cas, uint32_t ECM_PID)
     if(cas == NULL) {
         return NULL;
     }
-    for(int i  = 0; i < vqarray_length(cas->ecm_pids); i++) {
-        ecm_pid_t* ep = vqarray_get(cas->ecm_pids, i);
-        if((ep != NULL) && (ep->PID == ECM_PID)) {
+    for(gsize i  = 0; i < cas->ecm_pids->len; ++i) {
+        ecm_pid_t* ep = g_ptr_array_index(cas->ecm_pids, i);
+        if(ep && ep->PID == ECM_PID) {
             return ep->ecm;
         }
     }
     return NULL;
 }
-

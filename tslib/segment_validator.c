@@ -12,9 +12,9 @@ unsigned int g_segmentDuration;
 
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
-    if((g_p_dash_validator->conformance_level) & TS_TEST_DASH && vqarray_length(m2s->programs) != 1) {
-        LOG_ERROR_ARGS("DASH Conformance: 6.4.4.2  media segments shall contain exactly one program (%d found)",
-                       vqarray_length(m2s->programs));
+    if(g_p_dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
+        LOG_ERROR_ARGS("DASH Conformance: 6.4.4.2  media segments shall contain exactly one program (%u found)",
+                       m2s->programs->len);
         g_p_dash_validator->status = 0;
         return 0;
     }
@@ -25,17 +25,12 @@ int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
         return 0;
     }
 
-    for(int i = 0; i < vqarray_length(m2s->programs); i++) {
-        mpeg2ts_program_t* m2p = vqarray_get(m2s->programs, i);
-
-        if(m2p == NULL) {
-            continue;
-        }
+    for(gsize i = 0; i < m2s->programs->len; i++) {
+        mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, i);
         m2p->pmt_processor =  pmt_processor;
     }
 
     g_p_dash_validator->psi_tables_seen |= (1 << m2s->pat->table_id);
-
     return 1;
 }
 
@@ -50,12 +45,10 @@ int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
     return 1;
 }
 
-
 pid_validator_t* dash_validator_find_pid(int PID)
 {
-    pid_validator_t* pv = NULL;
-    for(int i = 0; i < vqarray_length(g_p_dash_validator->pids); i++) {
-        pv = (pid_validator_t*)vqarray_get(g_p_dash_validator->pids, i);
+    for(gsize i = 0; i < g_p_dash_validator->pids->len; ++i) {
+        pid_validator_t* pv = g_ptr_array_index(g_p_dash_validator->pids, i);
         if(pv->PID == PID) {
             return pv;
         }
@@ -67,8 +60,7 @@ pid_validator_t* dash_validator_find_pid(int PID)
 // TODO: fix tpes to try creating last PES packet
 int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 {
-    pid_info_t* pi = NULL;
-    if(m2p == NULL || m2p->pmt == NULL) {  // if we don't have any PSI, there's nothing we can do
+    if(m2p->pmt == NULL) {  // if we don't have any PSI, there's nothing we can do
         return 0;
     }
 
@@ -86,107 +78,52 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
     g_p_dash_validator->pmt_program_number = m2p->pmt->program_number;
     g_p_dash_validator->pmt_version_number = m2p->pmt->version_number;
 
-    for(int i = 0; i < vqarray_length(m2p->pids); i++) {
-        if((pi = vqarray_get(m2p->pids, i)) != NULL) {
-            int process_pid = 0;
-            int content_component = 0;
-            int PID = pi->es_info->elementary_PID;
+    GHashTableIter i;
+    g_hash_table_iter_init(&i, m2p->pids);
+    pid_info_t* pi;
+    while(g_hash_table_iter_next(&i, NULL, (void**)&pi)) {
+        int process_pid = 0;
+        int content_component = 0;
+        int PID = pi->es_info->elementary_PID;
 
-            pid_validator_t* pid_validator = dash_validator_find_pid(PID);
+        pid_validator_t* pid_validator = dash_validator_find_pid(PID);
 
 // TODO: we need to figure out what we do when section versions change
 // Do we need to fix something? Profile something out?
-            assert(pid_validator == NULL);
+        assert(pid_validator == NULL);
 
-            switch(pi->es_info->stream_type) {
-            case STREAM_TYPE_MPEG2_VIDEO:
-            case STREAM_TYPE_AVC:
-            case STREAM_TYPE_HEVC:
+        switch(pi->es_info->stream_type) {
+        case STREAM_TYPE_MPEG2_VIDEO:
+        case STREAM_TYPE_AVC:
+        case STREAM_TYPE_HEVC:
 
-            case  STREAM_TYPE_MPEG1_VIDEO:
-            case  STREAM_TYPE_MPEG4_VIDEO:
-            case  STREAM_TYPE_SVC:
-            case  STREAM_TYPE_MVC:
-            case  STREAM_TYPE_S3D_SC_MPEG2:
-            case  STREAM_TYPE_S3D_SC_AVC:
-                process_pid = 1;
-                content_component = VIDEO_CONTENT_COMPONENT;
-                g_p_dash_validator->videoPID = PID;
-                break;
+        case  STREAM_TYPE_MPEG1_VIDEO:
+        case  STREAM_TYPE_MPEG4_VIDEO:
+        case  STREAM_TYPE_SVC:
+        case  STREAM_TYPE_MVC:
+        case  STREAM_TYPE_S3D_SC_MPEG2:
+        case  STREAM_TYPE_S3D_SC_AVC:
+            process_pid = 1;
+            content_component = VIDEO_CONTENT_COMPONENT;
+            g_p_dash_validator->videoPID = PID;
+            break;
 
-            case  STREAM_TYPE_MPEG1_AUDIO:
-            case  STREAM_TYPE_MPEG2_AUDIO:
-            case  STREAM_TYPE_MPEG4_AAC_RAW:
-            case  STREAM_TYPE_MPEG2_AAC:
-            case  STREAM_TYPE_MPEG4_AAC:
-                process_pid = 1;
+        case  STREAM_TYPE_MPEG1_AUDIO:
+        case  STREAM_TYPE_MPEG2_AUDIO:
+        case  STREAM_TYPE_MPEG4_AAC_RAW:
+        case  STREAM_TYPE_MPEG2_AAC:
+        case  STREAM_TYPE_MPEG4_AAC:
+            process_pid = 1;
 //           printf ("pi->es_info->stream_type = %d\n", pi->es_info->stream_type);
-                content_component = AUDIO_CONTENT_COMPONENT;
-                g_p_dash_validator->audioPID = PID;
-                break;
+            content_component = AUDIO_CONTENT_COMPONENT;
+            g_p_dash_validator->audioPID = PID;
+            break;
 
-            default:
-                process_pid = 0;
-            }
-
-            if(process_pid) {
-                // hook PES validation to PES demuxer
-                pes_demux_t* pd = pes_demux_new(validate_pes_packet);
-                pd->pes_arg = NULL;
-                pd->pes_arg_destructor = NULL;
-                pd->process_pes_packet = validate_pes_packet;
-
-                // hook PES demuxer to the PID processor
-                demux_pid_handler_t* demux_handler = calloc(1, sizeof(demux_pid_handler_t));
-                demux_handler->process_ts_packet = pes_demux_process_ts_packet;
-                demux_handler->arg = pd;
-                demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
-
-
-                // hook PES demuxer to the PID processor
-                demux_pid_handler_t* demux_validator = calloc(1, sizeof(demux_pid_handler_t));
-                demux_validator->process_ts_packet = validate_ts_packet;
-                demux_validator->arg = NULL;
-                demux_validator->arg_destructor = NULL;
-
-                // hook PID processor to PID
-                mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_PID, demux_handler,
-                                                       demux_validator);
-
-                pid_validator = calloc(1, sizeof(pid_validator_t));
-                pid_validator->PID = PID;
-                pid_validator->content_component = content_component;
-                pid_validator->ecm_pids = vqarray_new();
-
-                vqarray_add(g_p_dash_validator->pids, pid_validator);
-
-                // TODO:
-                // parse CA descriptors, add ca system and ecm_pid if they don't exist yet
-            }
+        default:
+            process_pid = 0;
         }
-    }
-//   free(pmt_str);
-    return 1;
-}
 
-// TODO: fix tpes to try creating last PES packet
-int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_source,
-                  dash_validator_t* dash_validator_dest)
-{
-    pid_validator_t* pid_validator_src = NULL;
-    pid_validator_t* pid_validator_dest = NULL;
-
-    dash_validator_dest->PCR_PID = dash_validator_source->PCR_PID;
-    dash_validator_dest->psi_tables_seen = 0;
-
-
-    LOG_INFO_ARGS("copy_pmt_info: vqarray_length(dash_validator_source->pids) = %d",
-                  vqarray_length(dash_validator_source->pids));
-    for(int i = 0; i < vqarray_length(dash_validator_source->pids); i++) {
-        if((pid_validator_src = vqarray_get(dash_validator_source->pids, i)) != NULL) {
-            int content_component = 0;
-            int PID = pid_validator_src->PID;
-
+        if(process_pid) {
             // hook PES validation to PES demuxer
             pes_demux_t* pd = pes_demux_new(validate_pes_packet);
             pd->pes_arg = NULL;
@@ -199,6 +136,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
             demux_handler->arg = pd;
             demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
 
+
             // hook PES demuxer to the PID processor
             demux_pid_handler_t* demux_validator = calloc(1, sizeof(demux_pid_handler_t));
             demux_validator->process_ts_packet = validate_ts_packet;
@@ -206,18 +144,69 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
             demux_validator->arg_destructor = NULL;
 
             // hook PID processor to PID
-            mpeg2ts_program_register_pid_processor(m2p, PID, demux_handler, demux_validator);
+            mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_PID, demux_handler,
+                                                   demux_validator);
 
-            pid_validator_dest = calloc(1, sizeof(pid_validator_t));
-            pid_validator_dest->PID = PID;
-            pid_validator_dest->content_component = content_component;
-            pid_validator_dest->ecm_pids = vqarray_new();
+            pid_validator = calloc(1, sizeof(pid_validator_t));
+            pid_validator->PID = PID;
+            pid_validator->content_component = content_component;
+            pid_validator->ecm_pids = g_ptr_array_new();
 
-            LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
-                          PID);
-            vqarray_add(dash_validator_dest->pids, pid_validator_dest);
-            // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
+            g_ptr_array_add(g_p_dash_validator->pids, pid_validator);
+            // TODO:
+            // parse CA descriptors, add ca system and ecm_pid if they don't exist yet
         }
+    }
+//   free(pmt_str);
+    return 1;
+}
+
+// TODO: fix tpes to try creating last PES packet
+int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_source,
+                  dash_validator_t* dash_validator_dest)
+{
+    pid_validator_t* pid_validator_dest = NULL;
+
+    dash_validator_dest->PCR_PID = dash_validator_source->PCR_PID;
+    dash_validator_dest->psi_tables_seen = 0;
+
+    LOG_INFO_ARGS("copy_pmt_info: dash_validator_source->pids->len = %u",
+                  dash_validator_source->pids->len);
+    for(gsize i = 0; i < dash_validator_source->pids->len; ++i) {
+        pid_validator_t* pid_validator_src = g_ptr_array_index(dash_validator_source->pids, i);
+        int content_component = 0;
+        int PID = pid_validator_src->PID;
+
+        // hook PES validation to PES demuxer
+        pes_demux_t* pd = pes_demux_new(validate_pes_packet);
+        pd->pes_arg = NULL;
+        pd->pes_arg_destructor = NULL;
+        pd->process_pes_packet = validate_pes_packet;
+
+        // hook PES demuxer to the PID processor
+        demux_pid_handler_t* demux_handler = calloc(1, sizeof(demux_pid_handler_t));
+        demux_handler->process_ts_packet = pes_demux_process_ts_packet;
+        demux_handler->arg = pd;
+        demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
+
+        // hook PES demuxer to the PID processor
+        demux_pid_handler_t* demux_validator = calloc(1, sizeof(demux_pid_handler_t));
+        demux_validator->process_ts_packet = validate_ts_packet;
+        demux_validator->arg = NULL;
+        demux_validator->arg_destructor = NULL;
+
+        // hook PID processor to PID
+        mpeg2ts_program_register_pid_processor(m2p, PID, demux_handler, demux_validator);
+
+        pid_validator_dest = calloc(1, sizeof(pid_validator_t));
+        pid_validator_dest->PID = PID;
+        pid_validator_dest->content_component = content_component;
+        pid_validator_dest->ecm_pids = g_ptr_array_new();
+
+        LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
+                      PID);
+        g_ptr_array_add(dash_validator_dest->pids, pid_validator_dest);
+        // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
     }
 
     return 0;
@@ -225,10 +214,9 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
 
 int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg)
 {
-    if(ts == NULL || es_info == NULL) {
+    if(es_info == NULL) {
         return 0;
     }
-
 
     pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.PID);
 
@@ -274,7 +262,7 @@ int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void*
     return 1;
 }
 
-int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, vqarray_t* ts_queue,
+int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
                         void* arg)
 {
     if(esi == NULL) {
@@ -300,10 +288,9 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, vqarra
         return 0;
     }
 
-    ts_packet_t* first_ts = vqarray_get(ts_queue, 0);
+    ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.PID);
 
-//   printf ("processing PES packet: PID = %d\n", first_ts->header.PID);
     if(first_ts->header.PID == PID_EMSG) {
         uint8_t* buf = pes->payload;
         int len = pes->payload_len;
@@ -312,7 +299,6 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, vqarra
             g_p_dash_validator->status = 0;
         }
     }
-
 
     assert(pid_validator != NULL);
     if(pes->status > 0) {
@@ -338,10 +324,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, vqarra
 
         if(first_ts->adaptation_field.random_access_indicator) {
             pid_validator->SAP = 1; // we trust AF by default.
-//            printf("Setting SAP to 1\n");
             if(pid_validator->content_component == VIDEO_CONTENT_COMPONENT) {
-//                printf ("VIDEO ANALYSIS: START\n");
-
                 int nal_start, nal_end;
                 int returnCode;
                 uint8_t* buf = pes->payload;
@@ -352,10 +335,8 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, vqarra
                 int index = 0;
                 while((len > index)
                         && ((returnCode = find_nal_unit(buf + index, len - index, &nal_start, &nal_end)) !=  0)) {
-//                   printf("nal_start = %d, nal_end = %d \n", nal_start, nal_end);
                     h264_stream_t* h = h264_new();
                     read_nal_unit(h, &buf[nal_start + index], nal_end - nal_start);
-//                   printf("h->nal->nal_unit_type: %d \n", h->nal->nal_unit_type);
                     if(h->nal->nal_unit_type == 5) {
                         pid_validator->SAP_type = 1;
                         break;
@@ -367,8 +348,6 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, vqarra
                     h264_free(h);
                     index += nal_end;
                 }
-
-                //              printf ("VIDEO ANALYSIS: END\n");
             }
         }
 
@@ -376,7 +355,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, vqarra
     }
 
     if(pes->header.PTS_DTS_flags & PES_PTS_FLAG) {
-// FIXME: account for rollovers and discontinuities
+        // FIXME: account for rollovers and discontinuities
         // frames can come in out of PTS order
         pid_validator->EPT = (pid_validator->EPT < pes->header.PTS) ? pid_validator->EPT : pes->header.PTS;
         pid_validator->LPT = (pid_validator->LPT > pes->header.PTS) ? pid_validator->LPT : pes->header.PTS;
@@ -431,8 +410,6 @@ expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPTyp
     }
 
     if(pid_validator->content_component == AUDIO_CONTENT_COMPONENT) {
-//       printf ("AUDIO ANALYSIS: START\n");
-
         int index = 0;
         int frame_cntr = 0;
         while(index < pes->payload_len) {
@@ -441,19 +418,9 @@ expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPTyp
 
             index += frame_length;
             frame_cntr++;
-//            printf ("    pes->header.PTS = %"PRId64", PayloadLength = %d, frameLength = %d, FrameCntr = %d, index = %d\n",
-//                pes->header.PTS, pes->payload_len, frame_length, frame_cntr, index);
         }
 
-//            printf ("AUDIO FRAME CNTR = %d\n", frame_cntr);
-        /*        if (frame_cntr != 4)
-                {
-                    printf ("\nAUDIO FRAME CNTR = %d\n\n", frame_cntr);
-                }
-        */
         pid_validator->duration = 1920 /* 21.3 msec for 90kHz clock */ * frame_cntr;
-
-//       printf ("AUDIO ANALYSIS: END: %d\n", frame_cntr);
     }
 
     pid_validator->pes_cnt++;
@@ -481,7 +448,6 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 // GORP:     check for complete transport stream packets
 // GORP:         check for complete PES packets
 
-
     FILE* infile = NULL;
     if((infile = fopen(fname, "rb")) == NULL) {
         LOG_ERROR_ARGS("Cannot open file %s - %s", fname, strerror(errno));
@@ -505,7 +471,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 
     g_p_dash_validator->last_pcr = PCR_INVALID;
     g_p_dash_validator->status = 1;
-    g_p_dash_validator->pids = vqarray_new();
+    g_p_dash_validator->pids = g_ptr_array_new();
 
     // if had intialization segment, then copy program info and setup PES callbacks
     if(dash_validator_init != NULL) {
@@ -515,7 +481,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
         prog->pmt = dash_validator_init->initializaion_segment_pmt;
 
         LOG_INFO_ARGS("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
-        vqarray_add(m2s->programs, (void*)prog);
+        g_ptr_array_add(m2s->programs, prog);
 
         int returnCode = copy_pmt_info(prog, dash_validator_init, g_p_dash_validator);
         if(returnCode != 0) {
@@ -524,7 +490,6 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
             return 1;
         }
     }
-
 
     m2s->pat_processor = pat_processor;
 
@@ -551,10 +516,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 
             mpeg2ts_stream_read_ts_packet(m2s, ts);
             packets_read++;
-//         if (g_p_dash_validator->status == 0)  break;
         }
-
-//      if (g_p_dash_validator->status == 0)  break;
 
         if(packets_to_read - packets_read < packet_buf_size) {
             packet_buf_size = (long)(packets_to_read - packets_read);
@@ -566,9 +528,8 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 
     LOG_INFO_ARGS("%"PRIo64" TS packets read", packets_read);
 
-
     if(g_p_dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-        mpeg2ts_program_t* m2p = vqarray_get(m2s->programs, 0);  // should be only one program
+        mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, 0);  // should be only one program
         printf("m2p = %"PRIxPTR"\n", (uintptr_t)m2p);
         g_p_dash_validator->initializaion_segment_pmt = m2p->pmt;
     }

@@ -1,4 +1,3 @@
-
 /*
  Copyright (c) 2014-, ISO/IEC JTC1/SC29/WG11
 
@@ -26,11 +25,7 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
+#include <glib.h>
 #include <getopt.h>
 #include <errno.h>
 #include <strings.h>
@@ -42,7 +37,6 @@
 #include "log.h"
 #include "pes.h"
 #include "tpes.h"
-#include "vqarray.h"
 
 
 char* prefix = NULL;
@@ -63,7 +57,7 @@ static void usage(char* name)
     fprintf(stderr, "\nUsage: \n%s [options] <input bitstream>\n\nOptions:\n%s\n", name, options);
 }
 
-int pes_processor(pes_packet_t* pes, elementary_stream_info_t* esi, vqarray_t* ts_queue, void* arg)
+int pes_processor(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
     if(pes == NULL || esi == NULL) {
         return 0;
@@ -97,68 +91,59 @@ int pmt_processor_split(mpeg2ts_program_t* m2p, void* arg)
     char* pmt_str = malloc(0x10000); // fixme: this is ugly
     program_map_section_print(m2p->pmt, pmt_str, 0x10000);
 
-    pid_info_t* pi = NULL;
-    for(int i = 0; i < vqarray_length(m2p->pids);
-            i++) {  // TODO replace linear search w/ hashtable lookup in the future
-        if((pi = vqarray_get(m2p->pids, i)) != NULL) {
-            char filename[0x100];
-            int process_pid = 0;
+    GHashTableIter i;
+    g_hash_table_iter_init(&i, m2p->pids);
+    pid_info_t* pi;
+    while (g_hash_table_iter_next(&i, NULL, (void**)&pi)) {
+        char filename[0x100];
+        int process_pid = 0;
 
+        switch(pi->es_info->stream_type) {
+        case STREAM_TYPE_MPEG2_VIDEO:
+            process_pid = 1;
+            snprintf(filename, 0x100, "%s_video_%04X.%s", prefix == NULL ? "track" : prefix,
+                     pi->es_info->elementary_PID, "mpg");
+            break;
+        case STREAM_TYPE_AVC:
+            process_pid = 1;
+            snprintf(filename, 0x100, "%s_video_%04X.%s", prefix == NULL ? "track" : prefix,
+                     pi->es_info->elementary_PID, "264");
+            break;
+        default:
+            process_pid = 0;
+        }
 
-            switch(pi->es_info->stream_type) {
-            case STREAM_TYPE_MPEG2_VIDEO:
-                process_pid = 1;
-                snprintf(filename, 0x100, "%s_video_%04X.%s", prefix == NULL ? "track" : prefix,
-                         pi->es_info->elementary_PID, "mpg");
-                break;
-            case STREAM_TYPE_AVC:
-                process_pid = 1;
-                snprintf(filename, 0x100, "%s_video_%04X.%s", prefix == NULL ? "track" : prefix,
-                         pi->es_info->elementary_PID, "264");
-                break;
-            default:
-                process_pid = 0;
-            }
+        if(process_pid) {
+            FILE* fout = fopen(filename, "wb");
 
-            if(process_pid) {
-                FILE* fout = fopen(filename, "wb");
+            // hook PES writing to PES demuxer
+            pes_demux_t* pd = pes_demux_new(pes_processor);
+            pd->pes_arg = fout;
+            pd->pes_arg_destructor = (pes_arg_destructor_t)fclose;
+            //pd->process_pes_packet = pes_processor;
 
-                // hook PES writing to PES demuxer
-                pes_demux_t* pd = pes_demux_new(pes_processor);
-                pd->pes_arg = fout;
-                pd->pes_arg_destructor = (pes_arg_destructor_t)fclose;
-                //pd->process_pes_packet = pes_processor;
+            // hook PES demuxer to the PID processor
+            demux_pid_handler_t* demux_handler = calloc(1, sizeof(demux_pid_handler_t));
+            demux_handler->process_ts_packet = pes_demux_process_ts_packet;
+            demux_handler->arg = pd;
+            demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
 
-                // hook PES demuxer to the PID processor
-                demux_pid_handler_t* demux_handler = calloc(1, sizeof(demux_pid_handler_t));
-                demux_handler->process_ts_packet = pes_demux_process_ts_packet;
-                demux_handler->arg = pd;
-                demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
-
-                // hook PID processor to PID
-                mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_PID, demux_handler, NULL);
-
-            }
+            // hook PID processor to PID
+            mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_PID, demux_handler, NULL);
         }
     }
     free(pmt_str);
     return 1;
 }
 
-
 int pat_processor_split(mpeg2ts_stream_t* m2s, void* arg)
 {
-    for(int i = 0; i < vqarray_length(m2s->programs); i++) {
-        mpeg2ts_program_t* m2p = vqarray_get(m2s->programs, i);
-
-        if(m2p == NULL) {
-            continue;
-        }
-        m2p->pmt_processor =  pmt_processor_split;
+    for(gsize i = 0; i < m2s->programs->len; ++i) {
+        mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, i);
+        m2p->pmt_processor = pmt_processor_split;
     }
     return 1;
 }
-
 
 int main(int argc, char* argv[])
 {
@@ -168,12 +153,10 @@ int main(int argc, char* argv[])
 
     mpeg2ts_stream_t* m2s = NULL;
 
-
     if(argc < 2) {
         usage(argv[0]);
         return 1;
     }
-
 
     while((c = getopt_long(argc, argv, "vph", long_options, &long_options_index)) != -1) {
         switch(c) {
