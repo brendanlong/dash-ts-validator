@@ -114,7 +114,8 @@ int main(int argc, char* argv[])
     }
 
     ///////////////////////////////////
-    int returnCode = doSegmentValidation(&dash_validator, fname, NULL, NULL /* GORP */,
+    data_segment_iframes_t iframe_data = {0};
+    int returnCode = doSegmentValidation(&dash_validator, fname, NULL, &iframe_data,
                                          0 /* GORP: segment duration */);
     if(returnCode != 0) {
         return returnCode;
@@ -135,5 +136,5 @@ int main(int argc, char* argv[])
                       pv->LPT - pv->EPT);
 
     }
-
+    g_ptr_array_free(dash_validator.pids, true);
 }

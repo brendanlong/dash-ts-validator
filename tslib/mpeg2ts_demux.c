@@ -85,10 +85,8 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
 
     g_hash_table_destroy(m2p->pids);
 
-    if(m2p->pmt != NULL) {
-        // GORP: if this is a test with an initialization segment, then dont want to free the pmt
-//GORP     program_map_section_free(m2p->pmt);
-    }
+    // GORP: if this is a test with an initialization segment, then dont want to free the pmt
+    program_map_section_free(m2p->pmt);
 
     if(m2p->arg_destructor && m2p->arg) {
         m2p->arg_destructor(m2p->arg);

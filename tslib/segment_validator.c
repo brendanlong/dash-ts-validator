@@ -10,6 +10,24 @@ int g_nIFrameCntr;
 data_segment_iframes_t* g_pIFrameData;
 unsigned int g_segmentDuration;
 
+pid_validator_t* pid_validator_new(int pid, int content_component)
+{
+    pid_validator_t* obj = calloc(1, sizeof(pid_validator_t));
+    obj->PID = pid;
+    obj->content_component = content_component;
+    obj->ecm_pids = g_ptr_array_new();
+    return obj;
+}
+
+void pid_validator_free(pid_validator_t* obj)
+{
+    if (obj == NULL) {
+        return;
+    }
+    g_ptr_array_free(obj->ecm_pids, true);
+    free(obj);
+}
+
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
     if(g_p_dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
@@ -147,11 +165,7 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
             mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_PID, demux_handler,
                                                    demux_validator);
 
-            pid_validator = calloc(1, sizeof(pid_validator_t));
-            pid_validator->PID = PID;
-            pid_validator->content_component = content_component;
-            pid_validator->ecm_pids = g_ptr_array_new();
-
+            pid_validator = pid_validator_new(PID, content_component);
             g_ptr_array_add(g_p_dash_validator->pids, pid_validator);
             // TODO:
             // parse CA descriptors, add ca system and ecm_pid if they don't exist yet
@@ -198,10 +212,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
         // hook PID processor to PID
         mpeg2ts_program_register_pid_processor(m2p, PID, demux_handler, demux_validator);
 
-        pid_validator_dest = calloc(1, sizeof(pid_validator_t));
-        pid_validator_dest->PID = PID;
-        pid_validator_dest->content_component = content_component;
-        pid_validator_dest->ecm_pids = g_ptr_array_new();
+        pid_validator_dest = pid_validator_new(PID, content_component);
 
         LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
                       PID);
@@ -214,7 +225,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
 
 int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg)
 {
-    if(es_info == NULL) {
+    if(ts == NULL || es_info == NULL) {
         return 0;
     }
 
@@ -337,15 +348,16 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                         && ((returnCode = find_nal_unit(buf + index, len - index, &nal_start, &nal_end)) !=  0)) {
                     h264_stream_t* h = h264_new();
                     read_nal_unit(h, &buf[nal_start + index], nal_end - nal_start);
-                    if(h->nal->nal_unit_type == 5) {
+                    int unit_type = h->nal->nal_unit_type;
+                    h264_free(h);
+                    if (unit_type == 5) {
                         pid_validator->SAP_type = 1;
                         break;
-                    } else if(h->nal->nal_unit_type == 1) {
+                    } else if (unit_type == 1) {
                         pid_validator->SAP_type = 2;
                         break;
                     }
 
-                    h264_free(h);
                     index += nal_end;
                 }
             }
@@ -471,7 +483,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 
     g_p_dash_validator->last_pcr = PCR_INVALID;
     g_p_dash_validator->status = 1;
-    g_p_dash_validator->pids = g_ptr_array_new();
+    g_p_dash_validator->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
 
     // if had intialization segment, then copy program info and setup PES callbacks
     if(dash_validator_init != NULL) {
@@ -522,6 +534,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
             packet_buf_size = (long)(packets_to_read - packets_read);
         }
     }
+    free(ts_buf);
 
     // need to reset the mpeg stream to be sure to process the last PES packet
     mpeg2ts_stream_reset(m2s);
@@ -536,7 +549,6 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 
     mpeg2ts_stream_free(m2s);
     fclose(infile);
-
     return tslib_errno;
 }
 
