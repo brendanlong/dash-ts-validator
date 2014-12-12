@@ -1,6 +1,7 @@
 
 #include "mpd.h"
 
+#include <glib.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
@@ -174,7 +175,7 @@ void representation_free(representation_t* obj)
         return;
     }
 
-    xmlFree(obj->index_file_name);
+    g_free(obj->index_file_name);
     freeIFrames(obj->segment_iframes, obj->segments->length);
     for(size_t i = 0; i < obj->segments->length; ++i) {
         segment_free(varray_get(obj->segments, i));
@@ -211,8 +212,8 @@ void segment_free(segment_t* obj)
         return;
     }
 
-    xmlFree(obj->file_name);
-    xmlFree(obj->index_file_name);
+    g_free(obj->file_name);
+    g_free(obj->index_file_name);
 
     free(obj);
 }
@@ -256,15 +257,17 @@ mpd_t* read_mpd(char* file_name)
     }
     xmlFree(type);
 
-    char* base_url = find_base_url(root, NULL);
+    /* Ignore BaseURL here because we want a local path */
+    //char* base_url = find_base_url(root, NULL);
+    char* base_url = g_path_get_dirname(file_name);
+    puts(base_url);
 
     for (xmlNode* cur_node = root->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
             continue;
         }
         if (xmlStrEqual(cur_node->name, "Period")) {
-            /* Use base_url = NULL here because the top-level baseURL is usually an absolute path */
-            if(!read_period(cur_node, mpd, NULL)) {
+            if(!read_period(cur_node, mpd, base_url)) {
                 goto fail;
             }
         } else if (xmlStrEqual(cur_node->name, "BaseURL")) {
@@ -275,7 +278,7 @@ mpd_t* read_mpd(char* file_name)
     }
 
 cleanup:
-    xmlFree(base_url);
+    g_free(base_url);
     xmlFreeDoc(doc);
     return mpd;
 fail:
@@ -312,7 +315,7 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
     }
 
 cleanup:
-    xmlFree(base_url);
+    g_free(base_url);
     return return_code;
 fail:
     return_code = false;
@@ -364,7 +367,7 @@ bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url)
     }
 
 cleanup:
-    xmlFree(base_url);
+    g_free(base_url);
     return return_code;
 fail:
     return_code = false;
@@ -404,7 +407,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
         }
         if (xmlStrEqual(cur_node->name, "SegmentList")) {
             if(!read_segment_list(cur_node, representation, base_url)) {
-                return false;
+                goto fail;
             }
         } else if (xmlStrEqual(cur_node->name, "BaseURL")) {
             /* Ignore */
@@ -417,7 +420,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
             sizeof(data_segment_iframes_t));
 
 cleanup:
-    xmlFree(base_url);
+    g_free(base_url);
     xmlFree(mime_type);
     xmlFree(start_with_sap);
     return return_code;
@@ -484,12 +487,12 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
                 continue;
             }
             xmlChar* index_file_name = xmlGetProp(cur_node, "sourceURL");
-            if (base_url == NULL) {
-                representation->index_file_name = index_file_name;
+            if (base_url) {
+                representation->index_file_name = g_build_filename(base_url, index_file_name, NULL);
             } else {
-                representation->index_file_name = xmlStrcat(xmlStrdup(base_url), index_file_name);
-                xmlFree(index_file_name);
+                representation->index_file_name = g_strdup(index_file_name);
             }
+            xmlFree(index_file_name);
         } else if (xmlStrEqual(cur_node->name, "SegmentTimeline")) {
             /* Ignore */
         } else {
@@ -498,7 +501,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
     }
 
 cleanup:
-    xmlFree(base_url);
+    g_free(base_url);
     if (segment_timeline != NULL) {
         for (size_t i = 0; i < segment_timeline->length; ++i) {
             free(varray_get(segment_timeline, i));
@@ -551,12 +554,13 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
     segment->start = start;
     segment->duration = duration;
     xmlChar* media = xmlGetProp(node, "media");
-    if (base_url == NULL) {
-        segment->file_name = media;
-    } else if (media != NULL) {
-        segment->file_name = xmlStrcat(xmlStrdup(base_url), media);
-        xmlFree(media);
+    if (base_url) {
+        segment->file_name = g_build_filename(base_url, media, NULL);
+    } else {
+        /* Make a duplicate so all of our strings will use the same allocator. */
+        segment->file_name = g_strdup(media);
     }
+    xmlFree(media);
     return true;
 }
 
@@ -564,18 +568,21 @@ char* find_base_url(xmlNode* node, char* parent_url)
 {
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type == XML_ELEMENT_NODE && xmlStrEqual(cur_node->name, "BaseURL")) {
-            char *base_url = xmlNodeGetContent(cur_node);
+            char* base_url;
+            char* content = xmlNodeGetContent(cur_node);
             if (parent_url) {
-                char* tmp = xmlStrcat(xmlStrdup(parent_url), base_url);
-                xmlFree(base_url);
-                base_url = tmp;
+                base_url = g_build_filename(parent_url, content, NULL);
+            } else {
+                /* Make a duplicate so all of our strings will use the same allocator. */
+                base_url = g_strdup(content);
             }
+            xmlFree(content);
             return base_url;
         }
     }
     /* Make a copy here because it makes memory management easier if this
      * function always returns a new string. */
-    return xmlStrdup(parent_url);
+    return g_strdup(parent_url);
 }
 
 uint32_t read_optional_uint32(xmlNode* node, const char* property_name)

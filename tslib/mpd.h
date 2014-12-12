@@ -34,7 +34,6 @@ typedef struct {
 typedef struct {
     uint64_t start;
     uint64_t duration;
-    varray_t* base_urls;
     varray_t* adaptation_sets;
 } period_t;
 
