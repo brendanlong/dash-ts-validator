@@ -10,9 +10,11 @@
 
 typedef struct {
     char* file_name;
+    char* media_range;
     uint64_t start;
     uint64_t duration;
     char* index_file_name;
+    char* index_range;
 } segment_t;
 
 typedef struct {

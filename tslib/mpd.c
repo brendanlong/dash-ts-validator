@@ -36,6 +36,7 @@ uint32_t read_optional_uint32(xmlNode*, const char* property_name);
 uint32_t read_uint64(xmlNode*, const char* property_name);
 uint64_t read_duration(xmlNode*, const char* property_name);
 bool read_bool(xmlNode*, const char* property_name);
+char* read_filename(xmlNode*, const char* property_name, const char* base_url);
 uint64_t str_to_uint64(const char*, size_t length);
 
 const char INDENT_BUFFER[] = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
@@ -213,7 +214,9 @@ void segment_free(segment_t* obj)
     }
 
     g_free(obj->file_name);
+    xmlFree(obj->media_range);
     g_free(obj->index_file_name);
+    xmlFree(obj->index_range);
 
     free(obj);
 }
@@ -224,9 +227,11 @@ void segment_dump(const segment_t* segment, unsigned indent)
         printf("Segment:\n");
     }
     DUMP_PROPERTY(indent, "file_name: %s", PRINT_STR(segment->file_name));
+    DUMP_PROPERTY(indent, "media_range: %s", PRINT_STR(segment->media_range));
     DUMP_PROPERTY(indent, "start: %"PRIu64, segment->start);
     DUMP_PROPERTY(indent, "duration: %"PRIu64, segment->duration);
     DUMP_PROPERTY(indent, "index_file_name: %s", PRINT_STR(segment->index_file_name));
+    DUMP_PROPERTY(indent, "index_range: %s", PRINT_STR(segment->index_range));
 }
 
 mpd_t* read_mpd(char* file_name)
@@ -486,13 +491,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
                 LOG_WARN("Ignoring duplicate index file in <Representation>.");
                 continue;
             }
-            xmlChar* index_file_name = xmlGetProp(cur_node, "sourceURL");
-            if (base_url) {
-                representation->index_file_name = g_build_filename(base_url, index_file_name, NULL);
-            } else {
-                representation->index_file_name = g_strdup(index_file_name);
-            }
-            xmlFree(index_file_name);
+            representation->index_file_name = read_filename(cur_node, "sourceURL", base_url);
         } else if (xmlStrEqual(cur_node->name, "SegmentTimeline")) {
             /* Ignore */
         } else {
@@ -553,14 +552,11 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
 
     segment->start = start;
     segment->duration = duration;
-    xmlChar* media = xmlGetProp(node, "media");
-    if (base_url) {
-        segment->file_name = g_build_filename(base_url, media, NULL);
-    } else {
-        /* Make a duplicate so all of our strings will use the same allocator. */
-        segment->file_name = g_strdup(media);
-    }
-    xmlFree(media);
+
+    segment->file_name = read_filename(node, "media", base_url);
+    segment->media_range = xmlGetProp(node, "mediaRange");
+    segment->index_file_name = read_filename(node, "index", base_url);
+    segment->index_range = xmlGetProp(node, "indexRange");
     return true;
 }
 
@@ -722,6 +718,20 @@ bool read_bool(xmlNode* node, const char* property_name)
     }
     xmlFree(value);
     return result;
+}
+
+char* read_filename(xmlNode* node, const char* property_name, const char* base_url)
+{
+    char* property = xmlGetProp(node, property_name);
+    char* filename;
+    if (base_url) {
+        filename = g_build_filename(base_url, property, NULL);
+    } else {
+        /* Make a duplicate so we always return strings allocated by glib. */
+        filename = g_strdup(property);
+    }
+    xmlFree(property);
+    return filename;
 }
 
 uint64_t str_to_uint64(const char* str, size_t length)
