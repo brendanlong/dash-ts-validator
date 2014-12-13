@@ -1,6 +1,9 @@
 
 #include "segment_validator.h"
 
+#include <glib.h>
+#include <inttypes.h>
+#include <errno.h>
 #include "mpeg2ts_demux.h"
 #include "h264_stream.h"
 #include "ISOBMFF.h"
@@ -31,14 +34,14 @@ void pid_validator_free(pid_validator_t* obj)
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
     if(g_p_dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
-        LOG_ERROR_ARGS("DASH Conformance: 6.4.4.2  media segments shall contain exactly one program (%u found)",
+        g_critical("DASH Conformance: 6.4.4.2  media segments shall contain exactly one program (%u found)",
                        m2s->programs->len);
         g_p_dash_validator->status = 0;
         return 0;
     }
 
     if(g_p_dash_validator->use_initialization_segment) {
-        LOG_ERROR("DASH Conformance: No PAT allowed if initialization segment is used");
+        g_critical("DASH Conformance: No PAT allowed if initialization segment is used");
         g_p_dash_validator->status = 0;
         return 0;
     }
@@ -54,9 +57,7 @@ int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 
 int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
-    char* cat_str = malloc(0x10000); // fixme: this is ugly
-    conditional_access_section_print(m2s->cat, cat_str, 0x10000);
-    free(cat_str);
+    conditional_access_section_print(m2s->cat);
 
     // TODO: Register an EMM processor here
 
@@ -83,13 +84,12 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
     }
 
     if(g_p_dash_validator->use_initialization_segment) {
-        LOG_ERROR("DASH Conformance: No PMT allowed if initialization segment is used");
+        g_critical("DASH Conformance: No PMT allowed if initialization segment is used");
         g_p_dash_validator->status = 0;
         return 0;
     }
 
-//   char *pmt_str = malloc(0x10000); // fixme: this is ugly
-    //program_map_section_print(m2p->pmt, pmt_str, 0x10000);
+    //program_map_section_print(m2p->pmt);
 
     g_p_dash_validator->PCR_PID = m2p->pmt->PCR_PID;
     g_p_dash_validator->psi_tables_seen |= (1 << m2p->pmt->table_id);
@@ -184,7 +184,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
     dash_validator_dest->PCR_PID = dash_validator_source->PCR_PID;
     dash_validator_dest->psi_tables_seen = 0;
 
-    LOG_INFO_ARGS("copy_pmt_info: dash_validator_source->pids->len = %u",
+    g_info("copy_pmt_info: dash_validator_source->pids->len = %u",
                   dash_validator_source->pids->len);
     for(gsize i = 0; i < dash_validator_source->pids->len; ++i) {
         pid_validator_t* pid_validator_src = g_ptr_array_index(dash_validator_source->pids, i);
@@ -214,7 +214,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
 
         pid_validator_dest = pid_validator_new(PID, content_component);
 
-        LOG_INFO_ARGS("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
+        g_info("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
                       PID);
         g_ptr_array_add(dash_validator_dest->pids, pid_validator_dest);
         // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
@@ -250,14 +250,14 @@ int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void*
             // if we only have complete PES packets, we must start with PUSI=1 followed by PES header in the first payload-bearing packet
             if((g_p_dash_validator->conformance_level & TS_TEST_MAIN)
                     && (ts->header.payload_unit_start_indicator == 0)) {
-                LOG_ERROR("DASH Conformance: media segments shall contain only complete PES packets");
+                g_critical("DASH Conformance: media segments shall contain only complete PES packets");
                 g_p_dash_validator->status = 0;
             }
 
             // by the time we get to the start of the first PES, we need to have seen at least one PCR.
             if(g_p_dash_validator->conformance_level & TS_TEST_SIMPLE) {
                 if(!PCR_IS_VALID(g_p_dash_validator->last_pcr)) {
-                    LOG_ERROR("DASH Conformance: PCR must be present before first bytes of media data");
+                    g_critical("DASH Conformance: PCR must be present before first bytes of media data");
                     g_p_dash_validator->status = 0;
                 }
             }
@@ -283,18 +283,18 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     if(pes == NULL) {
         // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start from PUSI=1)
         if(g_p_dash_validator->conformance_level & TS_TEST_MAIN) {
-            LOG_ERROR("DASH Conformance: media segments shall contain only complete PES packets");
+            g_critical("DASH Conformance: media segments shall contain only complete PES packets");
             g_p_dash_validator->status = 0;
             return 0;
         }
 
-        LOG_ERROR("NULL PES packet!");
+        g_critical("NULL PES packet!");
         g_p_dash_validator->status = 0;
         return 0;
     }
 
     if(g_p_dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-        LOG_ERROR("DASH Conformance: initialization segment cannot contain program stream");
+        g_critical("DASH Conformance: initialization segment cannot contain program stream");
         g_p_dash_validator->status = 0;
         return 0;
     }
@@ -306,7 +306,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         uint8_t* buf = pes->payload;
         int len = pes->payload_len;
         if(validateEmsgMsg(buf, len, g_segmentDuration) != 0) {
-            LOG_ERROR("DASH Conformance: validation of EMSG failed");
+            g_critical("DASH Conformance: validation of EMSG failed");
             g_p_dash_validator->status = 0;
         }
     }
@@ -314,7 +314,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     assert(pid_validator != NULL);
     if(pes->status > 0) {
         if(g_p_dash_validator->conformance_level & TS_TEST_MAIN) {
-            LOG_ERROR("DASH Conformance: media segments shall contain only complete PES packets");
+            g_critical("DASH Conformance: media segments shall contain only complete PES packets");
             g_p_dash_validator->status = 0;
         }
         pes_free(pes);
@@ -328,7 +328,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             pid_validator->LPT = pes->header.PTS;
         } else {
             if(g_p_dash_validator->conformance_level & TS_TEST_MAIN) {
-                LOG_ERROR("DASH Conformance: first PES packet must have PTS");
+                g_critical("DASH Conformance: first PES packet must have PTS");
                 g_p_dash_validator->status = 0;
             }
         }
@@ -377,15 +377,15 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         pid_validator->duration = 3000;
 
         if(g_pIFrameData->doIFrameValidation && first_ts->adaptation_field.random_access_indicator) {
-            LOG_INFO("Performing IFrame validation");
+            g_info("Performing IFrame validation");
             // check iFrame location against index file
 
             if(g_nIFrameCntr < g_pIFrameData->numIFrames) {
                 unsigned int expectedIFramePTS = g_pIFrameData->pIFrameLocations_Time[g_nIFrameCntr];
                 unsigned int actualIFramePTS = pes->header.PTS;
-                LOG_INFO_ARGS("expectedIFramePTS = %u, actualIFramePTS = %u", expectedIFramePTS, actualIFramePTS);
+                g_info("expectedIFramePTS = %u, actualIFramePTS = %u", expectedIFramePTS, actualIFramePTS);
                 if(expectedIFramePTS != actualIFramePTS) {
-                    LOG_ERROR_ARGS("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actua: %d",
+                    g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actua: %d",
                                    expectedIFramePTS, actualIFramePTS);
                     g_p_dash_validator->status = 0;
                 }
@@ -393,10 +393,10 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 // check frame byte location
                 uint64_t expectedFrameByteLocation = g_pIFrameData->pIFrameLocations_Byte[g_nIFrameCntr];
                 uint64_t actualFrameByteLocation = pes->payload_pos_in_stream;
-                LOG_INFO_ARGS("expectedIFrameByteLocation = %"PRId64", actualIFrameByteLocation = %"PRId64"",
+                g_info("expectedIFrameByteLocation = %"PRId64", actualIFrameByteLocation = %"PRId64"",
                               expectedFrameByteLocation, actualFrameByteLocation);
                 if(expectedFrameByteLocation != actualFrameByteLocation) {
-                    LOG_ERROR_ARGS("DASH Conformance: expected IFrame Byte Locaton does not match actual.  Expected: %"PRId64", Actual: %"PRId64"",
+                    g_critical("DASH Conformance: expected IFrame Byte Locaton does not match actual.  Expected: %"PRId64", Actual: %"PRId64"",
                                    expectedFrameByteLocation, actualFrameByteLocation);
                     g_p_dash_validator->status = 0;
                 }
@@ -405,17 +405,17 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 unsigned char expectedStartsWithSAP = g_pIFrameData->pStartsWithSAP[g_nIFrameCntr];
                 unsigned char expectedSAPType = g_pIFrameData->pSAPType[g_nIFrameCntr];
                 unsigned char actualSAPType = pid_validator->SAP_type;
-                LOG_INFO_ARGS("expectedStartsWithSAP = %d, expectedSAPType = %d, actualSAPType = %d",
+                g_info("expectedStartsWithSAP = %d, expectedSAPType = %d, actualSAPType = %d",
                               expectedStartsWithSAP, expectedSAPType, actualSAPType);
                 if(expectedStartsWithSAP == 1 && expectedSAPType != 0 && expectedSAPType != actualSAPType) {
-                    LOG_ERROR_ARGS("DASH Conformance: expected IFrame SAP Type does not match actual: expectedStartsWithSAP = %d, \
+                    g_critical("DASH Conformance: expected IFrame SAP Type does not match actual: expectedStartsWithSAP = %d, \
 expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPType, actualSAPType);
                     g_p_dash_validator->status = 0;
                 }
 
                 g_nIFrameCntr++;
             } else {
-                LOG_ERROR("DASH Conformance: Stream has more IFrames than index file");
+                g_critical("DASH Conformance: Stream has more IFrames than index file");
                 g_p_dash_validator->status = 0;
             }
         }
@@ -450,7 +450,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
     g_pIFrameData = pIFrameData;
     g_segmentDuration = segmentDuration;
 
-    LOG_INFO_ARGS("doSegmentValidation : %s", fname);
+    g_info("doSegmentValidation : %s", fname);
 
     mpeg2ts_stream_t* m2s = NULL;
 
@@ -462,21 +462,21 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 
     FILE* infile = NULL;
     if((infile = fopen(fname, "rb")) == NULL) {
-        LOG_ERROR_ARGS("Cannot open file %s - %s", fname, strerror(errno));
+        g_critical("Cannot open file %s - %s", fname, strerror(errno));
         g_p_dash_validator->status = 0;
         return 1;
     }
 
     if(g_p_dash_validator->segment_start > 0) {
         if(!fseek(infile, g_p_dash_validator->segment_start, SEEK_SET)) {
-            LOG_ERROR_ARGS("Error seeking to offset %ld - %s", g_p_dash_validator->segment_start,
+            g_critical("Error seeking to offset %ld - %s", g_p_dash_validator->segment_start,
                            strerror(errno));
             g_p_dash_validator->status = 0;
             return 1;
         }
     }
     if(NULL == (m2s = mpeg2ts_stream_new())) {
-        LOG_ERROR("Error creating MPEG-2 STREAM object");
+        g_critical("Error creating MPEG-2 STREAM object");
         g_p_dash_validator->status = 0;
         return 1;
     }
@@ -492,12 +492,12 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
                                       201 /* GORP */);
         prog->pmt = dash_validator_init->initializaion_segment_pmt;
 
-        LOG_INFO_ARGS("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
+        g_info("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
         g_ptr_array_add(m2s->programs, prog);
 
         int returnCode = copy_pmt_info(prog, dash_validator_init, g_p_dash_validator);
         if(returnCode != 0) {
-            LOG_ERROR("Error copying PMT info");
+            g_critical("Error copying PMT info");
             g_p_dash_validator->status = 0;
             return 1;
         }
@@ -521,7 +521,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
             int res = 0;
             ts_packet_t* ts = ts_new();
             if((res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read)) < TS_SIZE) {
-                LOG_ERROR_ARGS("Error parsing TS packet %"PRIo64" (%d)", packets_read, res);
+                g_critical("Error parsing TS packet %"PRIo64" (%d)", packets_read, res);
                 g_p_dash_validator->status = 0;
                 break;
             }
@@ -539,7 +539,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
     // need to reset the mpeg stream to be sure to process the last PES packet
     mpeg2ts_stream_reset(m2s);
 
-    LOG_INFO_ARGS("%"PRIo64" TS packets read", packets_read);
+    g_info("%"PRIo64" TS packets read", packets_read);
 
     if(g_p_dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, 0);  // should be only one program
@@ -556,7 +556,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 void doDASHEventValidation(uint8_t* buf, int len)
 {
     if(validateEmsgMsg(buf, len, g_segmentDuration) != 0) {
-        LOG_ERROR("DASH Conformance: validation of EMSG failed");
+        g_critical("DASH Conformance: validation of EMSG failed");
         g_p_dash_validator->status = 0;
     }
 }

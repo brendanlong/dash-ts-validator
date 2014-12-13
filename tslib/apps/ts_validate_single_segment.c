@@ -25,6 +25,7 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
@@ -87,11 +88,11 @@ int main(int argc, char* argv[])
         case 'b':
             if(sscanf(optarg, "%ld-%ld", &dash_validator.segment_start, &dash_validator.segment_end) == 2) {
                 if(dash_validator.segment_end < dash_validator.segment_start + TS_SIZE) {
-                    LOG_ERROR_ARGS("Invalid byte range %s", optarg);
+                    g_critical("Invalid byte range %s", optarg);
                     return 1;
                 }
             } else {
-                LOG_ERROR_ARGS("Invalid byte range %s", optarg);
+                g_critical("Invalid byte range %s", optarg);
                 return 1;
             }
         case 'v':
@@ -106,9 +107,11 @@ int main(int argc, char* argv[])
         }
     }
 
+    g_log_set_default_handler(log_handler, NULL);
+
     char* fname = argv[optind];
     if(fname == NULL || fname[0] == 0) {
-        LOG_ERROR("No input file provided");
+        g_critical("No input file provided");
         usage(argv[0]);
         return 1;
     }
@@ -131,7 +134,7 @@ int main(int argc, char* argv[])
 
     for(gsize i = 0; i < dash_validator.pids->len; ++i) {
         pv = g_ptr_array_index(dash_validator.pids, i);
-        LOG_INFO_ARGS("%04X: %s EPT=%"PRId64" SAP=%d SAP Type=%d DURATION=%"PRId64"\n",
+        g_info("%04X: %s EPT=%"PRId64" SAP=%d SAP Type=%d DURATION=%"PRId64"\n",
                       pv->PID, content_component_table[pv->content_component], pv->EPT, pv->SAP, pv->SAP_type,
                       pv->LPT - pv->EPT);
 

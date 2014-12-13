@@ -27,6 +27,7 @@
  */
 #include "psi.h"
 
+#include <glib.h>
 #include <stdbool.h>
 #include "bs.h"
 #include "libts_common.h"
@@ -138,7 +139,7 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
 
     pas->table_id = bs_read_u8(b);
     if(pas->table_id != program_association_section) {
-        LOG_ERROR_ARGS("Table ID in PAT is 0x%02X instead of expected 0x%02X",
+        g_critical("Table ID in PAT is 0x%02X instead of expected 0x%02X",
                        pas->table_id, program_association_section);
         SAFE_REPORT_TS_ERR(-30);
         return 0;
@@ -148,14 +149,14 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
 
     pas->section_syntax_indicator = bs_read_u1(b);
     if(!pas->section_syntax_indicator) {
-        LOG_ERROR("section_syntax_indicator not set in PAT");
+        g_critical("section_syntax_indicator not set in PAT");
         SAFE_REPORT_TS_ERR(-31);
         return 0;
     }
     bs_skip_u(b, 3); // TODO read the zero bit, check it to be zero
     pas->section_length = bs_read_u(b, 12);
     if(pas->section_length > MAX_SECTION_LEN) {
-        LOG_ERROR_ARGS("PAT section length is 0x%02X, larger than maximum allowed 0x%02X",
+        g_critical("PAT section length is 0x%02X, larger than maximum allowed 0x%02X",
                        pas->section_length, MAX_SECTION_LEN);
         SAFE_REPORT_TS_ERR(-32);
         return 0;
@@ -171,7 +172,7 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
     pas->version_number = bs_read_u(b, 5);
     pas->current_next_indicator = bs_read_u1(b);
     if(!pas->current_next_indicator) {
-        LOG_WARN("This PAT is not yet applicable/n");
+        g_warning("This PAT is not yet applicable/n");
     }
 
     // read byte 5
@@ -179,7 +180,7 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
     pas->section_number = bs_read_u8(b);
     pas->last_section_number = bs_read_u8(b);
     if(pas->section_number != 0 || pas->last_section_number != 0) {
-        LOG_WARN("Multi-section PAT is not supported yet/n");
+        g_warning("Multi-section PAT is not supported yet/n");
     }
 
     // read bytes 6,7
@@ -191,7 +192,7 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
     // It's much shorter in C :-)
 
     if(pas->_num_programs > 1) {
-        LOG_WARN_ARGS("%zd programs found, but only SPTS is fully supported. Patches are welcome.",
+        g_warning("%zd programs found, but only SPTS is fully supported. Patches are welcome.",
                       pas->_num_programs);
     }
 
@@ -209,7 +210,7 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
     pas_crc = crc_update(pas_crc, buf, bs_pos(b) - 4);
     pas_crc = crc_finalize(pas_crc);
     if(pas_crc != pas->CRC_32) {
-        LOG_ERROR_ARGS("PAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pas->CRC_32, pas_crc);
+        g_critical("PAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pas->CRC_32, pas_crc);
         SAFE_REPORT_TS_ERR(-33);
         return 0;
     } else {
@@ -221,31 +222,27 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
     return 1;
 }
 
-//int program_association_section_write(program_association_section_t *pat, bs_t *bs);
-int program_association_section_print(const program_association_section_t* pas, char* str,
-                                      size_t str_len)
+void program_association_section_print(const program_association_section_t* pas)
 {
-    if(pas == NULL || str == NULL || str_len < 2 || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
-        return 0;
+    if(pas == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+        return;
     }
-    int bytes = 0;
 
-    LOG_INFO("Program Association Section");
-    bytes += SKIT_LOG_UINT(str + bytes, 0, pas->table_id, str_len);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, pas->section_syntax_indicator, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, pas->section_length, str_len - bytes);
-    bytes += SKIT_LOG_UINT_HEX(str + bytes, 0, pas->transport_stream_id, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, pas->version_number, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, pas->current_next_indicator, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, pas->section_number, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, pas->last_section_number, str_len - bytes);
+    g_info("Program Association Section");
+    SKIT_LOG_UINT(0, pas->table_id);
+    SKIT_LOG_UINT(0, pas->section_syntax_indicator);
+    SKIT_LOG_UINT(0, pas->section_length);
+    SKIT_LOG_UINT_HEX(0, pas->transport_stream_id);
+    SKIT_LOG_UINT(0, pas->version_number);
+    SKIT_LOG_UINT(0, pas->current_next_indicator);
+    SKIT_LOG_UINT(0, pas->section_number);
+    SKIT_LOG_UINT(0, pas->last_section_number);
 
     for(int i = 0; i < pas->_num_programs; i++) {
-        bytes += SKIT_LOG_UINT(str + bytes, 1, pas->programs[i].program_number, str_len - bytes);
-        bytes += SKIT_LOG_UINT_HEX(str + bytes, 1, pas->programs[i].program_map_PID, str_len - bytes);
+        SKIT_LOG_UINT(1, pas->programs[i].program_number);
+        SKIT_LOG_UINT_HEX(1, pas->programs[i].program_map_PID);
     }
-    bytes += SKIT_LOG_UINT_HEX(str + bytes, 0, pas->CRC_32, str_len - bytes);
-    return bytes;
+    SKIT_LOG_UINT_HEX(0, pas->CRC_32);
 }
 
 elementary_stream_info_t* es_info_new()
@@ -277,7 +274,7 @@ int es_info_read(elementary_stream_info_t* es, bs_t* b)
 
     read_descriptor_loop(es->descriptors, b, es->ES_info_length);
     if(es->ES_info_length > MAX_ES_INFO_LEN) {
-        LOG_ERROR_ARGS("ES info length is 0x%02X, larger than maximum allowed 0x%02X",
+        g_critical("ES info length is 0x%02X, larger than maximum allowed 0x%02X",
                        es->ES_info_length, MAX_ES_INFO_LEN);
         SAFE_REPORT_TS_ERR(-60);
         return 0;
@@ -286,21 +283,17 @@ int es_info_read(elementary_stream_info_t* es, bs_t* b)
     return bs_pos(b) - es_info_start;
 }
 
-//int es_info_write(elementary_stream_info_t *es, uint8_t *buf, size_t buf_size);
-int es_info_print(elementary_stream_info_t* es, int level, char* str, size_t str_len)
+void es_info_print(elementary_stream_info_t* es, int level)
 {
-    if(es == NULL || str == NULL || str_len < 2 || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
-        return 0;
+    if(es == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+        return;
     }
-    int bytes = 0;
 
-    bytes += SKIT_LOG_UINT_VERBOSE(str + bytes, level, es->stream_type, stream_desc(es->stream_type),
-                                   str_len - bytes);
-    bytes += SKIT_LOG_UINT_HEX(str + bytes, level, es->elementary_PID, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, level, es->ES_info_length, str_len - bytes);
+    SKIT_LOG_UINT_VERBOSE(level, es->stream_type, stream_desc(es->stream_type));
+    SKIT_LOG_UINT_HEX(level, es->elementary_PID);
+    SKIT_LOG_UINT(level, es->ES_info_length);
 
-    bytes += print_descriptor_loop(es->descriptors, level + 1, str + bytes, str_len - bytes);
-    return bytes;
+    print_descriptor_loop(es->descriptors, level + 1);
 }
 
 int write_es_info_loop(GPtrArray* es_list, bs_t* b)
@@ -308,16 +301,12 @@ int write_es_info_loop(GPtrArray* es_list, bs_t* b)
     return 0; // TODO actually implement write_es_info_loop
 }
 
-int print_es_info_loop(GPtrArray* es_list, int level, char* str, size_t str_len)
+void print_es_info_loop(GPtrArray* es_list, int level)
 {
-    int bytes = 0;
     for(gsize i = 0; i < es_list->len; ++i) {
         elementary_stream_info_t* es = g_ptr_array_index(es_list, i);
-        if(es != NULL) {
-            bytes += es_info_print(es, level, str + bytes, str_len - bytes);
-        }
+        es_info_print(es, level);
     }
-    return bytes;
 }
 
 program_map_section_t* program_map_section_new()
@@ -351,7 +340,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 
     pms->table_id = bs_read_u8(b);
     if(pms->table_id != TS_program_map_section) {
-        LOG_ERROR_ARGS("Table ID in PMT is 0x%02X instead of expected 0x%02X", pms->table_id,
+        g_critical("Table ID in PMT is 0x%02X instead of expected 0x%02X", pms->table_id,
                        TS_program_map_section);
         SAFE_REPORT_TS_ERR(-40);
         return 0;
@@ -359,7 +348,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 
     pms->section_syntax_indicator = bs_read_u1(b);
     if(!pms->section_syntax_indicator) {
-        LOG_ERROR("section_syntax_indicator not set in PMT");
+        g_critical("section_syntax_indicator not set in PMT");
         SAFE_REPORT_TS_ERR(-41);
         return 0;
     }
@@ -367,7 +356,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     bs_skip_u(b, 3);
     pms->section_length = bs_read_u(b, 12);
     if(pms->section_length > MAX_SECTION_LEN) {
-        LOG_ERROR_ARGS("PMT section length is 0x%02X, larger than maximum allowed 0x%02X",
+        g_critical("PMT section length is 0x%02X, larger than maximum allowed 0x%02X",
                        pms->section_length, MAX_SECTION_LEN);
         SAFE_REPORT_TS_ERR(-42);
         return 0;
@@ -383,14 +372,14 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     pms->version_number = bs_read_u(b, 5);
     pms->current_next_indicator = bs_read_u1(b);
     if(!pms->current_next_indicator) {
-        LOG_WARN("This PMT is not yet applicable/n");
+        g_warning("This PMT is not yet applicable/n");
     }
 
     // bytes 3,4
     pms->section_number = bs_read_u8(b);
     pms->last_section_number = bs_read_u8(b);
     if(pms->section_number != 0 || pms->last_section_number != 0) {
-        LOG_ERROR("Multi-section PMT is not allowed/n");
+        g_critical("Multi-section PMT is not allowed/n");
         SAFE_REPORT_TS_ERR(-43);
         return 0;
     }
@@ -398,7 +387,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     bs_skip_u(b, 3);
     pms->PCR_PID = bs_read_u(b, 13);
     if(pms->PCR_PID < GENERAL_PURPOSE_PID_MIN || pms->PCR_PID > GENERAL_PURPOSE_PID_MAX) {
-        LOG_ERROR_ARGS("PCR PID has invalid value 0x%02X", pms->PCR_PID);
+        g_critical("PCR PID has invalid value 0x%02X", pms->PCR_PID);
         SAFE_REPORT_TS_ERR(-44);
         return 0;
     }
@@ -406,7 +395,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 
     pms->program_info_length = bs_read_u(b, 12);
     if(pms->program_info_length > MAX_PROGRAM_INFO_LEN) {
-        LOG_ERROR_ARGS("PMT program info length is 0x%02X, larger than maximum allowed 0x%02X",
+        g_critical("PMT program info length is 0x%02X, larger than maximum allowed 0x%02X",
                        pms->program_info_length, MAX_PROGRAM_INFO_LEN);
         SAFE_REPORT_TS_ERR(-45);
         return 0;
@@ -427,11 +416,11 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     pas_crc = crc_update(pas_crc, buf, bs_pos(b) - 4);
     pas_crc = crc_finalize(pas_crc);
     if(pas_crc != pms->CRC_32) {
-        LOG_ERROR_ARGS("PMT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pms->CRC_32, pas_crc);
+        g_critical("PMT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pms->CRC_32, pas_crc);
         SAFE_REPORT_TS_ERR(-46);
         return 0;
     } else {
-        // LOG_DEBUG("PMT CRC_32 checked successfully");
+        g_debug("PMT CRC_32 checked successfully");
     }
 
     int bytes_read = bs_pos(b);
@@ -439,38 +428,35 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 
     return bytes_read;
 }
-// int program_map_section_write(program_map_section_t *pms, uint8_t *buf, size_t buf_size);
-int program_map_section_print(program_map_section_t* pms, char* str, size_t str_len)
+
+void program_map_section_print(program_map_section_t* pms)
 {
-    if(str == NULL || str_len < 2 || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
-        return 0;
+    if(tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+        return;
     }
-    int bytes = 0;
 
-    LOG_INFO("Program Map Section");
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->table_id, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->section_syntax_indicator, str_len - bytes);
+    g_info("Program Map Section");
+    SKIT_LOG_UINT(1, pms->table_id);
+    SKIT_LOG_UINT(1, pms->section_syntax_indicator);
 
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->section_length, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->program_number, str_len - bytes);
+    SKIT_LOG_UINT(1, pms->section_length);
+    SKIT_LOG_UINT(1, pms->program_number);
 
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->version_number, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->current_next_indicator, str_len - bytes);
+    SKIT_LOG_UINT(1, pms->version_number);
+    SKIT_LOG_UINT(1, pms->current_next_indicator);
 
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->section_number, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->last_section_number, str_len - bytes);
+    SKIT_LOG_UINT(1, pms->section_number);
+    SKIT_LOG_UINT(1, pms->last_section_number);
 
-    bytes += SKIT_LOG_UINT_HEX(str + bytes, 1, pms->PCR_PID, str_len - bytes);
+    SKIT_LOG_UINT_HEX(1, pms->PCR_PID);
 
-    bytes += SKIT_LOG_UINT(str + bytes, 1, pms->program_info_length, str_len - bytes);
+    SKIT_LOG_UINT(1, pms->program_info_length);
 
-    bytes += print_descriptor_loop(pms->descriptors, 2, str + bytes, str_len - bytes);
+    print_descriptor_loop(pms->descriptors, 2);
 
-    bytes += print_es_info_loop(pms->es_info, 2, str + bytes, str_len - bytes);
+    print_es_info_loop(pms->es_info, 2);
 
-    bytes += SKIT_LOG_UINT_HEX(str + bytes, 1, pms->CRC_32, str_len - bytes);
-
-    return bytes;
+    SKIT_LOG_UINT_HEX(1, pms->CRC_32);
 }
 
 conditional_access_section_t* conditional_access_section_new()
@@ -502,7 +488,7 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
 
     cas->table_id = bs_read_u8(b);
     if(cas->table_id != conditional_access_section) {
-        LOG_ERROR_ARGS("Table ID in CAT is 0x%02X instead of expected 0x%02X",
+        g_critical("Table ID in CAT is 0x%02X instead of expected 0x%02X",
                        cas->table_id, conditional_access_section);
         SAFE_REPORT_TS_ERR(-30);
         return 0;
@@ -512,14 +498,14 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
 
     cas->section_syntax_indicator = bs_read_u1(b);
     if(!cas->section_syntax_indicator) {
-        LOG_ERROR("section_syntax_indicator not set in CAT");
+        g_critical("section_syntax_indicator not set in CAT");
         SAFE_REPORT_TS_ERR(-31);
         return 0;
     }
     bs_skip_u(b, 3); // TODO read the zero bit, check it to be zero
     cas->section_length = bs_read_u(b, 12);
     if(cas->section_length > 1021) {  // max CAT length
-        LOG_ERROR_ARGS("CAT section length is 0x%02X, larger than maximum allowed 0x%02X",
+        g_critical("CAT section length is 0x%02X, larger than maximum allowed 0x%02X",
                        cas->section_length, MAX_SECTION_LEN);
         SAFE_REPORT_TS_ERR(-32);
         return 0;
@@ -534,7 +520,7 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     cas->version_number = bs_read_u(b, 5);
     cas->current_next_indicator = bs_read_u1(b);
     if(!cas->current_next_indicator) {
-        LOG_WARN("This CAT is not yet applicable/n");
+        g_warning("This CAT is not yet applicable/n");
     }
 
     // read byte 5
@@ -542,7 +528,7 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     cas->section_number = bs_read_u8(b);
     cas->last_section_number = bs_read_u8(b);
     if(cas->section_number != 0 || cas->last_section_number != 0) {
-        LOG_WARN("Multi-section CAT is not supported yet/n");
+        g_warning("Multi-section CAT is not supported yet/n");
     }
 
     // read bytes 6,7
@@ -552,8 +538,6 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     // we used 5 bytes for the mandatory section fields, and will use another 4 bytes for CRC
     // the remaining bytes contain descriptors, most probably only one
     // again, it's much shorter in C :-)
-
-
     cas->CRC_32 = bs_read_u32(b);
 
     // check CRC
@@ -561,38 +545,33 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     cas_crc = crc_update(cas_crc, buf, bs_pos(b) - 4);
     cas_crc = crc_finalize(cas_crc);
     if(cas_crc != cas->CRC_32) {
-        LOG_ERROR_ARGS("CAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", cas->CRC_32, cas_crc);
+        g_critical("CAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", cas->CRC_32, cas_crc);
         SAFE_REPORT_TS_ERR(-33);
         return 0;
     }
-
 
     bs_free(b);
     return 1;
 }
 
-//int conditional_access_section_write(conditional_access_section_t *pat, bs_t *bs);
-int conditional_access_section_print(const conditional_access_section_t* cas, char* str,
-                                     size_t str_len)
+void conditional_access_section_print(const conditional_access_section_t* cas)
 {
-    if(cas == NULL || str == NULL || str_len < 2 || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
-        return 0;
+    if(cas == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+        return;
     }
-    int bytes = 0;
 
-    LOG_INFO("Conditional Access Section");
-    bytes += SKIT_LOG_UINT(str + bytes, 0, cas->table_id, str_len);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, cas->section_syntax_indicator, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, cas->section_length, str_len - bytes);
+    g_info("Conditional Access Section");
+    SKIT_LOG_UINT(0, cas->table_id);
+    SKIT_LOG_UINT(0, cas->section_syntax_indicator);
+    SKIT_LOG_UINT(0, cas->section_length);
 
-    bytes += SKIT_LOG_UINT(str + bytes, 0, cas->version_number, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, cas->current_next_indicator, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, cas->section_number, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, 0, cas->last_section_number, str_len - bytes);
+    SKIT_LOG_UINT(0, cas->version_number);
+    SKIT_LOG_UINT(0, cas->current_next_indicator);
+    SKIT_LOG_UINT(0, cas->section_number);
+    SKIT_LOG_UINT(0, cas->last_section_number);
 
-    bytes += print_descriptor_loop(cas->descriptors, 2, str + bytes, str_len - bytes);
+    print_descriptor_loop(cas->descriptors, 2);
 
-    bytes += SKIT_LOG_UINT_HEX(str + bytes, 0, cas->CRC_32, str_len - bytes);
-    return bytes;
+    SKIT_LOG_UINT_HEX(0, cas->CRC_32);
 }
 

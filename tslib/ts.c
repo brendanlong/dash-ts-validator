@@ -25,12 +25,14 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include "ts.h"
 
+#include <glib.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <string.h>
+#include <inttypes.h>
 
-#include "ts.h"
 #include "libts_common.h"
 #include "log.h"
 
@@ -72,13 +74,13 @@ int ts_read_header(ts_header_t* tsh, bs_t* b)
 
     uint8_t sync_byte = bs_read_u8(b);
     if(sync_byte != TS_SYNC_BYTE) {
-        LOG_ERROR_ARGS("Got 0x%02X instead of expected sync byte 0x%02X", sync_byte, TS_SYNC_BYTE);
+        g_critical("Got 0x%02X instead of expected sync byte 0x%02X", sync_byte, TS_SYNC_BYTE);
         return TS_ERROR_NO_SYNC_BYTE;
     }
 
     tsh->transport_error_indicator = bs_read_u1(b);
     if(tsh->transport_error_indicator) {
-        LOG_WARN("At least one uncorrectable bit error exists in this TS packet");
+        g_warning("At least one uncorrectable bit error exists in this TS packet");
     }
 
     tsh->payload_unit_start_indicator = bs_read_u1(b);
@@ -369,106 +371,92 @@ int ts_write(ts_packet_t* ts, uint8_t* buf, size_t buf_size)
     return bs_pos(&b);
 }
 
-int ts_print_header(const ts_header_t* const tsh, char* str, size_t str_len)
+void ts_print_header(const ts_header_t* const tsh)
 {
-    if(tsh == NULL || str == NULL || str_len < 2) {
-        return 0;
+    if(tsh == NULL ) {
+        return;
     }
-    int bytes = 0;
+    SKIT_LOG_UINT_DBG(0, tsh->transport_error_indicator);
+    SKIT_LOG_UINT_DBG(0, tsh->payload_unit_start_indicator);
+    SKIT_LOG_UINT_DBG(0, tsh->transport_priority);
+    SKIT_LOG_UINT_HEX_DBG(0, tsh->PID);
 
-    bytes += SKIT_LOG_UINT_DBG(str + bytes, 0, tsh->transport_error_indicator, str_len);
-    bytes += SKIT_LOG_UINT_DBG(str + bytes, 0, tsh->payload_unit_start_indicator, str_len - bytes);
-    bytes += SKIT_LOG_UINT_DBG(str + bytes, 0, tsh->transport_priority, str_len - bytes);
-    bytes += SKIT_LOG_UINT_HEX_DBG(str + bytes, 0, tsh->PID, str_len - bytes);
-
-    bytes += SKIT_LOG_UINT_DBG(str + bytes, 0, tsh->transport_scrambling_control, str_len - bytes);
-    bytes += SKIT_LOG_UINT_DBG(str + bytes, 0, tsh->adaptation_field_control, str_len - bytes);
-    bytes += SKIT_LOG_UINT_DBG(str + bytes, 0, tsh->continuity_counter, str_len - bytes);
-
-    return bytes;
+    SKIT_LOG_UINT_DBG(0, tsh->transport_scrambling_control);
+    SKIT_LOG_UINT_DBG(0, tsh->adaptation_field_control);
+    SKIT_LOG_UINT_DBG(0, tsh->continuity_counter);
 }
 
-int ts_print_adaptation_field(const ts_adaptation_field_t* const af, char* str, size_t str_len)
+void ts_print_adaptation_field(const ts_adaptation_field_t* const af)
 {
-    if(af == NULL || str == NULL || str_len < 2) {
-        return 0;
+    if(af == NULL) {
+        return;
     }
 
-    int bytes = 0;
-    bytes += SKIT_LOG_UINT_DBG(str, 1, af->adaptation_field_length, str_len);
+    SKIT_LOG_UINT_DBG(1, af->adaptation_field_length);
 
     if(af->adaptation_field_length > 0) {
-        bytes += SKIT_LOG_UINT_DBG(str + bytes, 1, af->discontinuity_indicator, str_len - bytes);
-        bytes += SKIT_LOG_UINT_DBG(str + bytes, 1, af->random_access_indicator, str_len - bytes);
-        bytes += SKIT_LOG_UINT_DBG(str + bytes, 1, af->elementary_stream_priority_indicator,
-                                   str_len - bytes);
-        bytes += SKIT_LOG_UINT_DBG(str + bytes, 1, af->PCR_flag, str_len - bytes);
-        bytes += SKIT_LOG_UINT_DBG(str + bytes, 1, af->OPCR_flag, str_len - bytes);
-        bytes += SKIT_LOG_UINT_DBG(str + bytes, 1, af->splicing_point_flag, str_len - bytes);
-        bytes += SKIT_LOG_UINT_DBG(str + bytes, 1, af->transport_private_data_flag, str_len - bytes);
-        bytes += SKIT_LOG_UINT_DBG(str + bytes, 1, af->adaptation_field_extension_flag, str_len - bytes);
+        SKIT_LOG_UINT_DBG(1, af->discontinuity_indicator);
+        SKIT_LOG_UINT_DBG(1, af->random_access_indicator);
+        SKIT_LOG_UINT_DBG(1, af->elementary_stream_priority_indicator);
+        SKIT_LOG_UINT_DBG(1, af->PCR_flag);
+        SKIT_LOG_UINT_DBG(1, af->OPCR_flag);
+        SKIT_LOG_UINT_DBG(1, af->splicing_point_flag);
+        SKIT_LOG_UINT_DBG(1, af->transport_private_data_flag);
+        SKIT_LOG_UINT_DBG(1, af->adaptation_field_extension_flag);
 
         if(af->adaptation_field_length > 1) {
             if(af->PCR_flag) {
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->program_clock_reference_base, str_len - bytes);
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->program_clock_reference_extension, str_len - bytes);
+                SKIT_LOG_UINT_DBG(2, af->program_clock_reference_base);
+                SKIT_LOG_UINT_DBG(2, af->program_clock_reference_extension);
             }
             if(af->OPCR_flag) {
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->original_program_clock_reference_base,
-                                           str_len - bytes);
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->original_program_clock_reference_extension,
-                                           str_len - bytes);
+                SKIT_LOG_UINT_DBG(2, af->original_program_clock_reference_base);
+                SKIT_LOG_UINT_DBG(2, af->original_program_clock_reference_extension);
             }
             if(af->splicing_point_flag) {
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->splice_countdown, str_len - bytes);
+                SKIT_LOG_UINT_DBG(2, af->splice_countdown);
             }
 
             if(af->transport_private_data_flag) {
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->transport_private_data_length, str_len - bytes);
+                SKIT_LOG_UINT_DBG(2, af->transport_private_data_length);
                 // TODO print transport_private_data, if any
             }
 
             if(af->adaptation_field_extension_flag) {
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->adaptation_field_extension_length, str_len - bytes);
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->ltw_flag, str_len - bytes);
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->piecewise_rate_flag, str_len - bytes);
-                bytes += SKIT_LOG_UINT_DBG(str + bytes, 2, af->seamless_splice_flag, str_len - bytes);
+                SKIT_LOG_UINT_DBG(2, af->adaptation_field_extension_length);
+                SKIT_LOG_UINT_DBG(2, af->ltw_flag);
+                SKIT_LOG_UINT_DBG(2, af->piecewise_rate_flag);
+                SKIT_LOG_UINT_DBG(2, af->seamless_splice_flag);
 
                 if(af->ltw_flag) {
-                    bytes += SKIT_LOG_UINT_DBG(str + bytes, 3, af->ltw_valid_flag, str_len - bytes);
-                    bytes += SKIT_LOG_UINT_DBG(str + bytes, 3, af->ltw_offset, str_len - bytes);
+                    SKIT_LOG_UINT_DBG(3, af->ltw_valid_flag);
+                    SKIT_LOG_UINT_DBG(3, af->ltw_offset);
                 }
                 if(af->piecewise_rate_flag) {
                     // here go reserved 2 bits
-                    bytes += SKIT_LOG_UINT_DBG(str + bytes, 3, af->piecewise_rate, str_len - bytes);
+                    SKIT_LOG_UINT_DBG(3, af->piecewise_rate);
                 }
                 if(af->seamless_splice_flag) {
-                    bytes += SKIT_LOG_UINT_DBG(str + bytes, 3, af->splice_type, str_len - bytes);
-                    bytes += SKIT_LOG_UINT_DBG(str + bytes, 3, af->DTS_next_AU, str_len - bytes);
+                    SKIT_LOG_UINT_DBG(3, af->splice_type);
+                    SKIT_LOG_UINT_DBG(3, af->DTS_next_AU);
                 }
             }
         }
     }
-
-    return bytes;
 }
 
-int ts_print(const ts_packet_t* const ts, char* str, size_t str_len)
+void ts_print(const ts_packet_t* const ts)
 {
-    if(ts == NULL || str == NULL || str_len < 2 || tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
-        return 0;
+    if(ts == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
+        return;
     }
 
-    int bytes = ts_print_header(&ts->header, str, str_len);
+    ts_print_header(&ts->header);
 
     if(ts->header.adaptation_field_control & TS_ADAPTATION_FIELD) {
-        bytes += ts_print_adaptation_field(&ts->adaptation_field, str + bytes, str_len - bytes);
+        ts_print_adaptation_field(&ts->adaptation_field);
     }
-
-    //bytes += SKIT_LOG_UINT_DBG(str + bytes, 0, ts->payload.len, str_len - bytes);
-    bytes += SKIT_LOG_UINT64_DBG(str + bytes, "", ts->payload.len, str_len - bytes);
-
-    return bytes;
+    SKIT_LOG_UINT64_DBG("", ts->payload.len);
 }
 
 int64_t ts_read_pcr(const ts_packet_t* const ts)

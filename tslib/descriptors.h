@@ -31,7 +31,6 @@
 #include <glib.h>
 
 #include "bs.h"
-#include "log.h"
 
 
 typedef enum {
@@ -103,12 +102,12 @@ typedef struct {
 // "factory methods"
 int read_descriptor_loop(GPtrArray* desc_list, bs_t* b, int length);
 int write_descriptor_loop(GPtrArray* desc_list, bs_t* b);
-int print_descriptor_loop(GPtrArray* desc_list, int level, char* str, size_t str_len);
+void print_descriptor_loop(GPtrArray* desc_list, int level);
 
 descriptor_t* descriptor_new();
 void descriptor_free(descriptor_t* desc);
 descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b);
-int descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len);
+void descriptor_print(const descriptor_t* desc, int level);
 
 typedef struct {
     char ISO_639_language_code[4];
@@ -124,7 +123,7 @@ typedef struct {
 descriptor_t* language_descriptor_new(descriptor_t* desc);
 int language_descriptor_free(descriptor_t* desc);
 descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b);
-int language_descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len);
+void language_descriptor_print(const descriptor_t* desc, int level);
 
 typedef struct {
     descriptor_t descriptor;
@@ -137,6 +136,6 @@ typedef struct {
 descriptor_t* ca_descriptor_new(descriptor_t* desc);
 int ca_descriptor_free(descriptor_t* desc);
 descriptor_t* ca_descriptor_read(descriptor_t* desc, bs_t* b);
-int ca_descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len);
+void ca_descriptor_print(const descriptor_t* desc, int level);
 
 #endif

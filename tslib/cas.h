@@ -27,15 +27,13 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#ifndef _TSLIB_CAS_H_
-#define _TSLIB_CAS_H_
+#ifndef TSLIB_CAS_H
+#define TSLIB_CAS_H
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-
 
 #include <glib.h>
 #include <stdint.h>

@@ -25,9 +25,11 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include "tpes.h"
+
+#include <glib.h>
 #include <assert.h>
 
-#include "tpes.h"
 #include "libts_common.h"
 #include "log.h"
 
@@ -78,7 +80,7 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
             ts_packet_t* tsp = g_queue_peek_head(pdm->ts_queue);
             if(tsp->header.payload_unit_start_indicator == 0) {
                 // the queue doesn't start with a complete TS packet
-                LOG_ERROR("PES queue does not start from PUSI=1");
+                g_critical("PES queue does not start from PUSI=1");
                 // we'll do nothing and just clear the queue
                 if(pdm->process_pes_packet != NULL) {
                     // at this point we don't own the PES packet memory

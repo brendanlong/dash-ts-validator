@@ -25,8 +25,10 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "libts_common.h"
 #include "mpeg2ts_demux.h"
+
+#include <glib.h>
+#include "libts_common.h"
 #include "cas.h"
 #include "psi.h"
 #include "segment_validator.h"
@@ -112,7 +114,7 @@ int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t PID,
         }
     }
     if(esi == NULL) {
-        LOG_ERROR_ARGS("Elementary stream with PID 0x%02X not found in PMT of program %d", PID,
+        g_critical("Elementary stream with PID 0x%02X not found in PMT of program %d", PID,
                        m2p->program_number);
         free(pid);
         return 0;
@@ -188,7 +190,7 @@ int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     if (!m2s->cat || (m2s->cat->version_number != new_cas->version_number
             && new_cas->current_next_indicator == 1)) {
         if(m2s->cat != NULL) {
-            LOG_WARN("New cat section in force, discarding the old one");
+            g_warning("New cat section in force, discarding the old one");
             conditional_access_section_free(m2s->cat);
         }
 
@@ -234,7 +236,7 @@ int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     if(!m2s->pat || (m2s->pat->version_number != new_pas->version_number
             && new_pas->current_next_indicator == 1)) {
         if(m2s->pat != NULL) {
-            LOG_WARN("New PAT section in force, discarding the old one");
+            g_warning("New PAT section in force, discarding the old one");
             program_association_section_free(m2s->pat);
         }
 
@@ -285,7 +287,7 @@ int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
     if(m2p->pmt == NULL || (m2p->pmt->version_number != new_pms->version_number
             && new_pms->current_next_indicator == 1)) {
         if(m2p->pmt != NULL) {
-            LOG_WARN("New PMT in force, discarding the old one");
+            g_warning("New PMT in force, discarding the old one");
             program_map_section_free(m2p->pmt);
         }
 
@@ -354,7 +356,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     if(m2s->pat == NULL) {
-        LOG_ERROR_ARGS("PAT missing -- unknown PID 0x%02X", ts->header.PID);
+        g_critical("PAT missing -- unknown PID 0x%02X", ts->header.PID);
         ts_free(ts);
         return 0;
     }
@@ -389,7 +391,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // if we are here, we have no clue what this PID is
-    LOG_WARN_ARGS("Unknown PID 0x%02X", ts->header.PID);
+    g_warning("Unknown PID 0x%02X", ts->header.PID);
     ts_free(ts);
     return 0;
 }

@@ -197,8 +197,8 @@ int pes_read_vec(pes_packet_t* pes, const buf_t* vec, int buf_count, uint64_t pe
 int pes_write_header(pes_header_t* ph, bs_t* b);
 int pes_write(pes_packet_t* pes, uint8_t* buf, size_t len);
 
-int pes_print_header(pes_header_t* pes_header, char* str, size_t str_len);
-int pes_print(pes_packet_t* pes, char* str, size_t str_len);
+void pes_print_header(pes_header_t* pes_header);
+void pes_print(pes_packet_t* pes);
 
 #ifdef __cplusplus
 }

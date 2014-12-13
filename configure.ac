@@ -1,6 +1,6 @@
 AC_PREREQ([2.69])
 AC_INIT([TS-Validator], [1.0], [b.long@cablelabs.com])
-AC_CONFIG_SRCDIR([logging/log.h])
+AC_CONFIG_SRCDIR([tslib/mpd.h])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 

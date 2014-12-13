@@ -2,6 +2,7 @@
 #include "mpd.h"
 
 #include <glib.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
@@ -227,18 +228,18 @@ mpd_t* read_mpd(char* file_name)
     mpd_t* mpd = NULL;
     xmlDoc* doc = xmlReadFile(file_name, NULL, 0);
     if (doc == NULL) {
-        LOG_ERROR_ARGS("Could not parse MPD %s.", file_name);
+        g_critical("Could not parse MPD %s.", file_name);
         goto fail;
     }
 
     mpd = mpd_new();
     xmlNode* root = xmlDocGetRootElement(doc);
     if (root->type != XML_ELEMENT_NODE) {
-        LOG_ERROR("MPD error, toplevel element is not an element.");
+        g_critical("MPD error, toplevel element is not an element.");
         goto fail;
     }
     if (!xmlStrEqual (root->name, "MPD")) {
-        LOG_ERROR_ARGS("MPD error, top level element is not an <MPD>, got <%s> instead.", root->name);
+        g_critical("MPD error, top level element is not an <MPD>, got <%s> instead.", root->name);
         goto fail;
     }
 
@@ -266,7 +267,7 @@ mpd_t* read_mpd(char* file_name)
         } else if (xmlStrEqual(cur_node->name, "BaseURL")) {
             /* Ignore */
         } else {
-            LOG_DEBUG_ARGS("Ignoring element <%s> in <MPD>.", cur_node->name);
+            g_debug("Ignoring element <%s> in <MPD>.", cur_node->name);
         }
     }
 
@@ -303,7 +304,7 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
         } else if (xmlStrEqual(cur_node->name, "BaseURL")) {
             /* Ignore */
         } else {
-            LOG_DEBUG_ARGS("Ignoring element <%s> in <Period>.", cur_node->name);
+            g_debug("Ignoring element <%s> in <Period>.", cur_node->name);
         }
     }
 
@@ -355,7 +356,7 @@ bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url)
             }
             xmlFree(type);
         } else {
-            LOG_DEBUG_ARGS("Ignoring element <%s> in <AdaptationSet>.", cur_node->name);
+            g_debug("Ignoring element <%s> in <AdaptationSet>.", cur_node->name);
         }
     }
 
@@ -375,7 +376,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
 
     mime_type = xmlGetProp(node, "mimeType");
     if (!saw_mime_type && (!mime_type || !xmlStrEqual (mime_type, "video/mp2t"))) {
-        LOG_WARN_ARGS("Ignoring <Representation> with mimeType=\"%s\".", mime_type ? mime_type : "(null)");
+        g_warning("Ignoring <Representation> with mimeType=\"%s\".", mime_type ? mime_type : "(null)");
         goto cleanup;
     }
 
@@ -386,7 +387,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
     if (start_with_sap) {
         int tmp = atoi(start_with_sap);
         if (tmp < 0 || tmp > 6) {
-            LOG_ERROR_ARGS("Invalid startWithSap value of %s. Must be in the range [0-6].", start_with_sap);
+            g_critical("Invalid startWithSap value of %s. Must be in the range [0-6].", start_with_sap);
             goto fail;
         }
         representation->start_with_sap = tmp;
@@ -405,7 +406,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
         } else if (xmlStrEqual(cur_node->name, "BaseURL")) {
             /* Ignore */
         } else {
-            LOG_DEBUG_ARGS("Ignoring element <%s> in <Representation>.", cur_node->name);
+            g_debug("Ignoring element <%s> in <Representation>.", cur_node->name);
         }
     }
 
@@ -431,7 +432,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type == XML_ELEMENT_NODE && xmlStrEqual(cur_node->name, "SegmentTimeline")) {
             if (segment_timeline != NULL) {
-                LOG_ERROR("Saw multiple <SegmentTimeline> children for one <SegmentList>.");
+                g_critical("Saw multiple <SegmentTimeline> children for one <SegmentList>.");
                 goto fail;
             }
             segment_timeline = read_segment_timeline(cur_node);
@@ -444,14 +445,14 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
     uint64_t duration = 0;
     if (duration_str) {
         if (segment_timeline != NULL) {
-            LOG_ERROR("<SegmentList> cannot have both duration attribute and <SegmentTimeline>. Pick one or the other.");
+            g_critical("<SegmentList> cannot have both duration attribute and <SegmentTimeline>. Pick one or the other.");
             goto fail;
         }
         /* todo: Use something safer than strtoull */
         duration = strtoull(duration_str, NULL, 10);
         xmlFree(duration_str);
     } else if (segment_timeline == NULL) {
-        LOG_ERROR("No duration or <SegmentList> found for <SegmentList>.");
+        g_critical("No duration or <SegmentList> found for <SegmentList>.");
         goto fail;
     }
 
@@ -476,14 +477,14 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
             start += duration;
         } else if (xmlStrEqual(cur_node->name, "RepresentationIndex")) {
             if (representation->index_file_name != NULL) {
-                LOG_WARN("Ignoring duplicate index file in <Representation>.");
+                g_warning("Ignoring duplicate index file in <Representation>.");
                 continue;
             }
             representation->index_file_name = read_filename(cur_node, "sourceURL", base_url);
         } else if (xmlStrEqual(cur_node->name, "SegmentTimeline")) {
             /* Ignore */
         } else {
-            LOG_DEBUG_ARGS("Ignoring element <%s> in <SegmentList>.", cur_node->name);
+            g_debug("Ignoring element <%s> in <SegmentList>.", cur_node->name);
         }
     }
 
@@ -524,7 +525,7 @@ GPtrArray* read_segment_timeline(xmlNode* node)
                 g_ptr_array_add(timeline, s);
             }
         } else {
-            LOG_DEBUG_ARGS("Ignoring element <%s> in <SegmentTimeline>.", cur_node->name);
+            g_debug("Ignoring element <%s> in <SegmentTimeline>.", cur_node->name);
         }
     }
     return timeline;
@@ -580,7 +581,7 @@ uint32_t read_optional_uint32(xmlNode* node, const char* property_name)
     } else {
         result = strtoull(value, NULL, 10);
         if (value && result == 0 && !xmlStrEqual(value, "0")) {
-            LOG_WARN_ARGS("Got invalid ConditionalUintType for property %s: %s", property_name, value);
+            g_warning("Got invalid ConditionalUintType for property %s: %s", property_name, value);
         }
     }
     xmlFree(value);
@@ -595,7 +596,7 @@ uint32_t read_uint64(xmlNode* node, const char* property_name)
     }
     uint64_t result = strtoull(value, NULL, 10);
     if (value && result == 0 && !xmlStrEqual(value, "0")) {
-        LOG_WARN_ARGS("Got invalid unsignedLong for property %s: %s", property_name, value);
+        g_warning("Got invalid unsignedLong for property %s: %s", property_name, value);
     }
     xmlFree(value);
     return result;
@@ -613,7 +614,7 @@ uint64_t read_duration(xmlNode* node, const char* property_name)
     int error_offset;
     pcre* re = pcre_compile("P((?<year>[0-9]+)Y)?((?<month>[0-9]+)M)?((?<day>[0-9]+)D)?(T((?<hour>[0-9]+)H)?((?<minute>[0-9]+)M)?((?<second>[0-9]+(\\.[0-9]+)?)S)?)?", 0, &error, &error_offset, NULL);
     if (re == NULL) {
-        LOG_WARN_ARGS("PCRE compilation error %s at offset %d.", error, error_offset);
+        g_critical("PCRE compilation error %s at offset %d.", error, error_offset);
         goto cleanup;
     }
 
@@ -624,15 +625,15 @@ uint64_t read_duration(xmlNode* node, const char* property_name)
     if (return_code < 0) {
         switch(return_code) {
         case PCRE_ERROR_NOMATCH:
-            LOG_WARN_ARGS("Duration %s does not match duration regex.", value);
+            g_warning("Duration %s does not match duration regex.", value);
             goto cleanup;
         default:
-            LOG_WARN_ARGS("Duration %s caused PCRE matching error: %d.", value, return_code);
+            g_critical("Duration %s caused PCRE matching error: %d.", value, return_code);
             goto cleanup;
         }
     }
     if (return_code == 0) {
-        LOG_WARN_ARGS("PCRE output vector size of %d is not big enough.", output_length / 3);
+        g_critical("PCRE output vector size of %d is not big enough.", output_length / 3);
         goto cleanup;
     }
 
@@ -642,7 +643,7 @@ uint64_t read_duration(xmlNode* node, const char* property_name)
     pcre_fullinfo(re, NULL, PCRE_INFO_NAMECOUNT, &namecount);
 
     if (namecount <= 0) {
-        LOG_WARN("No named substrings. PCRE might be broken?");
+        g_critical("No named substrings. PCRE might be broken?");
         goto cleanup;
     }
 
@@ -681,7 +682,7 @@ uint64_t read_duration(xmlNode* node, const char* property_name)
                    This is an approximation, assuming 365.25 days per year. */
                 result += field_value_int * 31557600;
             } else {
-                LOG_WARN_ARGS("Unknown field: %.*s = %.*s.", field_name_length,
+                g_warning("Unknown field: %.*s = %.*s.", field_name_length,
                         field_name, field_value_length, field_value);
             }
         }
@@ -699,7 +700,7 @@ bool read_bool(xmlNode* node, const char* property_name)
     char* value = xmlGetProp(node, property_name);
     bool result = xmlStrEqual(value, "true");
     if (value && !result && !xmlStrEqual(value, "false")) {
-        LOG_WARN_ARGS("Got invalid value for boolean property %s: %s", property_name, value);
+        g_warning("Got invalid value for boolean property %s: %s", property_name, value);
     }
     xmlFree(value);
     return result;
@@ -708,6 +709,10 @@ bool read_bool(xmlNode* node, const char* property_name)
 char* read_filename(xmlNode* node, const char* property_name, const char* base_url)
 {
     char* property = xmlGetProp(node, property_name);
+    if (property == NULL) {
+        return NULL;
+    }
+
     char* filename;
     if (base_url) {
         filename = g_build_filename(base_url, property, NULL);
@@ -725,7 +730,7 @@ uint64_t str_to_uint64(const char* str, size_t length)
     for (size_t i = 0; i < length; ++i) {
         char c = str[i];
         if (c < '0' || c > '9') {
-            LOG_WARN_ARGS("Invalid non-digit in string to parse: %s.", str);
+            g_warning("Invalid non-digit in string to parse: %s.", str);
             return 0;
         }
         result = result * 10 + c - '0';

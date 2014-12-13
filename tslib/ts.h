@@ -121,9 +121,9 @@ int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b);
 int ts_write_header(ts_header_t* tsh, bs_t* b);
 int ts_write(ts_packet_t* ts, uint8_t* buf, size_t buf_size);
 
-int ts_print_adaptation_field(const ts_adaptation_field_t* const af, char* str, size_t str_len);
-int ts_print_header(const ts_header_t* const tsh, char* str, size_t str_len);
-int ts_print(const ts_packet_t* const ts, char* str, size_t str_len);
+void ts_print_adaptation_field(const ts_adaptation_field_t* const af);
+void ts_print_header(const ts_header_t* const tsh);
+void ts_print(const ts_packet_t* const ts);
 
 int64_t ts_read_pcr(const ts_packet_t* const ts);
 

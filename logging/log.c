@@ -31,18 +31,19 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 #include "log.h"
 
-int tslib_loglevel = TSLIB_LOG_LEVEL_DEBUG;
+int tslib_loglevel = TSLIB_LOG_LEVEL_DEFAULT;
 
-#define INDENT_LEVEL	4
-#define PREFIX_BUF_LEN	0x80
+#define INDENT_LEVEL	1
+const char* IDENT = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
 
-int skit_log_struct(int num_indents, char* name, uint64_t value, int type, char* str)
+void skit_log_struct(int num_indents, char* name, uint64_t value, int type, char* str)
 {
     if(name == NULL) {
-        return 0;
+        return;
     }
 
     // get rid of prefixes
@@ -61,49 +62,47 @@ int skit_log_struct(int num_indents, char* name, uint64_t value, int type, char*
         real_name++;
     }
 
-    int nbytes = 0, indent_len = INDENT_LEVEL * num_indents;
-    if(indent_len >= PREFIX_BUF_LEN) {
-        LOG_ERROR_ARGS("Too many indents - %d", num_indents);
-        return 0;
+    if(num_indents >= sizeof IDENT) {
+        g_critical("Too many indents - %d", num_indents);
+        num_indents = sizeof IDENT;
     }
-    char prefix[PREFIX_BUF_LEN];
-    memset(prefix, ' ', indent_len);
-    prefix[indent_len] = 0;
-
-// rewrite this shit in a sane way!!!
 
     switch(type) {
     case SKIT_LOG_TYPE_UINT:
-        nbytes += fprintf(stdout, "INFO: %s%s=%"PRId64"", prefix, real_name, (uint64_t)value);
+        g_info("%.*s%s=%"PRId64"", num_indents, IDENT, real_name, (uint64_t)value);
         break;
     case SKIT_LOG_TYPE_UINT_DBG:
-        nbytes += fprintf(stdout, "DEBUG: %s%s=%"PRId64"", prefix, real_name, (uint64_t)value);
+        g_debug("%.*s%s=%"PRId64"", num_indents, IDENT, real_name, (uint64_t)value);
         break;
     case SKIT_LOG_TYPE_UINT_HEX:
-        nbytes += fprintf(stdout, "INFO: %s%s=0x%"PRIX64"", prefix, real_name, (uint64_t)value);
+        g_info("%.*s%s=0x%"PRIX64"", num_indents, IDENT, real_name, (uint64_t)value);
         break;
     case SKIT_LOG_TYPE_UINT_HEX_DBG:
-        nbytes += fprintf(stdout, "DEBUG: %s%s=0x%"PRIX64"", prefix, real_name, (uint64_t)value);
+        g_debug("%.*s%s=0x%"PRIX64"", num_indents, IDENT, real_name, (uint64_t)value);
         break;
     case SKIT_LOG_TYPE_STR:
-        nbytes += fprintf(stdout, "INFO: %s%s=%s", prefix, real_name, (char*)value);
+        g_info("%.*s%s=%s", num_indents, IDENT, real_name, (char*)value);
         break;
     case SKIT_LOG_TYPE_STR_DBG:
-        nbytes += fprintf(stdout, "INFO: %s%s=%s", prefix, real_name, (char*)value);
+        g_info("%.*s%s=%s", num_indents, IDENT, real_name, (char*)value);
         break;
     default:
         break;
     }
 
     if(str) {
-        nbytes += fprintf(stdout, " (%s)\n", str);
-    } else {
-        nbytes += fprintf(stdout, "\n");
+        g_info(" (%s)", str);
     }
+}
 
-    // TODO logging tasks:
-    //  - additional targets (file, string)
-    //  - additional log formats -- e.g. XML or/and JSON ???
-    //  - separate handling strings....
-    return nbytes;
+void log_handler(const char* domain, GLogLevelFlags log_level, const char* message, void* unused)
+{
+    if ((log_level & G_LOG_LEVEL_DEBUG) && tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
+        return;
+    } else if (((log_level & G_LOG_LEVEL_INFO) || (log_level & G_LOG_LEVEL_MESSAGE)) && tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+        return;
+    } else if ((log_level & G_LOG_LEVEL_WARNING) && tslib_loglevel < TSLIB_LOG_LEVEL_WARN) {
+        return;
+    }
+    g_print("%s\n", message);
 }

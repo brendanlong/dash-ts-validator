@@ -78,8 +78,7 @@ program_association_section_t* program_association_section_new();
 void program_association_section_free(program_association_section_t* pas);
 int program_association_section_read(program_association_section_t* pas, uint8_t* buf,
                                      size_t buf_len);
-int program_association_section_print(const program_association_section_t* pas, char* str,
-                                      size_t str_len);
+void program_association_section_print(const program_association_section_t* pas);
 
 typedef struct {
     uint32_t table_id;
@@ -100,8 +99,7 @@ conditional_access_section_t* conditional_access_section_new();
 void conditional_access_section_free(conditional_access_section_t* cas);
 int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* buf,
                                     size_t buf_len);
-int conditional_access_section_print(const conditional_access_section_t* cas, char* str,
-                                     size_t str_len);
+void conditional_access_section_print(const conditional_access_section_t* cas);
 
 // PMT
 typedef struct {
@@ -132,7 +130,7 @@ void program_map_section_free(program_map_section_t* pms);
 
 int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t buf_size);
 int program_map_section_write(program_map_section_t* pms, uint8_t* buf, size_t buf_size);
-int program_map_section_print(program_map_section_t* pms, char* str, size_t str_len);
+void program_map_section_print(program_map_section_t* pms);
 
 // stream types
 #define STREAM_TYPE_MPEG1_VIDEO             0x01

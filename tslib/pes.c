@@ -36,13 +36,16 @@
 #define __STDC_FORMAT_MACROS 1
 #endif // __STDC_FORMAT_MACROS
 
+#include "pes.h"
+
+#include <glib.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 #include "bs.h"
-#include "pes.h"
 #include "libts_common.h"
 #include "log.h"
 
@@ -109,7 +112,7 @@ int pes_read_vec(pes_packet_t* pes, const buf_t* vec, int buf_count, uint64_t pe
 
     if((pes->header.PES_packet_length > 0) && (pes->header.PES_packet_length + 6 > pes->buf_len)) {
         pes->status = PES_ERROR_NOT_ENOUGH_DATA;
-        LOG_ERROR_ARGS("PES packet header promises %u bytes, only %ld found in buffer",
+        g_critical("PES packet header promises %u bytes, only %ld found in buffer",
                        pes->header.PES_packet_length + 6, pes->buf_len);
     }
 
@@ -149,7 +152,7 @@ int pes_read_buf(pes_packet_t* pes, const uint8_t* buf, size_t len)
     if((pes->header.PES_packet_length > 0) && (pes->header.PES_packet_length + 6 > pes->buf_len)) {
 
         pes->status = PES_ERROR_NOT_ENOUGH_DATA;
-        LOG_ERROR_ARGS("PES packet header promises %u bytes, only %ld found in buffer",
+        g_critical("PES packet header promises %u bytes, only %ld found in buffer",
                        pes->header.PES_packet_length + 6, pes->buf_len);
     }
 
@@ -161,7 +164,7 @@ int pes_read_header(pes_header_t* ph, bs_t* b)
     int PES_packet_start = bs_pos(b);
 
     if(bs_bytes_left(b) < 6) {
-        LOG_ERROR_ARGS("%d bytes in PES packet header, at least 6 bytes expected", bs_bytes_left(b));
+        g_critical("%d bytes in PES packet header, at least 6 bytes expected", bs_bytes_left(b));
         return PES_ERROR_NOT_ENOUGH_DATA;
     }
 
@@ -170,7 +173,7 @@ int pes_read_header(pes_header_t* ph, bs_t* b)
     if(pes_packet_start_code != PES_PACKET_START_CODE_PREFIX) {
         int actually_read = bs_pos(b) - PES_packet_start;
         b->p -= actually_read; // undo the read
-        LOG_ERROR_ARGS("PES packet starts with 0x%06X instead of expected start code 0x%06X, skipping it",
+        g_critical("PES packet starts with 0x%06X instead of expected start code 0x%06X, skipping it",
                        pes_packet_start_code, PES_PACKET_START_CODE_PREFIX);
 
         return PES_ERROR_WRONG_START_CODE; // bail out! something is fishy!
@@ -182,7 +185,7 @@ int pes_read_header(pes_header_t* ph, bs_t* b)
 
     if(HAS_PES_HEADER(ph->stream_id)) {
         if(bs_bytes_left(b) < 3) {
-            LOG_ERROR("Not enough data to complete reading PES header");
+            g_critical("Not enough data to complete reading PES header");
             return PES_ERROR_NOT_ENOUGH_DATA;
         }
         // byte 6
@@ -206,7 +209,7 @@ int pes_read_header(pes_header_t* ph, bs_t* b)
         ph->PES_header_data_length = bs_read_u8(b);
 
         if(bs_bytes_left(b) < ph->PES_header_data_length) {
-            LOG_ERROR("Not enough data to complete reading PES header");
+            g_critical("Not enough data to complete reading PES header");
             return PES_ERROR_NOT_ENOUGH_DATA;
         }
 
@@ -537,145 +540,119 @@ int pes_header_write(pes_header_t* ph, bs_t* b)
     return (bs_pos(b) - start_pos);
 }
 
-int pes_print_header(pes_header_t* pes_header, char* str, size_t str_len)
+void pes_print_header(pes_header_t* pes_header)
 {
-    int bytes = 0;
-    bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->stream_id, str_len);
-    bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->PES_packet_length, str_len - bytes);
+    SKIT_LOG_UINT32_DBG("", pes_header->stream_id);
+    SKIT_LOG_UINT32_DBG("", pes_header->PES_packet_length);
 
     if(HAS_PES_HEADER(pes_header->stream_id)) {
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->PES_scrambling_control, str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->PES_priority, str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->data_alignment_indicator,
-                                     str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->copyright, str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->original_or_copy, str_len - bytes);
+        SKIT_LOG_UINT32_DBG("", pes_header->PES_scrambling_control);
+        SKIT_LOG_UINT32_DBG("", pes_header->PES_priority);
+        SKIT_LOG_UINT32_DBG("", pes_header->data_alignment_indicator);
+        SKIT_LOG_UINT32_DBG("", pes_header->copyright);
+        SKIT_LOG_UINT32_DBG("", pes_header->original_or_copy);
 
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->PTS_DTS_flags, str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->ESCR_flag, str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->ES_rate_flag, str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->DSM_trick_mode_flag, str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->additional_copy_info_flag,
-                                     str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->PES_CRC_flag, str_len - bytes);
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->PES_extension_flag, str_len - bytes);
+        SKIT_LOG_UINT32_DBG("", pes_header->PTS_DTS_flags);
+        SKIT_LOG_UINT32_DBG("", pes_header->ESCR_flag);
+        SKIT_LOG_UINT32_DBG("", pes_header->ES_rate_flag);
+        SKIT_LOG_UINT32_DBG("", pes_header->DSM_trick_mode_flag);
+        SKIT_LOG_UINT32_DBG("", pes_header->additional_copy_info_flag);
+        SKIT_LOG_UINT32_DBG("", pes_header->PES_CRC_flag);
+        SKIT_LOG_UINT32_DBG("", pes_header->PES_extension_flag);
 
         // byte 8
-        bytes += SKIT_LOG_UINT32_DBG(str + bytes, "", pes_header->PES_header_data_length, str_len - bytes);
+        SKIT_LOG_UINT32_DBG("", pes_header->PES_header_data_length);
 
         // byte 9..14
         if(pes_header->PTS_DTS_flags & PES_PTS_FLAG) {
-            bytes += SKIT_LOG_UINT64_DBG(str + bytes, "   ", pes_header->PTS, str_len - bytes);
+            SKIT_LOG_UINT64_DBG("   ", pes_header->PTS);
         }
 
         // byte 15..19
         if(pes_header->PTS_DTS_flags & PES_DTS_FLAG) {
-            bytes += SKIT_LOG_UINT64_DBG(str + bytes, "   ", pes_header->DTS, str_len - bytes);
+            SKIT_LOG_UINT64_DBG("   ", pes_header->DTS);
         }
 
         if(pes_header->ESCR_flag) {
-            bytes += SKIT_LOG_UINT64_DBG(str + bytes, "   ", pes_header->ESCR_base, str_len - bytes);
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->ESCR_extension, str_len - bytes);
+            SKIT_LOG_UINT64_DBG("   ", pes_header->ESCR_base);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->ESCR_extension);
 
         }
         if(pes_header->ES_rate_flag) {
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->ES_rate, str_len - bytes);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->ES_rate);
         }
 
         if(pes_header->DSM_trick_mode_flag) {
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->trick_mode_control, str_len - bytes);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->trick_mode_control);
             switch(pes_header->trick_mode_control) {
             case PES_DSM_TRICK_MODE_CTL_FAST_FORWARD:
             case PES_DSM_TRICK_MODE_CTL_FAST_REVERSE:
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->field_id, str_len - bytes)
-                         ;
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->intra_slice_refresh, str_len - bytes)
-                         ;
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->frequency_truncation, str_len - bytes)
-                         ;
+                SKIT_LOG_UINT32_DBG("   ", pes_header->field_id);
+                SKIT_LOG_UINT32_DBG("   ", pes_header->intra_slice_refresh);
+                SKIT_LOG_UINT32_DBG("   ", pes_header->frequency_truncation);
                 break;
 
             case PES_DSM_TRICK_MODE_CTL_SLOW_MOTION:
             case PES_DSM_TRICK_MODE_CTL_SLOW_REVERSE:
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->rep_cntrl, str_len - bytes)
-                         ;
+                SKIT_LOG_UINT32_DBG("   ", pes_header->rep_cntrl);
                 break;
 
             case PES_DSM_TRICK_MODE_CTL_FREEZE_FRAME:
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->field_id, str_len - bytes)
-                         ;
+                SKIT_LOG_UINT32_DBG("   ", pes_header->field_id);
                 break;
 
             default:
-
                 break;
             }
         }
         if(pes_header->additional_copy_info_flag) {
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->additional_copy_info, str_len - bytes);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->additional_copy_info);
         }
         if(pes_header->PES_CRC_flag) {
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->previous_PES_packet_CRC,
-                                         str_len - bytes);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->previous_PES_packet_CRC);
         }
         if(pes_header->PES_extension_flag) {
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->PES_private_data_flag,
-                                         str_len - bytes);
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->pack_header_field_flag,
-                                         str_len - bytes);
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->program_packet_sequence_counter_flag,
-                                         str_len - bytes);
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->PSTD_buffer_flag, str_len - bytes);
-            bytes += SKIT_LOG_UINT32_DBG(str + bytes, "   ", pes_header->PES_extension_flag_2, str_len - bytes);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->PES_private_data_flag);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->pack_header_field_flag);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->program_packet_sequence_counter_flag);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->PSTD_buffer_flag);
+            SKIT_LOG_UINT32_DBG("   ", pes_header->PES_extension_flag_2);
 
             // add ph->PES_private_data_flag
 
             if(pes_header->pack_header_field_flag) {
-
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "       ", pes_header->pack_field_length,
-                                             str_len - bytes);
+                SKIT_LOG_UINT32_DBG("       ", pes_header->pack_field_length);
             }
             if(pes_header->program_packet_sequence_counter_flag) {
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "       ", pes_header->program_packet_sequence_counter,
-                                             str_len - bytes);
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "       ", pes_header->MPEG1_MPEG2_identifier,
-                                             str_len - bytes);
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "       ", pes_header->original_stuff_length,
-                                             str_len - bytes);
+                SKIT_LOG_UINT32_DBG("       ", pes_header->program_packet_sequence_counter);
+                SKIT_LOG_UINT32_DBG("       ", pes_header->MPEG1_MPEG2_identifier);
+                SKIT_LOG_UINT32_DBG("       ", pes_header->original_stuff_length);
             }
             if(pes_header->PSTD_buffer_flag) {
-
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "       ", pes_header->PSTD_buffer_scale,
-                                             str_len - bytes);
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "       ", pes_header->PSTD_buffer_size, str_len - bytes);
+                SKIT_LOG_UINT32_DBG("       ", pes_header->PSTD_buffer_scale);
+                SKIT_LOG_UINT32_DBG("       ", pes_header->PSTD_buffer_size);
             }
             if(pes_header->PES_extension_flag_2) {
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "       ", pes_header->PES_extension_field_length,
-                                             str_len - bytes);
-                bytes += SKIT_LOG_UINT32_DBG(str + bytes, "       ", pes_header->stream_id_extension_flag,
-                                             str_len - bytes);
+                SKIT_LOG_UINT32_DBG("       ", pes_header->PES_extension_field_length);
+                SKIT_LOG_UINT32_DBG("       ", pes_header->stream_id_extension_flag);
                 if(!pes_header->stream_id_extension_flag) {
-                    bytes += SKIT_LOG_UINT32_DBG(str + bytes, "           ", pes_header->stream_id_extension,
-                                                 str_len - bytes);
+                    SKIT_LOG_UINT32_DBG("           ", pes_header->stream_id_extension);
                 } else {
-                    bytes += SKIT_LOG_UINT32_DBG(str + bytes, "           ", pes_header->tref_extension_flag,
-                                                 str_len - bytes);
+                    SKIT_LOG_UINT32_DBG("           ", pes_header->tref_extension_flag);
                     if(pes_header->tref_extension_flag) {
-                        bytes += SKIT_LOG_UINT64_DBG(str + bytes, "           ", pes_header->TREF, str_len - bytes);
+                        SKIT_LOG_UINT64_DBG("           ", pes_header->TREF);
                     }
                 }
             }
         }
     }
-    return bytes;
 }
 
-int pes_print(pes_packet_t* pes, char* str, size_t str_len)
+void pes_print(pes_packet_t* pes)
 {
     if(tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
-        return 0;
+        return;
     }
-    int bytes = pes_print_header(&pes->header, str, str_len);
-    bytes += SKIT_LOG_UINT64_DBG(str + bytes, "", pes->payload_len, str_len);
-    return bytes;
+    pes_print_header(&pes->header);
+    SKIT_LOG_UINT64_DBG("", pes->payload_len);
 }

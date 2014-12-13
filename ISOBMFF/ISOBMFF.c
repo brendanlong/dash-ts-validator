@@ -2,7 +2,6 @@
 ** Copyright (C) 2014  Cable Television Laboratories, Inc.
 ** Contact: http://www.cablelabs.com/
 
-
  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -14,18 +13,17 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include "ISOBMFF.h"
 
-#include <stdlib.h>
+#include <glib.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <getopt.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
 
-#include "ISOBMFF.h"
-#include "log.h"
 
 static uint8_t readUint8(uint8_t** buffer)
 {
@@ -142,13 +140,13 @@ int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes,
 
     int boxIndex = 0;
     if(numBoxes == 0) {
-        LOG_ERROR("ERROR validating Representation Index Segment: no boxes in segment\n");
+        g_critical("ERROR validating Representation Index Segment: no boxes in segment.");
         returnCode = -1;
     }
 
     // first box must be a styp
     if(box_types[boxIndex] != BOX_TYPE_STYP) {
-        LOG_ERROR("ERROR validating Representation Index Segment: first box not a styp\n");
+        g_critical("ERROR validating Representation Index Segment: first box not a styp.");
         returnCode = -1;
     }
 
@@ -168,11 +166,11 @@ int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes,
         }
     }
     if(!foundRisx) {
-        LOG_ERROR("ERROR validating Representation Index Segment: styp compatible brands does not contain \"risx\"\n");
-        LOG_INFO("Brands found are:");
-        LOG_INFO_ARGS("styp major brand = %x", styp->major_brand);
+        g_critical("ERROR validating Representation Index Segment: styp compatible brands does not contain \"risx\".");
+        g_info("Brands found are:");
+        g_info("styp major brand = %x", styp->major_brand);
         for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
-            LOG_INFO_ARGS("styp compatible brand = %x", styp->compatible_brands[i]);
+            g_info("styp compatible brand = %x", styp->compatible_brands[i]);
         }
         returnCode = -1;
     }
@@ -181,7 +179,7 @@ int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes,
 
     // second box must be a sidx that references other sidx boxes
     if(box_types[boxIndex] != BOX_TYPE_SIDX) {
-        LOG_ERROR("ERROR validating Representation Index Segment: second box not a sidx\n");
+        g_critical("ERROR validating Representation Index Segment: second box not a sidx.");
         returnCode = -1;
     }
 
@@ -189,21 +187,21 @@ int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes,
     data_sidx_t* masterSidx = (data_sidx_t*)box_data[boxIndex];
     unsigned int masterReferenceID = masterSidx->reference_ID;
     if(masterReferenceID != videoPID) {
-        LOG_ERROR_ARGS("ERROR validating Representation Index Segment: master ref ID does not equal \
-video PID.  Expected %d, actual %d\n", videoPID, masterReferenceID);
+        g_critical("ERROR validating Representation Index Segment: master ref ID does not equal \
+video PID.  Expected %d, actual %d.", videoPID, masterReferenceID);
         returnCode = -1;
     }
     for(size_t i = 0; i < masterSidx->reference_count; i++) {
         data_sidx_reference_t ref = masterSidx->references[i];
         if(ref.reference_type != 1) {
-            LOG_ERROR("ERROR validating Representation Index Segment: reference type not 1\n");
+            g_critical("ERROR validating Representation Index Segment: reference type not 1.");
             returnCode = -1;
         }
 
         // validate duration
         if(segmentDurations[i] != ref.subsegment_duration) {
-            LOG_ERROR_ARGS("ERROR validating Representation Index Segment: master ref segment duration does not equal \
-segment duration.  Expected %d, actual %d\n", segmentDurations[i], ref.subsegment_duration);
+            g_critical("ERROR validating Representation Index Segment: master ref segment duration does not equal \
+segment duration.  Expected %d, actual %d.", segmentDurations[i], ref.subsegment_duration);
             returnCode = -1;
         }
     }
@@ -230,9 +228,9 @@ segment duration.  Expected %d, actual %d\n", segmentDurations[i], ref.subsegmen
                 // GORP: check earliest presentation time
             } else {
                 // check size:
-                LOG_INFO_ARGS("Validating referenced_size for reference %d.", segmentIndex);
+                g_info("Validating referenced_size for reference %d.", segmentIndex);
                 if(segmentIndex >= 0 && referenced_size != masterSidx->references[segmentIndex].referenced_size) {
-                    LOG_ERROR_ARGS("ERROR validating Representation Index Segment: referenced_size for reference %d. \
+                    g_critical("ERROR validating Representation Index Segment: referenced_size for reference %d. \
 Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].referenced_size,
                                    referenced_size);
                     returnCode = -1;
@@ -244,19 +242,19 @@ Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].re
                     segmentStartTime += segmentDurations[segmentIndex - 1];
                 }
 
-                LOG_INFO_ARGS("Validating earliest_presentation_time for reference %d.", segmentIndex);
+                g_info("Validating earliest_presentation_time for reference %d.", segmentIndex);
                 if(segmentStartTime != sidx->earliest_presentation_time) {
-                    LOG_ERROR_ARGS("ERROR validating Representation Index Segment: invalid earliest_presentation_time in sidx box. \
-Expected %"PRId64", actual %"PRId64"\n", segmentStartTime, sidx->earliest_presentation_time);
+                    g_critical("ERROR validating Representation Index Segment: invalid earliest_presentation_time in sidx box. \
+Expected %"PRId64", actual %"PRId64".", segmentStartTime, sidx->earliest_presentation_time);
                     returnCode = -1;
                 }
             }
             referenced_size += sidx->size;
 
-            LOG_INFO("Validating reference_id");
+            g_info("Validating reference_id");
             if(masterReferenceID != sidx->reference_ID) {
-                LOG_ERROR_ARGS("ERROR validating Representation Index Segment: invalid reference id in sidx box. \
-Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
+                g_critical("ERROR validating Representation Index Segment: invalid reference id in sidx box. \
+Expected %d, actual %d.", masterReferenceID, sidx->reference_ID);
                 returnCode = -1;
             }
 
@@ -270,21 +268,21 @@ Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
         case BOX_TYPE_SSIX: {
             data_ssix_t* ssix = (data_ssix_t*)box_data[boxIndex];
             referenced_size += ssix->size;
-            LOG_INFO("Validating ssix box");
+            g_info("Validating ssix box");
             if(ssixPresent) {
-                LOG_ERROR("ERROR validating Representation Index Segment: More than one ssix box following sidx box\n");
+                g_critical("ERROR validating Representation Index Segment: More than one ssix box following sidx box.");
                 returnCode = -1;
             } else {
                 ssixPresent = true;
             }
             if(pcrbPresent) {
-                LOG_ERROR("ERROR validating Representation Index Segment: pcrb occurred before ssix. 6.4.6.4 says "
+                g_critical("ERROR validating Representation Index Segment: pcrb occurred before ssix. 6.4.6.4 says "
                         "\"The Subsegment Index box (‘ssix’) [...] shall follow immediately after the ‘sidx’ box that "
-                        "documents the same Subsegment. [...] If the 'pcrb' box is present, it shall follow 'ssix'.\"\n");
+                        "documents the same Subsegment. [...] If the 'pcrb' box is present, it shall follow 'ssix'.\".");
                 returnCode = -1;
             }
             if(!foundSsss) {
-                LOG_ERROR("ERROR validating Representation Index Segment: Saw ssix box, but 'ssss' is not in compatible brands. See 6.4.6.4.\n");
+                g_critical("ERROR validating Representation Index Segment: Saw ssix box, but 'ssss' is not in compatible brands. See 6.4.6.4.");
                 returnCode = -1;
             }
             break;
@@ -292,9 +290,9 @@ Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
         case BOX_TYPE_PCRB: {
             data_pcrb_t* pcrb = (data_pcrb_t*)box_data[boxIndex];
             referenced_size += pcrb->size;
-            LOG_INFO("Validating pcrb box");
+            g_info("Validating pcrb box");
             if(pcrbPresent) {
-                LOG_ERROR("ERROR validating Representation Index Segment: More than one pcrb box following sidx box\n");
+                g_critical("ERROR validating Representation Index Segment: More than one pcrb box following sidx box.");
                 returnCode = -1;
             } else {
                 pcrbPresent = true;
@@ -302,32 +300,31 @@ Expected %d, actual %d\n", masterReferenceID, sidx->reference_ID);
             break;
         }
         default:
-            LOG_ERROR_ARGS("Invalid box type: %x\n", box_types[boxIndex]);
+            g_critical("Invalid box type: %x.", box_types[boxIndex]);
             break;
         }
         boxIndex++;
     }
 
     // check the last reference size -- the last one is not checked in the above loop
-    LOG_INFO_ARGS("Validating referenced_size for reference %d. \
-Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].referenced_size,
-                  referenced_size);
+    g_info("Validating referenced_size for reference %d. Expected %d, actual %d.",
+           segmentIndex, masterSidx->references[segmentIndex].referenced_size, referenced_size);
     if(segmentIndex >= 0 && referenced_size != masterSidx->references[segmentIndex].referenced_size) {
-        LOG_ERROR_ARGS("ERROR validating Representation Index Segment: referenced_size for reference %d. \
-Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].referenced_size,
+        g_critical("ERROR validating Representation Index Segment: referenced_size for reference %d. \
+Expected %d, actual %d.", segmentIndex, masterSidx->references[segmentIndex].referenced_size,
                        referenced_size);
         returnCode = -1;
     }
 
     if(numNestedSidx != 0) {
-        LOG_ERROR_ARGS("ERROR validating Representation Index Segment: Incorrect number of nested sidx boxes: %d\n",
-                       numNestedSidx);
+        g_critical("ERROR validating Representation Index Segment: Incorrect number of nested sidx boxes: %d.",
+                numNestedSidx);
         returnCode = -1;
     }
 
     if((segmentIndex + 1) != numSegments) {
-        LOG_ERROR_ARGS("ERROR validating Representation Index Segment: Invalid number of segment sidx boxes following master sidx box: \
-expected %zu, found %d\n", numSegments, segmentIndex);
+        g_critical("ERROR validating Representation Index Segment: Invalid number of segment sidx boxes following master sidx box: \
+expected %zu, found %d.", numSegments, segmentIndex);
         returnCode = -1;
     }
 
@@ -425,21 +422,21 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** 
 
     int boxIndex = 0;
     if(numBoxes == 0) {
-        LOG_ERROR("ERROR validating Single Index Segment: no boxes in segment\n");
+        g_critical("ERROR validating Single Index Segment: no boxes in segment.");
         returnCode = -1;
     }
 
     // first box must be a styp
     if(box_types[boxIndex] != BOX_TYPE_STYP) {
-        LOG_ERROR("ERROR validating Single Index Segment: first box not a styp\n");
+        g_critical("ERROR validating Single Index Segment: first box not a styp.");
         returnCode = -1;
     }
 
     // check brand
     data_styp_t* styp = (data_styp_t*)box_data[boxIndex];
     if(styp->major_brand != BRAND_SISX) {
-        LOG_INFO_ARGS("styp brand = %x", styp->major_brand);
-        LOG_ERROR("ERROR validating Single Index Segment: styp brand not risx\n");
+        g_info("styp brand = %x", styp->major_brand);
+        g_critical("ERROR validating Single Index Segment: styp brand not risx.");
         returnCode = -1;
     }
 
@@ -465,19 +462,19 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** 
             } else {
                 referenced_size = 0;
 
-                LOG_INFO("Validating earliest_presentation_time");
+                g_info("Validating earliest_presentation_time");
                 if(segmentStartTime != sidx->earliest_presentation_time) {
-                    LOG_ERROR_ARGS("ERROR validating Single Index Segment: invalid earliest_presentation_time in sidx box. \
-Expected %"PRId64", actual %"PRId64"\n", segmentStartTime, sidx->earliest_presentation_time);
+                    g_critical("ERROR validating Single Index Segment: invalid earliest_presentation_time in sidx box. \
+Expected %"PRId64", actual %"PRId64".", segmentStartTime, sidx->earliest_presentation_time);
                     returnCode = -1;
                 }
             }
             referenced_size += sidx->size;
 
-            LOG_INFO("Validating reference_id");
+            g_info("Validating reference_id");
             if(videoPID != sidx->reference_ID) {
-                LOG_ERROR_ARGS("ERROR validating Single Index Segment: invalid reference id in sidx box. \
-Expected %d, actual %d\n", videoPID, sidx->reference_ID);
+                g_critical("ERROR validating Single Index Segment: invalid reference id in sidx box. \
+Expected %d, actual %d.", videoPID, sidx->reference_ID);
                 returnCode = -1;
             }
 
@@ -490,9 +487,9 @@ Expected %d, actual %d\n", videoPID, sidx->reference_ID);
             if(box_types[boxIndex] == BOX_TYPE_SSIX) {
                 data_ssix_t* ssix = (data_ssix_t*)box_data[boxIndex];
                 referenced_size += ssix->size;
-                LOG_INFO("Validating ssix box");
+                g_info("Validating ssix box");
                 if(ssixPresent) {
-                    LOG_ERROR("ERROR validating Single Index Segment: More than one ssix box following sidx box\n");
+                    g_critical("ERROR validating Single Index Segment: More than one ssix box following sidx box.");
                     returnCode = -1;
                 } else {
                     ssixPresent = 1;
@@ -500,9 +497,9 @@ Expected %d, actual %d\n", videoPID, sidx->reference_ID);
             } else if(box_types[boxIndex] == BOX_TYPE_PCRB) {
                 data_pcrb_t* pcrb = (data_pcrb_t*)box_data[boxIndex];
                 referenced_size += pcrb->size;
-                LOG_INFO("Validating pcrb box");
+                g_info("Validating pcrb box");
                 if(pcrbPresent) {
-                    LOG_ERROR("ERROR validating Single Index Segment: More than one pcrb box following sidx box\n");
+                    g_critical("ERROR validating Single Index Segment: More than one pcrb box following sidx box.");
                     returnCode = -1;
                 } else {
                     pcrbPresent = 1;
@@ -514,7 +511,7 @@ Expected %d, actual %d\n", videoPID, sidx->reference_ID);
     }
 
     if(numNestedSidx != 0) {
-        LOG_ERROR_ARGS("ERROR validating Single Index Segment: Incorrect number of nested sidx boxes: %d\n",
+        g_critical("ERROR validating Single Index Segment: Incorrect number of nested sidx boxes: %d.",
                        numNestedSidx);
         returnCode = -1;
     }
@@ -589,7 +586,7 @@ int analyzeSidxReferences(data_sidx_t* sidx, int* pNumIFrames, int* pNumNestedSi
     if(isSimpleProfile) {
         if(originalNumNestedSidx != *pNumNestedSidx && originalNumIFrames != *pNumIFrames) {
             // failure -- references contain references to both media and nested sidx boxes
-            LOG_ERROR("ERROR validating Representation Index Segment: Section 8.7.3: Simple profile requires that \
+            g_critical("ERROR validating Representation Index Segment: Section 8.7.3: Simple profile requires that \
 sidx boxes have either media references or sidx references, but not both.");
             return -1;
         }
@@ -630,7 +627,7 @@ int validateIndexSegment(char* fname, size_t numSegments, int* segmentDurations,
                          data_segment_iframes_t* pIFrames,
                          int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile)
 {
-    LOG_INFO_ARGS("validateIndexSegment: %s", fname);
+    g_debug("validateIndexSegment: %s", fname);
     size_t numBoxes = 0;
     box_type_t* box_types = NULL;
     void** box_data = NULL;
@@ -638,14 +635,14 @@ int validateIndexSegment(char* fname, size_t numSegments, int* segmentDurations,
 
     int returnCode = readBoxes(fname, &numBoxes, &box_types, &box_data, &box_sizes);
     if(returnCode != 0) {
-        LOG_ERROR("ERROR validating Index Segment: Error reading boxes from file\n");
+        g_critical("ERROR validating Index Segment: Error reading boxes from file.");
         goto fail;
     }
 
     printBoxes(numBoxes, box_types, box_data);
 
     if(numSegments <= 0) {
-        LOG_ERROR("ERROR validating Index Segment: Invalid number of segments");
+        g_critical("ERROR validating Index Segment: Invalid number of segments.");
         goto fail;
     } else if(numSegments == 1) {
         returnCode = validateSingleIndexSegmentBoxes(numBoxes, box_types, box_data, box_sizes,
@@ -685,13 +682,13 @@ int readBoxes(char* fname, size_t* numBoxes, box_type_t** box_types_in, void** *
     
     struct stat st;
     if(stat(fname, &st) != 0) {
-        LOG_ERROR_ARGS("ERROR validating Index Segment: Error getting file size for %s\n", fname);
+        g_critical("ERROR validating Index Segment: Error getting file size for %s.", fname);
         goto fail;
     }
 
     indexFile = fopen(fname, "r");
     if(!indexFile) {
-        LOG_ERROR_ARGS("ERROR validating Index Segment: Couldn't open indexFile %s\n", fname);
+        g_critical("ERROR validating Index Segment: Couldn't open indexFile %s.", fname);
         goto fail;
     }
 
@@ -718,7 +715,7 @@ int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type
                void** * box_data_in, int** box_sizes_in)
 {
     if(getNumBoxes(buffer, bufferSize, numBoxes) != 0) {
-        LOG_ERROR("ERROR validating Index Segment: Error reading number of boxes in buffer\n");
+        g_critical("ERROR validating Index Segment: Error reading number of boxes in buffer.");
         return -1;
     }
 
@@ -765,7 +762,7 @@ int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type
         if(returnCode != 0) {
             char strType[] = {0, 0, 0, 0, 0};
             convertUintToString(strType, box_types[i]);
-            LOG_ERROR_ARGS("ERROR validating Index Segment: ERROR parsing %s box%s\n", strType, invalid ? " (unknown box type)" : "");
+            g_critical("ERROR validating Index Segment: ERROR parsing %s box%s.", strType, invalid ? " (unknown box type)" : "");
             return -1;
         }
         buffer += boxBufferSize;
@@ -1039,13 +1036,13 @@ int parseEmsg(unsigned char* buffer, int bufferSize, data_emsg_t* emsg)
 
     emsg->scheme_id_uri = readString(&buffer, bufferEnd);
     if(emsg->scheme_id_uri == NULL) {
-        LOG_ERROR("ERROR validating EMSG: Null terminator for scheme_id_uri not found in parseEmsg\n");
+        g_critical("ERROR validating EMSG: Null terminator for scheme_id_uri not found in parseEmsg.");
         return -1;
     }
 
     emsg->value = readString(&buffer, bufferEnd);
     if(emsg->scheme_id_uri == NULL) {
-        LOG_ERROR("ERROR validating EMSG: Null terminator for value not found in parseEmsg\n");
+        g_critical("ERROR validating EMSG: Null terminator for value not found in parseEmsg.");
         return -1;
     }
 
@@ -1194,7 +1191,7 @@ void convertUintToString(char* str, unsigned int uintStr)
 
 int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentDuration)
 {
-    LOG_INFO("validateEmsgMsg\n");
+    g_debug("validateEmsgMsg");
 
     size_t numBoxes;
     box_type_t* box_types;
@@ -1203,7 +1200,7 @@ int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentD
 
     int nReturnCode = readBoxes2(buffer, bufferSize, &numBoxes, &box_types, &box_data, &box_sizes);
     if(nReturnCode != 0) {
-        LOG_ERROR("ERROR validating EMSG: Error reading boxes\n");
+        g_critical("ERROR validating EMSG: Error reading boxes.");
         return -1;
     }
 
@@ -1211,7 +1208,7 @@ int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentD
 
     for(int i = 0; i < numBoxes; i++) {
         if(box_types[i] != BOX_TYPE_EMSG) {
-            LOG_ERROR("ERROR validating EMSG: Invalid box type found\n");
+            g_critical("ERROR validating EMSG: Invalid box type found.");
             freeBoxes(numBoxes, box_types, box_data);
             return -1;
         }
@@ -1220,7 +1217,7 @@ int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentD
 
         data_emsg_t* emsg = (data_emsg_t*)box_data[i];
         if(emsg->presentation_time_delta + emsg->event_duration > segmentDuration) {
-            LOG_ERROR("ERROR validating EMSG: event lasts longer tha segment duration\n");
+            g_critical("ERROR validating EMSG: event lasts longer tha segment duration.");
             freeBoxes(numBoxes, box_types, box_data);
             return -1;
         }

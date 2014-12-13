@@ -1,5 +1,4 @@
 /*
-
  Copyright (c) 2012-, ISO/IEC JTC1/SC29/WG11
  Written by Alex Giladi <alex.giladi@gmail.com> and Vlad Zbarsky <zbarsky@cornell.edu>
  All rights reserved.
@@ -26,23 +25,19 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#ifndef _STREAMKIT_LOG_H_
-#define _STREAMKIT_LOG_H_
+#ifndef STREAMKIT_LOG_H
+#define STREAMKIT_LOG_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#include <glib.h>
+
 // we need those for inttypes.h in C++
 #if defined __cplusplus && !defined __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS 1
 #endif
-#include <inttypes.h>
-
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
 
 #define SKIT_LOG_TYPE_UINT			0x01
 #define SKIT_LOG_TYPE_UINT_HEX		0x02
@@ -52,74 +47,40 @@ extern "C" {
 #define SKIT_LOG_TYPE_UINT_HEX_DBG	0x05
 #define SKIT_LOG_TYPE_STR_DBG		0x06
 
-#define SKIT_LOG_UINT32_DBG(str, prefix, arg, n)  fprintf(stdout, "DEBUG: %s%s=%"PRIu32"\n", prefix, #arg, (arg));
-#define SKIT_LOG_UINT32_HEX_DBG(str, prefix, arg, n)  fprintf(stdout, "DEBUG: %s%s=%"PRIX32"\n", prefix, #arg, (arg));
-#define SKIT_LOG_UINT64_DBG(str, prefix, arg, n)  fprintf(stdout, "DEBUG: %s%s=%"PRIu64"\n", prefix, #arg, (arg));
+#define SKIT_LOG_UINT32_DBG(prefix, arg)  fprintf(stdout, "DEBUG: %s%s=%"PRIu32"\n", prefix, #arg, (arg));
+#define SKIT_LOG_UINT32_HEX_DBG(prefix, arg)  fprintf(stdout, "DEBUG: %s%s=%"PRIX32"\n", prefix, #arg, (arg));
+#define SKIT_LOG_UINT64_DBG(prefix, arg)  fprintf(stdout, "DEBUG: %s%s=%"PRIu64"\n", prefix, #arg, (arg));
 
-#define SKIT_LOG_UINT(str, level, arg, n) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT, NULL);
-#define SKIT_LOG_UINT_DBG(str, level, arg, n) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_DBG, NULL);
-#define SKIT_LOG_UINT_HEX(str, level, arg, n) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_HEX, NULL);
-#define SKIT_LOG_UINT_HEX_DBG(str, level, arg, n) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_HEX_DBG, NULL);
-#define SKIT_LOG_UINT_VERBOSE(str, level, arg, explain, n) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT, explain);
-#define SKIT_LOG_STR(str, level, arg, n) skit_log_struct((level), #arg, arg, SKIT_LOG_TYPE_STR, NULL);
-#define SKIT_LOG_STR_DBG(str, level, arg, n) skit_log_struct((level), #arg, arg, SKIT_LOG_TYPE_STR_DBG, NULL);
+#define SKIT_LOG_UINT(level, arg) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT, NULL);
+#define SKIT_LOG_UINT_DBG(level, arg) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_DBG, NULL);
+#define SKIT_LOG_UINT_HEX(level, arg) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_HEX, NULL);
+#define SKIT_LOG_UINT_HEX_DBG(level, arg) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_HEX_DBG, NULL);
+#define SKIT_LOG_UINT_VERBOSE(level, arg, explain) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT, explain);
+#define SKIT_LOG_STR(level, arg) skit_log_struct((level), #arg, arg, SKIT_LOG_TYPE_STR, NULL);
+#define SKIT_LOG_STR_DBG(level, arg) skit_log_struct((level), #arg, arg, SKIT_LOG_TYPE_STR_DBG, NULL);
 
-int skit_log_struct(int level, char* name, uint64_t value, int type, char* str);
+void skit_log_struct(int level, char* name, uint64_t value, int type, char* str);
 
 // More traditional debug logging
 // tslib-global loglevel: error > warn (default) > info > debug
-#define TSLIB_LOG_LEVEL_ERROR		1
-#define TSLIB_LOG_LEVEL_WARN		((TSLIB_LOG_LEVEL_ERROR) + 1)
-#define TSLIB_LOG_LEVEL_INFO		((TSLIB_LOG_LEVEL_ERROR) + 2)
-#define TSLIB_LOG_LEVEL_DEBUG		((TSLIB_LOG_LEVEL_ERROR) + 3)
+typedef enum {
+    TSLIB_LOG_LEVEL_ERROR = 1,
+    TSLIB_LOG_LEVEL_WARN,
+    TSLIB_LOG_LEVEL_INFO,
+    TSLIB_LOG_LEVEL_DEBUG
+} tslib_log_level_t;
 
-#define TSLIB_LOG_LEVEL_DEFAULT		TSLIB_LOG_LEVEL_WARN
+#define TSLIB_LOG_LEVEL_DEFAULT TSLIB_LOG_LEVEL_WARN
 
 extern int tslib_loglevel;
 
-#define LOG_ERROR(msg)				{ if (tslib_loglevel >= TSLIB_LOG_LEVEL_ERROR) \
-										fprintf(stdout, "ERROR: %s\t\t[%s() @ %s:%d]\n", msg, __FUNCTION__, __FILE__, __LINE__); }
-#define LOG_ERROR_ARGS(format, ...)	{ if (tslib_loglevel >= TSLIB_LOG_LEVEL_ERROR) { \
-										fprintf(stdout, "ERROR: "); \
-										fprintf(stdout, format, __VA_ARGS__); \
-										fprintf(stdout, "\t\t[%s() @ %s:%d]\n", __FUNCTION__, __FILE__, __LINE__); } \
-									}
-
-#define LOG_WARN(msg)				{	if (tslib_loglevel >= TSLIB_LOG_LEVEL_DEBUG) \
-											fprintf(stdout, "WARNING: %s\t\t[%s() @ %s:%d]\n", msg, __FUNCTION__, __FILE__, __LINE__); \
-										else if (tslib_loglevel >= TSLIB_LOG_LEVEL_WARN) \
-											fprintf(stdout, "WARNING: %s\n", msg); \
-									}
-#define LOG_WARN_ARGS(format, ...)	{ if (tslib_loglevel >= TSLIB_LOG_LEVEL_WARN) { \
-										fprintf(stdout, "WARNING: "); \
-										fprintf(stdout, format, __VA_ARGS__); \
-										if (tslib_loglevel >= TSLIB_LOG_LEVEL_DEBUG) \
-											fprintf(stdout, "\t\t[%s() @ %s:%d]\n", __FUNCTION__, __FILE__, __LINE__); \
-										else \
-											fprintf(stdout, "\n"); \
-									}}
-
-#define LOG_INFO(msg)				{ if (tslib_loglevel >= TSLIB_LOG_LEVEL_INFO) \
-										fprintf(stdout, "INFO: %s\n", msg); }
-#define LOG_INFO_ARGS(format, ...)	{ if (tslib_loglevel >= TSLIB_LOG_LEVEL_INFO) { \
-										fprintf(stdout, "INFO: "); \
-										fprintf(stdout, format, __VA_ARGS__); \
-										fprintf(stdout, "\n"); } \
-									}
-
-#define LOG_DEBUG(msg)				{ if (tslib_loglevel >= TSLIB_LOG_LEVEL_DEBUG) \
-										fprintf(stdout, "DEBUG: %s\t\t[%s() @ %s:%d]\n", msg, __FUNCTION__, __FILE__, __LINE__); }
-#define LOG_DEBUG_ARGS(format, ...)	{ if (tslib_loglevel >= TSLIB_LOG_LEVEL_DEBUG) { \
-										fprintf(stdout, "DEBUG: "); \
-										fprintf(stdout, format, __VA_ARGS__); \
-										fprintf(stdout, "\t\t[%s() @ %s:%d]\n", __FUNCTION__, __FILE__, __LINE__); } \
-									}
-
 #define PRINT_STR(str) (str ? (const char*)str : "(null)")
 #define PRINT_BOOL(b) (b ? "true" : "false")
+
+void log_handler(const char* domain, GLogLevelFlags log_level, const char* message, void*);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // _STREAMKIT_LOG_H_
+#endif

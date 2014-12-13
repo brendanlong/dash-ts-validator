@@ -18,6 +18,7 @@ typedef struct {
 
 typedef struct {
     char* index_file_name;
+    char* initialization_file_name;
     uint8_t start_with_sap;
     uint64_t presentation_time_offset;
     GPtrArray* segments;

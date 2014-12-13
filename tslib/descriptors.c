@@ -25,10 +25,11 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "libts_common.h"
-#include "ts.h"
 #include "descriptors.h"
+
+#include "libts_common.h"
 #include "log.h"
+#include "ts.h"
 
 
 // "factory methods"
@@ -51,16 +52,14 @@ int write_descriptor_loop(GPtrArray* desc_list, bs_t* b)
     return 0;
 }
 
-int print_descriptor_loop(GPtrArray* desc_list, int level, char* str, size_t str_len)
+void print_descriptor_loop(GPtrArray* desc_list, int level)
 {
-    int bytes = 0;
     for(gsize i = 0; i < desc_list->len; ++i) {
         descriptor_t* desc = g_ptr_array_index(desc_list, i);
         if(desc != NULL) {
-            bytes += descriptor_print(desc, level, str + bytes, str_len - bytes);
+            descriptor_print(desc, level);
         }
     }
-    return bytes;
 }
 
 descriptor_t* descriptor_new()
@@ -103,25 +102,22 @@ descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b)
     return desc;
 }
 
-int descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len)
+void descriptor_print(const descriptor_t* desc, int level)
 {
-    if(desc == NULL || str == NULL || str_len < 2 || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
-        return 0;
+    if(desc == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+        return;
     }
-    int bytes = 0;
     switch(desc->tag) {
     case ISO_639_LANGUAGE_DESCRIPTOR:
-        language_descriptor_print(desc, level, str, str_len);
+        language_descriptor_print(desc, level);
         break;
     case CA_DESCRIPTOR:
-        ca_descriptor_print(desc, level, str, str_len);
+        ca_descriptor_print(desc, level);
         break;
     default:
-        bytes += SKIT_LOG_UINT(str + bytes, level, desc->tag, str_len - bytes);
-        bytes += SKIT_LOG_UINT(str + bytes, level, desc->length, str_len - bytes);
+        SKIT_LOG_UINT(level, desc->tag);
+        SKIT_LOG_UINT(level, desc->length);
     }
-
-    return bytes;
 }
 
 descriptor_t* language_descriptor_new(descriptor_t* desc)
@@ -162,7 +158,7 @@ descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b)
         return NULL;
     }
     if(desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
-        LOG_ERROR_ARGS("Language descriptor has tag 0x%02X instead of expected 0x%02X",
+        g_critical("Language descriptor has tag 0x%02X instead of expected 0x%02X",
                        desc->tag, ISO_639_LANGUAGE_DESCRIPTOR);
         SAFE_REPORT_TS_ERR(-50);
         return NULL;
@@ -190,31 +186,26 @@ descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b)
     return (descriptor_t*)ld;
 }
 
-int language_descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len)
+void language_descriptor_print(const descriptor_t* desc, int level)
 {
-    int bytes = 0;
     if(desc == NULL) {
-        return 0;
+        return;
     }
     if(desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
-        return 0;
+        return;
     }
 
     language_descriptor_t* ld = (language_descriptor_t*)desc;
 
-    bytes += SKIT_LOG_UINT_VERBOSE(str + bytes, level, desc->tag, "ISO_639_language_descriptor",
-                                   str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, level, desc->length, str_len - bytes);
+    SKIT_LOG_UINT_VERBOSE(level, desc->tag, "ISO_639_language_descriptor");
+    SKIT_LOG_UINT(level, desc->length);
 
     if(ld->_num_languages > 0) {
         for(int i = 0; i < ld->_num_languages; i++) {
-            bytes += SKIT_LOG_STR(str + bytes, level, strtol(ld->languages[i].ISO_639_language_code, NULL, 10),
-                                  str_len - bytes);
-            bytes += SKIT_LOG_UINT(str + bytes, level, ld->languages[i].audio_type, str_len - bytes);
+            SKIT_LOG_STR(level, strtol(ld->languages[i].ISO_639_language_code, NULL, 10));
+            SKIT_LOG_UINT(level, ld->languages[i].audio_type);
         }
     }
-
-    return bytes;
 }
 
 
@@ -266,25 +257,22 @@ descriptor_t* ca_descriptor_read(descriptor_t* desc, bs_t* b)
     return (descriptor_t*)cad;
 }
 
-int ca_descriptor_print(const descriptor_t* desc, int level, char* str, size_t str_len)
+void ca_descriptor_print(const descriptor_t* desc, int level)
 {
-    int bytes = 0;
     if(desc == NULL) {
-        return 0;
+        return;
     }
     if(desc->tag != CA_DESCRIPTOR) {
-        return 0;
+        return;
     }
 
     ca_descriptor_t* cad = (ca_descriptor_t*)desc;
 
+    SKIT_LOG_UINT_VERBOSE(level, desc->tag, "CA_descriptor");
+    SKIT_LOG_UINT(level, desc->length);
 
-    bytes += SKIT_LOG_UINT_VERBOSE(str + bytes, level, desc->tag, "CA_descriptor", str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, level, desc->length, str_len - bytes);
-
-    bytes += SKIT_LOG_UINT(str + bytes, level, cad->CA_PID, str_len - bytes);
-    bytes += SKIT_LOG_UINT(str + bytes, level, cad->CA_system_ID, str_len - bytes);
-    return bytes;
+    SKIT_LOG_UINT(level, cad->CA_PID);
+    SKIT_LOG_UINT(level, cad->CA_system_ID);
 }
 
 /*

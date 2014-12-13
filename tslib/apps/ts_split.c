@@ -29,14 +29,15 @@
 #include <getopt.h>
 #include <errno.h>
 #include <strings.h>
+#include <stdio.h>
 
 #include "libts_common.h"
-#include "ts.h"
-#include "psi.h"
-#include "mpeg2ts_demux.h"
 #include "log.h"
+#include "mpeg2ts_demux.h"
 #include "pes.h"
+#include "psi.h"
 #include "tpes.h"
+#include "ts.h"
 
 
 char* prefix = NULL;
@@ -66,12 +67,11 @@ int pes_processor(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_q
     FILE* fout = (FILE*)arg;
 #if 0
     if(tslib_loglevel > 0) {
-        char pes_str[0x1000];
-        pes_print(pes, pes_str, 0x1000);
+        pes_print(pes);
         fprintf(stderr, "\n%s\n", pes_str);
     }
 #else
-    //pes_print(pes, NULL, 0);
+    //pes_print(pes);
 #endif
 
     if(fout != NULL) {
@@ -88,8 +88,7 @@ int pmt_processor_split(mpeg2ts_program_t* m2p, void* arg)
         return 0;
     }
 
-    char* pmt_str = malloc(0x10000); // fixme: this is ugly
-    program_map_section_print(m2p->pmt, pmt_str, 0x10000);
+    program_map_section_print(m2p->pmt);
 
     GHashTableIter i;
     g_hash_table_iter_init(&i, m2p->pids);
@@ -132,7 +131,6 @@ int pmt_processor_split(mpeg2ts_program_t* m2p, void* arg)
             mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_PID, demux_handler, NULL);
         }
     }
-    free(pmt_str);
     return 1;
 }
 
@@ -175,22 +173,24 @@ int main(int argc, char* argv[])
         }
     }
 
+    g_log_set_default_handler(log_handler, NULL);
+
     char* fname = argv[optind];
     if(fname == NULL || fname[0] == 0) {
-        LOG_ERROR("No input file provided");
+        g_critical("No input file provided");
         usage(argv[0]);
         return 1;
     }
 
     FILE* infile = NULL;
     if((infile = fopen(fname, "rb")) == NULL) {
-        LOG_ERROR_ARGS("Cannot open file %s - %s", fname, strerror(errno));
+        g_critical("Cannot open file %s - %s", fname, strerror(errno));
         return 1;
     }
 
 
     if(NULL == (m2s = mpeg2ts_stream_new())) {
-        LOG_ERROR("Error creating MPEG-2 STREAM object");
+        g_critical("Error creating MPEG-2 STREAM object");
         return 1;
     }
 

@@ -13,6 +13,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+#include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
@@ -103,10 +104,12 @@ int main(int argc, char* argv[])
         }
     }
 
+    g_log_set_default_handler(log_handler, NULL);
+
     // read segment_info file (tab-delimited) which lists segment file paths
     char* file_name = argv[optind];
     if(file_name == NULL || file_name[0] == 0) {
-        LOG_ERROR("No segment_info file provided");
+        g_critical("No segment_info file provided");
         usage(argv[0]);
         return 1;
     }
@@ -119,29 +122,41 @@ int main(int argc, char* argv[])
     if (mpd == NULL) {
         goto cleanup;
     }
+    mpd_dump(mpd);
+
+    dash_validator_t* dash_validator_init_segment = calloc(1, sizeof(dash_validator_t));
+    dash_validator_init_segment->segment_type = INITIALIZATION_SEGMENT;
 
     /*
     char* content_component_table[NUM_CONTENT_COMPONENTS] =
     { "<unknown>", "video", "audio" };
+    */
 
     // if there is an initialization segment, process it first in order to get the PAT and PMT tables
-    if(strlen(initializationSegment) != 0) {
-        if(doSegmentValidation(dash_validator_init_segment, initializationSegment,
-                               NULL, NULL, 0) != 0) {
-            LOG_ERROR_ARGS("Validation of initialization segment %s FAILED.", initializationSegment);
-            dash_validator_init_segment->status = 0;
-        }
-
-        if(dash_validator_init_segment->status == 0) {
-            overallStatus = 0;
+    for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
+        period_t* period = g_ptr_array_index(mpd->periods, p_i);
+        for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
+            adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
+            for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
+                representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
+                if (representation->initialization_file_name == NULL) {
+                    continue;
+                }
+                if(doSegmentValidation(dash_validator_init_segment, representation->initialization_file_name,
+                                       NULL, NULL, 0) != 0) {
+                    g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
+                    dash_validator_init_segment->status = 0;
+                }
+                if(dash_validator_init_segment->status == 0) {
+                    overallStatus = 0;
+                }
+            }
         }
     }
-    */
 
     // next process index files, either representation index files or single segment index files
     // the index files contain iFrame locations which are stored here and then validated when the actual
     // media segments are processed later
-
     for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
         period_t* period = g_ptr_array_index(mpd->periods, p_i);
         for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
@@ -159,13 +174,24 @@ int main(int argc, char* argv[])
                         first_segment_start = segment->start;
                     }
                     segment_durations[s_i] = segment->duration;
+
+                    if(segment->index_file_name) {
+                        int duration = segment->duration;
+                        if (validateIndexSegment(segment->index_file_name, 1, &duration,
+                                &representation->segment_iframes[s_i],
+                                representation->presentation_time_offset + first_segment_start,
+                                adaptation_set->video_pid, conformance_level & TS_TEST_SIMPLE) != 0) {
+                            g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
+                            overallStatus = 0;
+                        }
+                    }
                 }
                 if (validateIndexSegment(representation->index_file_name,
                         representation->segments->len, segment_durations,
                         representation->segment_iframes, representation->presentation_time_offset + first_segment_start,
                         adaptation_set->video_pid,
                         conformance_level & TS_TEST_SIMPLE) != 0) {
-                    LOG_ERROR_ARGS("Validation of RepresentationIndex %s FAILED", PRINT_STR(representation->index_file_name));
+                    g_critical("Validation of RepresentationIndex %s FAILED", PRINT_STR(representation->index_file_name));
                     overallStatus = 0;
                 }
                 free(segment_durations);
@@ -181,7 +207,7 @@ int main(int argc, char* argv[])
             if(validateIndexSegment(representationIndexFileNames + repIndex * SEGMENT_FILE_NAME_MAX_LENGTH,
                                     numSegments, segDurations, pIFramesTemp, presentationTimeOffset, videoPID,
                                     conformance_level & TS_TEST_SIMPLE) != 0) {
-                LOG_ERROR_ARGS("Validation of RepresentationIndexFile %s FAILED",
+                g_critical("Validation of RepresentationIndexFile %s FAILED",
                                representationIndexFileNames + repIndex * SEGMENT_FILE_NAME_MAX_LENGTH);
                 overallStatus = 0;
             }
@@ -196,7 +222,7 @@ int main(int argc, char* argv[])
                 char* segmentIndexFileName = segmentIndexFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH;
                 if(validateIndexSegment(segmentIndexFileName, 1, &(segDurations[segIndex]), pIFramesTemp,
                                         presentationTimeOffset, videoPID, conformance_level & TS_TEST_SIMPLE) != 0) {
-                    LOG_ERROR_ARGS("Validation of SegmentIndexFile %s FAILED", segmentIndexFileName);
+                    g_critical("Validation of SegmentIndexFile %s FAILED", segmentIndexFileName);
                     overallStatus = 0;
                 }
             }
@@ -220,7 +246,7 @@ int main(int argc, char* argv[])
             dash_validator[arrayIndex].conformance_level = conformance_level;
 
             segFileName = segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH;
-//           LOG_INFO_ARGS("\nsegFileName = %s", segFileName);
+//          g_info("\nsegFileName = %s", segFileName);
 
             data_segment_iframes_t* pIFramesTemp = pIFrames + arrayIndex;
 
@@ -259,13 +285,13 @@ int main(int argc, char* argv[])
                 int64_t actualDuration = (pv->LPT - pv->EPT) + pv->duration;
                 int64_t actualEndTime = actualStartTime + actualDuration;
 
-                LOG_INFO_ARGS("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
+                g_info("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
                               segFileName,
                               pv->PID, content_component_table[pv->content_component], actualStartTime, actualEndTime,
                               actualDuration);
 
                 if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
-                    LOG_INFO_ARGS("%s: VIDEO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
+                    g_info("%s: VIDEO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
                                   segFileName, lastVideoEndTime[arrayIndex], actualStartTime,
                                   actualStartTime - lastVideoEndTime[arrayIndex]);
 
@@ -275,18 +301,18 @@ int main(int argc, char* argv[])
                     // check SAP and SAP Type
                     if(expectedSAPType != 0) {
                         if(pv->SAP == 0) {
-                            LOG_INFO_ARGS("%s: FAIL: SAP not set", segFileName);
+                            g_info("%s: FAIL: SAP not set", segFileName);
                             dash_validator[arrayIndex].status = 0;
                         } else if(pv->SAP_type != expectedSAPType) {
-                            LOG_INFO_ARGS("%s: FAIL: Invalid SAP Type: expected %d, actual %d",
+                            LOG_g_info_ARGS("%s: FAIL: Invalid SAP Type: expected %d, actual %d",
                                           segFileName, expectedSAPType, pv->SAP_type);
                             dash_validator[arrayIndex].status = 0;
                         }
                     } else {
-                        LOG_INFO("startWithSAP not set -- skipping SAP check");
+                        g_info("startWithSAP not set -- skipping SAP check");
                     }
                 } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
-                    LOG_INFO_ARGS("%s: AUDIO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
+                    g_info("%s: AUDIO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
                                   segFileName, lastAudioEndTime[arrayIndex], actualStartTime,
                                   actualStartTime - lastAudioEndTime[arrayIndex]);
 
@@ -296,7 +322,7 @@ int main(int argc, char* argv[])
 
 
                 if(actualStartTime != expectedStartTime[arrayIndex]) {
-                    LOG_INFO_ARGS("%s: %s: Invalid start time: expected = %"PRId64", actual = %"PRId64", delta = %"PRId64"",
+                    g_info("%s: %s: Invalid start time: expected = %"PRId64", actual = %"PRId64", delta = %"PRId64"",
                                   segFileName, content_component_table[pv->content_component],
                                   expectedStartTime[arrayIndex], actualStartTime, actualStartTime - expectedStartTime[arrayIndex]);
 
@@ -307,7 +333,7 @@ int main(int argc, char* argv[])
                 }
 
                 if(actualEndTime != expectedEndTime[arrayIndex]) {
-                    LOG_INFO_ARGS("%s: %s: Invalid end time: expected %"PRId64", actual %"PRId64", delta = %"PRId64"",
+                    g_info("%s: %s: Invalid end time: expected %"PRId64", actual %"PRId64", delta = %"PRId64"",
                                   segFileName, content_component_table[pv->content_component],
                                   expectedEndTime[arrayIndex], actualEndTime, actualEndTime - expectedEndTime[arrayIndex]);
 
@@ -346,14 +372,14 @@ int main(int argc, char* argv[])
                 int64_t videoPTSDelta = actualVideoStartTime[arrayIndex2] - lastVideoEndTime[arrayIndex1];
 
                 if(audioPTSDelta > maxAudioGapPTSTicks) {
-                    LOG_INFO_ARGS("FAIL: Audio gap between (%d, %d) is %"PRId64" and exceeds limit %d",
+                    g_info("FAIL: Audio gap between (%d, %d) is %"PRId64" and exceeds limit %d",
                                   repIndex1, repIndex2, audioPTSDelta, maxAudioGapPTSTicks);
                     dash_validator[arrayIndex1].status = 0;
                     dash_validator[arrayIndex2].status = 0;
                 }
 
                 if(videoPTSDelta > maxVideoGapPTSTicks) {
-                    LOG_INFO_ARGS("FAIL: Video gap between (%d, %d) is %"PRId64" and exceeds limit %d",
+                    g_info("FAIL: Video gap between (%d, %d) is %"PRId64" and exceeds limit %d",
                                   repIndex1, repIndex2, videoPTSDelta, maxVideoGapPTSTicks);
                     dash_validator[arrayIndex1].status = 0;
                     dash_validator[arrayIndex2].status = 0;
@@ -367,7 +393,7 @@ int main(int argc, char* argv[])
             lastAudioEndTime[arrayIndex1] = actualAudioEndTime[arrayIndex0];
             lastVideoEndTime[arrayIndex1] = actualVideoEndTime[arrayIndex0];
 
-            LOG_INFO_ARGS("SEGMENT TEST RESULT: %s: %s",
+            g_info("SEGMENT TEST RESULT: %s: %s",
                           segFileNames + arrayIndex0 * SEGMENT_FILE_NAME_MAX_LENGTH,
                           dash_validator[arrayIndex0].status ? "PASS" : "FAIL");
         }
@@ -378,7 +404,7 @@ int main(int argc, char* argv[])
     if(conformance_level & TS_TEST_SIMPLE) {
         // for a simple profile, the PSI info must be the same for all segments
         if(checkPSIIdentical(dash_validator, numRepresentations * numSegments) != 0) {
-            LOG_ERROR("Validation FAILED: PSI info not identical for all segments");
+            g_critical("Validation FAILED: PSI info not identical for all segments");
             overallStatus = 0;
         }
     }
@@ -398,9 +424,9 @@ int main(int argc, char* argv[])
     for(int i = 0; i < numRepresentations * numSegments; i++) {
         overallStatus = overallStatus && dash_validator[i].status;
     }*/
-    LOG_INFO_ARGS("\nOVERALL TEST RESULT: %s", overallStatus ? "PASS" : "FAIL");
-
+    g_info("\nOVERALL TEST RESULT: %s", overallStatus ? "PASS" : "FAIL");
 cleanup:
+    free(dash_validator_init_segment);
     mpd_free(mpd);
     xmlCleanupParser();
     return returnCode;
@@ -524,7 +550,7 @@ void printAudioTimingMatrix(char* segFileNames, int64_t* actualAudioStartTime,
 
 int checkPSIIdentical(dash_validator_t* dash_validator, int numDashValidators)
 {
-    LOG_INFO("Validating that PSI info is identical in each segment\n");
+    g_info("Validating that PSI info is identical in each segment\n");
 
     // check that each segment has the same videoPID, audioPID, PMT version, PMT program num, and PCR PID
 
@@ -545,44 +571,44 @@ int checkPSIIdentical(dash_validator_t* dash_validator, int numDashValidators)
         uint32_t pmt_version_number_Temp = dash_validator[i].pmt_version_number;
 
         /*
-        LOG_INFO ("");
-        LOG_INFO_ARGS ("PSI Table Validation: num %d", i);
-        LOG_INFO_ARGS ("PSI Table Validation: PCR_PID = %d", PCR_PID_Temp);
-        LOG_INFO_ARGS ("PSI Table Validation: videoPID = %d", videoPID_Temp);
-        LOG_INFO_ARGS ("PSI Table Validation: audioPID = %d", audioPID_Temp);
-        LOG_INFO_ARGS ("PSI Table Validation: pmt_program_number = %d", pmt_program_number_Temp);
-        LOG_INFO_ARGS ("PSI Table Validation: pmt_version_number = %d", pmt_version_number_Temp);
-        LOG_INFO ("");
+        g_info ("");
+        g_info ("PSI Table Validation: num %d", i);
+        g_info ("PSI Table Validation: PCR_PID = %d", PCR_PID_Temp);
+        g_info ("PSI Table Validation: videoPID = %d", videoPID_Temp);
+        g_info ("PSI Table Validation: audioPID = %d", audioPID_Temp);
+        g_info ("PSI Table Validation: pmt_program_number = %d", pmt_program_number_Temp);
+        g_info ("PSI Table Validation: pmt_version_number = %d", pmt_version_number_Temp);
+        g_info ("");
         */
 
         if(initialized) {
             if(PCR_PID != PCR_PID_Temp) {
-                LOG_ERROR_ARGS("PSI Table Validation FAILED: Incorrect PCR_PID: Expected = %d, Actual = %d",
+                g_critical("PSI Table Validation FAILED: Incorrect PCR_PID: Expected = %d, Actual = %d",
                                PCR_PID, PCR_PID_Temp);
                 status = -1;
             }
             if(videoPID != videoPID_Temp) {
-                LOG_ERROR_ARGS("PSI Table Validation FAILED: Incorrect videoPID: Expected = %d, Actual = %d",
+                g_critical("PSI Table Validation FAILED: Incorrect videoPID: Expected = %d, Actual = %d",
                                videoPID, videoPID_Temp);
                 status = -1;
             }
             if(audioPID != audioPID_Temp) {
-                LOG_ERROR_ARGS("PSI Table Validation FAILED: Incorrect audioPID: Expected = %d, Actual = %d",
+                g_critical("PSI Table Validation FAILED: Incorrect audioPID: Expected = %d, Actual = %d",
                                audioPID, audioPID_Temp);
                 status = -1;
             }
             if(pmt_program_number != pmt_program_number_Temp) {
-                LOG_ERROR_ARGS("PSI Table Validation FAILED: Incorrect pmt_program_number: Expected = %d, Actual = %d",
+                g_critical("PSI Table Validation FAILED: Incorrect pmt_program_number: Expected = %d, Actual = %d",
                                pmt_program_number, pmt_program_number_Temp);
                 status = -1;
             }
             if(pmt_version_number != pmt_version_number_Temp) {
-                LOG_ERROR_ARGS("PSI Table Validation FAILED: Incorrect pmt_version_number: Expected = %d, Actual = %d",
+                g_critical("PSI Table Validation FAILED: Incorrect pmt_version_number: Expected = %d, Actual = %d",
                                pmt_version_number, pmt_version_number_Temp);
                 status = -1;
             }
         } else {
-//            LOG_INFO ("PSI Table Validation: INITIALIZING");
+//            g_info ("PSI Table Validation: INITIALIZING");
 
             PCR_PID = PCR_PID_Temp;
             videoPID = videoPID_Temp;
