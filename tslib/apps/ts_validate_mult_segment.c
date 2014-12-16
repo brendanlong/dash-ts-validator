@@ -424,7 +424,7 @@ int main(int argc, char* argv[])
     for(int i = 0; i < numRepresentations * numSegments; i++) {
         overallStatus = overallStatus && dash_validator[i].status;
     }*/
-    g_info("\nOVERALL TEST RESULT: %s", overallStatus ? "PASS" : "FAIL");
+    printf("\nOVERALL TEST RESULT: %s\n", overallStatus ? "PASS" : "FAIL");
 cleanup:
     free(dash_validator_init_segment);
     mpd_free(mpd);
