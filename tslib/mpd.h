@@ -13,6 +13,7 @@ typedef struct {
     char* media_range;
     uint64_t start;
     uint64_t duration;
+    uint64_t end;
     char* index_file_name;
     char* index_range;
 } segment_t;
@@ -23,9 +24,6 @@ typedef struct {
     uint8_t start_with_sap;
     uint64_t presentation_time_offset;
     GPtrArray* segments;
-    data_segment_iframes_t* segment_iframes;
-    dash_validator_t* dash_validator_init_segment;
-    GPtrArray* dash_validators;
 } representation_t;
 
 typedef struct {
@@ -49,7 +47,6 @@ typedef enum {
 
 typedef struct {
     mpd_presentation_t presentation_type;
-    int expected_sap_type;
     int max_video_gap_pts_ticks;
     int max_audio_gap_pts_ticks;
     char* initialization_segment;

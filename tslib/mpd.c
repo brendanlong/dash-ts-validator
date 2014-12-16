@@ -168,10 +168,7 @@ void representation_free(representation_t* obj)
     }
 
     g_free(obj->index_file_name);
-    freeIFrames(obj->segment_iframes, obj->segments->len);
     g_ptr_array_free(obj->segments, true);
-    dash_validator_free(obj->dash_validator_init_segment);
-    g_ptr_array_free(obj->dash_validators, true);
 
     free(obj);
 }
@@ -410,16 +407,6 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
         }
     }
 
-    representation->segment_iframes = calloc(representation->segments->len,
-            sizeof(data_segment_iframes_t));
-    if (representation->initialization_file_name) {
-        representation->dash_validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT);
-    }
-    representation->dash_validators = g_ptr_array_new_with_free_func((GDestroyNotify)dash_validator_free);
-    for (size_t i = 0; i < representation->segments->len; ++i) {
-        g_ptr_array_add(representation->dash_validators, dash_validator_new(MEDIA_SEGMENT));
-    }
-
 cleanup:
     g_free(base_url);
     xmlFree(mime_type);
@@ -545,6 +532,8 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
 
     segment->start = start;
     segment->duration = duration;
+    /* Might as well calculate this once */
+    segment->end = start + duration;
 
     segment->file_name = read_filename(node, "media", base_url);
     segment->media_range = xmlGetProp(node, "mediaRange");

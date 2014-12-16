@@ -115,9 +115,9 @@ void freeBoxes(size_t numBoxes, box_type_t* box_types, void** box_data)
 
 int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes, box_type_t* box_types,
         void** box_data,
-        int* box_sizes, int* segmentDurations, data_segment_iframes_t* pIFrames, int presentationTimeOffset,
+        int* box_sizes, uint64_t* segmentDurations, data_segment_iframes_t* pIFrames, int presentationTimeOffset,
         int videoPID,
-        unsigned char isSimpleProfile)
+        bool isSimpleProfile)
 {
     /*
     A Representation Index Segment indexes all Media Segments of one Representation and is defined as follows:
@@ -201,7 +201,7 @@ video PID.  Expected %d, actual %d.", videoPID, masterReferenceID);
         // validate duration
         if(segmentDurations[i] != ref.subsegment_duration) {
             g_critical("ERROR validating Representation Index Segment: master ref segment duration does not equal \
-segment duration.  Expected %d, actual %d.", segmentDurations[i], ref.subsegment_duration);
+segment duration.  Expected %"PRIu64", actual %d.", segmentDurations[i], ref.subsegment_duration);
             returnCode = -1;
         }
     }
@@ -398,8 +398,8 @@ expected %zu, found %d.", numSegments, segmentIndex);
 
 int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** box_data,
                                     int* box_sizes,
-                                    int segmentDuration, data_segment_iframes_t* pIFrames, int presentationTimeOffset, int videoPID,
-                                    unsigned char isSimpleProfile)
+                                    uint64_t segmentDuration, data_segment_iframes_t* pIFrames, int presentationTimeOffset, int videoPID,
+                                    bool isSimpleProfile)
 {
     /*
      A Single Index Segment indexes exactly one Media Segment and is defined as follows:
@@ -569,7 +569,7 @@ Expected %d, actual %d.", videoPID, sidx->reference_ID);
 }
 
 int analyzeSidxReferences(data_sidx_t* sidx, int* pNumIFrames, int* pNumNestedSidx,
-                          unsigned char isSimpleProfile)
+                          bool isSimpleProfile)
 {
     int originalNumNestedSidx = *pNumNestedSidx;
     int originalNumIFrames = *pNumIFrames;
@@ -623,9 +623,9 @@ void printBoxes(size_t numBoxes, box_type_t* box_types, void** box_data)
     }
 }
 
-int validateIndexSegment(char* fname, size_t numSegments, int* segmentDurations,
+int validateIndexSegment(char* fname, size_t numSegments, uint64_t* segmentDurations,
                          data_segment_iframes_t* pIFrames,
-                         int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile)
+                         int presentationTimeOffset, int videoPID, bool isSimpleProfile)
 {
     g_debug("validateIndexSegment: %s", fname);
     size_t numBoxes = 0;

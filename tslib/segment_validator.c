@@ -13,6 +13,21 @@ int g_nIFrameCntr;
 data_segment_iframes_t* g_pIFrameData;
 unsigned int g_segmentDuration;
 
+const char* content_component_to_string(content_component_t content_component)
+{
+    switch(content_component) {
+    case UNKNOWN_CONTENT_COMPONENT:
+        return "Unknown";
+    case VIDEO_CONTENT_COMPONENT:
+        return "Video";
+    case AUDIO_CONTENT_COMPONENT:
+        return "Audio";
+    default:
+        g_error("Bad content component: %d", content_component);
+        return "Bad Content Component Value";
+    }
+}
+
 pid_validator_t* pid_validator_new(int pid, int content_component)
 {
     pid_validator_t* obj = calloc(1, sizeof(pid_validator_t));
@@ -31,19 +46,30 @@ void pid_validator_free(pid_validator_t* obj)
     free(obj);
 }
 
-dash_validator_t* dash_validator_new(segment_type_t segment_type)
+dash_validator_t* dash_validator_new(segment_type_t segment_type, uint32_t conformance_level)
 {
-    dash_validator_t* obj = calloc(1, sizeof *obj);
-    obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
+    dash_validator_t* obj = calloc(1, sizeof(*obj));
+    dash_validator_init(obj, segment_type, conformance_level);
     return obj;
 }
 
-void dash_validator_free(dash_validator_t* obj)
+void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, uint32_t conformance_level)
+{
+    obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
+    obj->conformance_level = conformance_level;
+}
+
+void dash_validator_destroy(dash_validator_t* obj)
 {
     if (obj == NULL) {
         return;
     }
     g_ptr_array_free(obj->pids, true);
+}
+
+void dash_validator_free(dash_validator_t* obj)
+{
+    dash_validator_destroy(obj);
     free(obj);
 }
 
@@ -401,7 +427,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 unsigned int actualIFramePTS = pes->header.PTS;
                 g_info("expectedIFramePTS = %u, actualIFramePTS = %u", expectedIFramePTS, actualIFramePTS);
                 if(expectedIFramePTS != actualIFramePTS) {
-                    g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actua: %d",
+                    g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actual: %d",
                                    expectedIFramePTS, actualIFramePTS);
                     g_p_dash_validator->status = 0;
                 }
@@ -459,7 +485,7 @@ expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPTyp
 
 int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
                         dash_validator_t* dash_validator_init,
-                        data_segment_iframes_t* pIFrameData, unsigned int segmentDuration)
+                        data_segment_iframes_t* pIFrameData, uint64_t segmentDuration)
 {
     g_p_dash_validator = dash_validator;
     g_nIFrameCntr = 0;

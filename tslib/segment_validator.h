@@ -32,7 +32,7 @@ typedef enum {
     VIDEO_CONTENT_COMPONENT,
     AUDIO_CONTENT_COMPONENT,
     NUM_CONTENT_COMPONENTS
-} content_compenent_t;
+} content_component_t;
 
 typedef enum {
     MEDIA_SEGMENT = 0x00,
@@ -49,7 +49,7 @@ typedef struct {
     int64_t duration; // duration of latest pes packet
     uint64_t pes_cnt;
     uint64_t ts_cnt;
-    int content_component;
+    content_component_t content_component;
     int continuity_counter;
     GPtrArray* ecm_pids;
 } pid_validator_t;
@@ -72,7 +72,11 @@ typedef struct {
     program_map_section_t* initializaion_segment_pmt;      /// parsed PMT
 } dash_validator_t;
 
-dash_validator_t* dash_validator_new(segment_type_t);
+const char* content_component_to_string(content_component_t);
+
+dash_validator_t* dash_validator_new(segment_type_t, uint32_t conformance_level);
+void dash_validator_init(dash_validator_t*, segment_type_t, uint32_t conformance_level);
+void dash_validator_destroy(dash_validator_t*);
 void dash_validator_free(dash_validator_t*);
 
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
@@ -82,7 +86,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                         void* arg);
 int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
                         dash_validator_t* dash_validator_init,
-                        data_segment_iframes_t* pIFrameData, unsigned int segmentDuration);
+                        data_segment_iframes_t* pIFrameData, uint64_t segmentDuration);
 void doDASHEventValidation(uint8_t* buf, int len);
 
 #endif

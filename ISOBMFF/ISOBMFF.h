@@ -18,6 +18,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 
 typedef enum {
@@ -158,23 +159,23 @@ int readBoxes(char* fname, size_t* numBoxes, box_type_t** box_types_in, void** *
 int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type_t** box_types_in,
                void** * box_data_in, int** box_sizes_in);
 
-int validateIndexSegment(char* fname, size_t numSegments, int* segmentDurations,
+int validateIndexSegment(char* fname, size_t numSegments, uint64_t* segmentDurations,
                          data_segment_iframes_t* pIFrames,
-                         int presentationTimeOffset, int videoPID, unsigned char isSimpleProfile);
+                         int presentationTimeOffset, int videoPID, bool isSimpleProfile);
 int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes, box_type_t* box_types,
         void** box_data,
-        int* box_sizes, int* segmentDurations, data_segment_iframes_t* pIFrames, int presentationTimeOffset,
+        int* box_sizes, uint64_t* segmentDurations, data_segment_iframes_t* pIFrames, int presentationTimeOffset,
         int videoPID,
-        unsigned char isSimpleProfile);
+        bool isSimpleProfile);
 int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** box_data,
-                                    int* box_sizes, int segmentDuration,
+                                    int* box_sizes, uint64_t segmentDuration,
                                     data_segment_iframes_t* pIFrames, int presentationTimeOffset, int videoPID,
-                                    unsigned char isSimpleProfile);
+                                    bool isSimpleProfile);
 
 int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentDuration);
 
 int analyzeSidxReferences(data_sidx_t* sidx, int* pNumIFrames, int* pNumNestedSidx,
-                          unsigned char isSimpleProfile);
+                          bool isSimpleProfile);
 
 void freeIFrames(data_segment_iframes_t* pIFrames, int numSegments);
 

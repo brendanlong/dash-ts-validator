@@ -123,11 +123,6 @@ int main(int argc, char* argv[])
         goto cleanup;
     }
 
-    /*
-    char* content_component_table[NUM_CONTENT_COMPONENTS] =
-    { "<unknown>", "video", "audio" };
-    */
-
     // if there is an initialization segment, process it first in order to get the PAT and PMT tables
     for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
         period_t* period = g_ptr_array_index(mpd->periods, p_i);
@@ -135,206 +130,187 @@ int main(int argc, char* argv[])
             adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
             for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
                 representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
-                if (representation->initialization_file_name == NULL) {
-                    continue;
+                if (representation->segments->len == 0) {
+                    g_critical("Representation has no segments!");
+                    goto cleanup;
                 }
-                if(doSegmentValidation(representation->dash_validator_init_segment, representation->initialization_file_name,
-                                       NULL, NULL, 0) != 0) {
-                    g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
-                    representation->dash_validator_init_segment->status = 0;
-                }
-                if(representation->dash_validator_init_segment->status == 0) {
-                    overallStatus = 0;
-                }
-            }
-        }
-    }
 
-    // next process index files, either representation index files or single segment index files
-    // the index files contain iFrame locations which are stored here and then validated when the actual
-    // media segments are processed later
-    for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
-        period_t* period = g_ptr_array_index(mpd->periods, p_i);
-        for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
-            adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
-            for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
-                representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
-                if (representation->index_file_name == NULL) {
-                    continue;
-                }
-                int* segment_durations = malloc(sizeof(int) * representation->segments->len);
-                uint64_t first_segment_start = 0;
+                /* At some point we should replace these gigantic arrays with more reasonable data structures */
+                dash_validator_t* dash_validators = calloc(representation->segments->len, sizeof(dash_validator_t));
+                dash_validator_t* dash_validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, conformance_level);
+
+                uint64_t* expected_start_times = calloc(representation->segments->len, sizeof(int64_t));
+                uint64_t* expected_end_times = calloc(representation->segments->len, sizeof(int64_t));
+                uint64_t* expected_durations = calloc(representation->segments->len, sizeof(int64_t));
+
+                uint64_t* actual_audio_start_times = calloc(representation->segments->len, sizeof(int64_t));
+                uint64_t* actual_video_start_times = calloc(representation->segments->len, sizeof(int64_t));
+                uint64_t* actual_audio_end_times = calloc(representation->segments->len, sizeof(int64_t));
+                uint64_t* actual_video_end_times = calloc(representation->segments->len, sizeof(int64_t));
+
+                uint64_t* last_audio_end_times = calloc(representation->segments->len + 1, sizeof(int64_t));
+                uint64_t* last_video_end_times = calloc(representation->segments->len + 1, sizeof(int64_t));
+
+                data_segment_iframes_t* iframe_data = calloc(representation->segments->len, sizeof(data_segment_iframes_t));
+
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-                    if (s_i == 0) {
-                        first_segment_start = segment->start;
-                    }
-                    segment_durations[s_i] = segment->duration;
+                    expected_start_times[s_i] = segment->start + representation->presentation_time_offset;
+                    expected_end_times[s_i] = segment->end;
+                    expected_durations[s_i] = segment->duration;
 
-                    if(segment->index_file_name) {
-                        int duration = segment->duration;
-                        if (validateIndexSegment(segment->index_file_name, 1, &duration,
-                                &representation->segment_iframes[s_i],
-                                representation->presentation_time_offset + first_segment_start,
-                                adaptation_set->video_pid, conformance_level & TS_TEST_SIMPLE) != 0) {
-                            g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
-                            overallStatus = 0;
-                        }
+                    dash_validator_t* validator = &dash_validators[s_i];
+                    dash_validator_init(validator, MEDIA_SEGMENT, conformance_level);
+                    validator->use_initialization_segment = representation->initialization_file_name != NULL;
+                }
+
+                if (representation->initialization_file_name) {
+                    if(doSegmentValidation(dash_validator_init_segment, representation->initialization_file_name,
+                                           NULL, NULL, 0) != 0) {
+                        g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
+                        dash_validator_init_segment->status = 0;
+                    }
+                    if(dash_validator_init_segment->status == 0) {
+                        overallStatus = 0;
                     }
                 }
-                if (validateIndexSegment(representation->index_file_name,
-                        representation->segments->len, segment_durations,
-                        representation->segment_iframes, representation->presentation_time_offset + first_segment_start,
+
+                // next process index files, either representation index files or single segment index files
+                // the index files contain iFrame locations which are stored here and then validated when the actual
+                // media segments are processed later
+                for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
+                    segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+
+                    /* Validate Segment Index */
+                    if(segment->index_file_name && validateIndexSegment(segment->index_file_name,
+                                1, &expected_durations[s_i], &iframe_data[s_i],
+                                expected_start_times[0],
+                                adaptation_set->video_pid, conformance_level & TS_TEST_SIMPLE) != 0) {
+                        g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
+                        overallStatus = 0;
+                    }
+                }
+
+                /* Validate Representation Index */
+                if (representation->index_file_name && validateIndexSegment(representation->index_file_name,
+                        representation->segments->len, expected_durations,
+                        iframe_data, expected_start_times[0],
                         adaptation_set->video_pid,
                         conformance_level & TS_TEST_SIMPLE) != 0) {
                     g_critical("Validation of RepresentationIndex %s FAILED", PRINT_STR(representation->index_file_name));
                     overallStatus = 0;
                 }
-                free(segment_durations);
-            }
-        }
-    }
 
-    // Next, validate media files for each segment
-    for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
-        period_t* period = g_ptr_array_index(mpd->periods, p_i);
-        for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
-            adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
-            for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
-                representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
+                // Next, validate media files for each segment
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-                    dash_validator_t* validator = g_ptr_array_index(representation->dash_validators, s_i);
-                    validator->conformance_level = conformance_level;
-                    validator->use_initialization_segment = representation->initialization_file_name != NULL;
+                    dash_validator_t* validator = &dash_validators[s_i];
                     returnCode = doSegmentValidation(validator, segment->file_name,
-                            representation->dash_validator_init_segment,
-                            &representation->segment_iframes[s_i], segment->duration);
+                            dash_validator_init_segment,
+                            &iframe_data[s_i], segment->duration);
+                    if (returnCode != 0) {
+                        goto cleanup;
+                    }
+
+                    // GORP: what if there is no video in the segment??
+
+                    // per PID
+                    for(gsize pidIndex = 0; pidIndex < validator->pids->len; pidIndex++) {
+                        pid_validator_t* pv = g_ptr_array_index(validator->pids, pidIndex);
+
+                        // refine duration by including duration of last frame (audio and video are different rates)
+                        // start time is relative to the start time of the first segment
+
+                        // units of 90kHz ticks
+                        int64_t actualStartTime = pv->EPT;
+                        int64_t actualDuration = (pv->LPT - pv->EPT) + pv->duration;
+                        int64_t actualEndTime = actualStartTime + actualDuration;
+
+                        g_info("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
+                                segment->file_name, pv->PID, content_component_to_string(pv->content_component),
+                                actualStartTime, actualEndTime, actualDuration);
+
+                        if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
+                            g_info("%s: VIDEO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
+                                          segment->file_name, last_video_end_times[s_i], actualStartTime,
+                                          actualStartTime - last_video_end_times[s_i]);
+
+                            actual_video_start_times[s_i] = actualStartTime;
+                            actual_video_end_times[s_i] = actualEndTime;
+
+                            // check SAP and SAP Type
+                            if(representation->start_with_sap != 0) {
+                                if(pv->SAP == 0) {
+                                    g_critical("%s: FAIL: SAP not set", segment->file_name);
+                                    validator->status = 0;
+                                } else if(pv->SAP_type != representation->start_with_sap) {
+                                    g_critical("%s: FAIL: Invalid SAP Type: expected %d, actual %d",
+                                            segment->file_name, representation->start_with_sap, pv->SAP_type);
+                                    validator->status = 0;
+                                }
+                            } else {
+                                g_info("startWithSAP not set -- skipping SAP check");
+                            }
+                        } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
+                            g_info("%s: AUDIO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
+                                    segment->file_name, last_audio_end_times[s_i], actualStartTime,
+                                    actualStartTime - last_audio_end_times[s_i]);
+
+                            actual_audio_start_times[s_i] = actualStartTime;
+                            actual_audio_end_times[s_i] = actualEndTime;
+                        }
+
+
+                        if(actualStartTime != segment->start) {
+                            g_info("%s: %s: Invalid start time: expected = %"PRId64", actual = %"PRId64", delta = %"PRId64"",
+                                          segment->file_name, content_component_to_string(pv->content_component),
+                                   segment->start, actualStartTime, actualStartTime - segment->start);
+
+                            if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
+                                validator->status = 0;
+                            } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
+                                /* Is this right? Should we do something here? */
+                            }
+                        }
+
+                        if(actualEndTime != segment->end) {
+                            g_info("%s: %s: Invalid end time: expected %"PRId64", actual %"PRId64", delta = %"PRId64"",
+                                          segment->file_name, content_component_to_string(pv->content_component),
+                                          segment->end, actualEndTime, actualEndTime - segment->end);
+
+                            if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
+                                validator->status = 0;
+                            } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
+                                /* Is this right? Should we do something here? */
+                            }
+                        }
+                    }
                 }
+
+                for(gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
+                    dash_validator_destroy(&dash_validators[s_i]);
+                }
+                free(dash_validators);
+                dash_validator_free(dash_validator_init_segment);
+
+                free(expected_start_times);
+                free(expected_end_times);
+                free(expected_durations);
+
+                free(actual_audio_start_times);
+                free(actual_video_start_times);
+                free(actual_audio_end_times);
+                free(actual_video_end_times);
+
+                free(last_audio_end_times);
+                free(last_video_end_times);
+
+                freeIFrames(iframe_data, representation->segments->len);
             }
         }
     }
 
     /*
-    // store timing info for each segment so that segment-segment timing can be tested
-    for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-        expectedStartTime[getArrayIndex(repIndex, 0, numSegments + 1)] = presentationTimeOffset;
-    }
-
-    char* segFileName = NULL;
-    for(int segIndex = 0; segIndex < numSegments; segIndex++) {
-        for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-            int arrayIndex = getArrayIndex(repIndex, segIndex, numSegments);
-            if(segIndex == 0) {
-                expectedStartTime[arrayIndex] = presentationTimeOffset;
-            }
-
-            dash_validator[arrayIndex].conformance_level = conformance_level;
-
-            segFileName = segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH;
-//          g_info("\nsegFileName = %s", segFileName);
-
-            data_segment_iframes_t* pIFramesTemp = pIFrames + arrayIndex;
-
-            if(strlen(initializationSegment) != 0) {
-                dash_validator[arrayIndex].use_initialization_segment = true;
-
-                returnCode = doSegmentValidation(&(dash_validator[arrayIndex]), segFileName,
-                                                 dash_validator_init_segment, pIFramesTemp, segDurations[segIndex]);
-            } else {
-                returnCode = doSegmentValidation(&(dash_validator[arrayIndex]), segFileName,
-                                                 NULL, pIFramesTemp, segDurations[segIndex]);
-            }
-
-            if(returnCode != 0) {
-                goto cleanup;
-            }
-
-            // GORP: what if there is no video in the segment??
-            pid_validator_t* pv = NULL;
-
-            expectedDuration[arrayIndex] = segDurations[segIndex];
-            expectedEndTime[arrayIndex] = expectedStartTime[arrayIndex] + expectedDuration[arrayIndex];
-
-            // per PID
-            for(int pidIndex = 0; pidIndex < vqarray_length(dash_validator[arrayIndex].pids); pidIndex++) {
-                pv = (pid_validator_t*)vqarray_get(dash_validator[arrayIndex].pids, pidIndex);
-                if(pv == NULL) {
-                    continue;
-                }
-
-                // refine duration by including duration of last frame (audio and video are different rates)
-                // start time is relative to the start time of the first segment
-
-                // units of 90kHz ticks
-                int64_t actualStartTime = pv->EPT;
-                int64_t actualDuration = (pv->LPT - pv->EPT) + pv->duration;
-                int64_t actualEndTime = actualStartTime + actualDuration;
-
-                g_info("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
-                              segFileName,
-                              pv->PID, content_component_table[pv->content_component], actualStartTime, actualEndTime,
-                              actualDuration);
-
-                if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
-                    g_info("%s: VIDEO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
-                                  segFileName, lastVideoEndTime[arrayIndex], actualStartTime,
-                                  actualStartTime - lastVideoEndTime[arrayIndex]);
-
-                    actualVideoStartTime[arrayIndex] = actualStartTime;
-                    actualVideoEndTime[arrayIndex] = actualEndTime;
-
-                    // check SAP and SAP Type
-                    if(expectedSAPType != 0) {
-                        if(pv->SAP == 0) {
-                            g_info("%s: FAIL: SAP not set", segFileName);
-                            dash_validator[arrayIndex].status = 0;
-                        } else if(pv->SAP_type != expectedSAPType) {
-                            LOG_g_info_ARGS("%s: FAIL: Invalid SAP Type: expected %d, actual %d",
-                                          segFileName, expectedSAPType, pv->SAP_type);
-                            dash_validator[arrayIndex].status = 0;
-                        }
-                    } else {
-                        g_info("startWithSAP not set -- skipping SAP check");
-                    }
-                } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
-                    g_info("%s: AUDIO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
-                                  segFileName, lastAudioEndTime[arrayIndex], actualStartTime,
-                                  actualStartTime - lastAudioEndTime[arrayIndex]);
-
-                    actualAudioStartTime[arrayIndex] = actualStartTime;
-                    actualAudioEndTime[arrayIndex] = actualEndTime;
-                }
-
-
-                if(actualStartTime != expectedStartTime[arrayIndex]) {
-                    g_info("%s: %s: Invalid start time: expected = %"PRId64", actual = %"PRId64", delta = %"PRId64"",
-                                  segFileName, content_component_table[pv->content_component],
-                                  expectedStartTime[arrayIndex], actualStartTime, actualStartTime - expectedStartTime[arrayIndex]);
-
-                    if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
-                        dash_validator[arrayIndex].status = 0;
-                    } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
-                    }
-                }
-
-                if(actualEndTime != expectedEndTime[arrayIndex]) {
-                    g_info("%s: %s: Invalid end time: expected %"PRId64", actual %"PRId64", delta = %"PRId64"",
-                                  segFileName, content_component_table[pv->content_component],
-                                  expectedEndTime[arrayIndex], actualEndTime, actualEndTime - expectedEndTime[arrayIndex]);
-
-                    if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
-                        dash_validator[arrayIndex].status = 0;
-                    } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
-                    }
-                }
-            }
-
-            // fill in expected start time for next segment by setting it to the end time of this segment
-            if(segIndex != numSegments - 1) {
-                expectedStartTime[getArrayIndex(repIndex, segIndex + 1, numSegments)] = expectedEndTime[arrayIndex];
-            }
-        }
 
         // segment cross checking: check that the gap between all adjacent segments is acceptably small
 
