@@ -122,7 +122,6 @@ int main(int argc, char* argv[])
     if (mpd == NULL) {
         goto cleanup;
     }
-    mpd_dump(mpd);
 
     /*
     char* content_component_table[NUM_CONTENT_COMPONENTS] =

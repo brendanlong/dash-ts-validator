@@ -38,8 +38,6 @@ typedef struct {
 } adaptation_set_t;
 
 typedef struct {
-    uint64_t start;
-    uint64_t duration;
     GPtrArray* adaptation_sets;
 } period_t;
 

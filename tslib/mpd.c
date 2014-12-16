@@ -35,7 +35,6 @@ bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t dura
 char* find_base_url(xmlNode*, char* parent_base_url);
 uint32_t read_optional_uint32(xmlNode*, const char* property_name);
 uint32_t read_uint64(xmlNode*, const char* property_name);
-uint64_t read_duration(xmlNode*, const char* property_name);
 bool read_bool(xmlNode*, const char* property_name);
 char* read_filename(xmlNode*, const char* property_name, const char* base_url);
 uint64_t str_to_uint64(const char*, size_t length);
@@ -114,8 +113,6 @@ void period_dump(const period_t* period, unsigned indent)
         printf("Period:\n");
     }
     ++indent;
-    DUMP_PROPERTY(indent, "start: %"PRIu64, period->start);
-    DUMP_PROPERTY(indent, "duration: %"PRIu64, period->duration);
     for (size_t i = 0; i < period->adaptation_sets->len; ++i) {
         DUMP_PROPERTY(indent, "adaptation_sets[%zu]:", i);
         adaptation_set_dump(g_ptr_array_index(period->adaptation_sets, i), indent);
@@ -291,9 +288,6 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
 
     period_t* period = period_new();
     g_ptr_array_add(mpd->periods, period);
-
-    period->start = read_duration(node, "start");
-    period->duration = read_duration(node, "duration");
 
     char* base_url = find_base_url(node, parent_base_url);
 
@@ -611,99 +605,6 @@ uint32_t read_uint64(xmlNode* node, const char* property_name)
     if (value && result == 0 && !xmlStrEqual(value, "0")) {
         g_warning("Got invalid unsignedLong for property %s: %s", property_name, value);
     }
-    xmlFree(value);
-    return result;
-}
-
-uint64_t read_duration(xmlNode* node, const char* property_name)
-{
-    uint64_t result = 0;
-    char* value = xmlGetProp(node, property_name);
-    if (value == NULL) {
-        goto cleanup;
-    }
-
-    const char* error;
-    int error_offset;
-    pcre* re = pcre_compile("P((?<year>[0-9]+)Y)?((?<month>[0-9]+)M)?((?<day>[0-9]+)D)?(T((?<hour>[0-9]+)H)?((?<minute>[0-9]+)M)?((?<second>[0-9]+(\\.[0-9]+)?)S)?)?", 0, &error, &error_offset, NULL);
-    if (re == NULL) {
-        g_critical("PCRE compilation error %s at offset %d.", error, error_offset);
-        goto cleanup;
-    }
-
-    int output_vector[14 * 3];
-    int output_length = 14 * 3;
-
-    int return_code = pcre_exec(re, NULL, value, xmlStrlen(value), 0, 0, output_vector, output_length);
-    if (return_code < 0) {
-        switch(return_code) {
-        case PCRE_ERROR_NOMATCH:
-            g_warning("Duration %s does not match duration regex.", value);
-            goto cleanup;
-        default:
-            g_critical("Duration %s caused PCRE matching error: %d.", value, return_code);
-            goto cleanup;
-        }
-    }
-    if (return_code == 0) {
-        g_critical("PCRE output vector size of %d is not big enough.", output_length / 3);
-        goto cleanup;
-    }
-
-    int namecount;
-    int name_entry_size;
-    unsigned char* name_table;
-    pcre_fullinfo(re, NULL, PCRE_INFO_NAMECOUNT, &namecount);
-
-    if (namecount <= 0) {
-        g_critical("No named substrings. PCRE might be broken?");
-        goto cleanup;
-    }
-
-    unsigned char *tabptr;
-    pcre_fullinfo( re, NULL, PCRE_INFO_NAMETABLE, &name_table);
-    pcre_fullinfo(re, NULL, PCRE_INFO_NAMEENTRYSIZE, &name_entry_size);
-
-    /* Now we can scan the table and, for each entry, print the number, the name,
-    and the substring itself. */
-
-    tabptr = name_table;
-    for (int i = 0; i < namecount; i++) {
-        int n = (tabptr[0] << 8) | tabptr[1];
-
-        char* field_name = tabptr + 2;
-        int field_name_length = name_entry_size - 3;
-
-        char* field_value = value + output_vector[2*n];
-        int field_value_length = output_vector[2*n+1] - output_vector[2*n];
-        if (field_value_length != 0) {
-            uint64_t field_value_int = str_to_uint64(field_value, field_value_length);
-            if (strncmp(field_name, "second", field_name_length) == 0) {
-                result += field_value_int;
-            } else if (strncmp(field_name, "minute", field_name_length) == 0) {
-                result += field_value_int * 60;
-            } else if (strncmp(field_name, "hour", field_name_length) == 0) {
-                result += field_value_int * 3600;
-            } else if (strncmp(field_name, "day", field_name_length) == 0) {
-                result += field_value_int * 86400;
-            } else if (strncmp(field_name, "month", field_name_length) == 0) {
-                /* note: number of seconds in a month is undefined by ISO 6801.
-                   This is an approximation, assuming 30.6 days per month. */
-                result += field_value_int * 2643840;
-            } else if (strncmp(field_name, "year", field_name_length) == 0) {
-                /* note: number of seconds in a year is undefined by ISO 6801.
-                   This is an approximation, assuming 365.25 days per year. */
-                result += field_value_int * 31557600;
-            } else {
-                g_warning("Unknown field: %.*s = %.*s.", field_name_length,
-                        field_name, field_value_length, field_value);
-            }
-        }
-        tabptr += name_entry_size;
-    }
-
-cleanup:
-    pcre_free(re);
     xmlFree(value);
     return result;
 }
