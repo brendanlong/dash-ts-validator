@@ -15,7 +15,7 @@
 #pragma GCC diagnostic ignored "-Wpointer-sign"
 
 #define DUMP_PROPERTY(indent, printf_str, ...) \
-printf("%.*s"printf_str"\n", \
+g_debug("%.*s"printf_str"\n", \
         indent < sizeof(INDENT_BUFFER) ? indent : (int)sizeof(INDENT_BUFFER), \
         INDENT_BUFFER, __VA_ARGS__)
 
@@ -62,7 +62,7 @@ void mpd_free(mpd_t* obj)
 
 void mpd_dump(const mpd_t* mpd)
 {
-    printf("MPD:\n");
+    g_debug("MPD:\n");
     unsigned indent = 1;
 
     const char* mpd_type = NULL;
@@ -109,9 +109,6 @@ void period_free(period_t* obj)
 
 void period_dump(const period_t* period, unsigned indent)
 {
-    if (indent == 0) {
-        printf("Period:\n");
-    }
     ++indent;
     for (size_t i = 0; i < period->adaptation_sets->len; ++i) {
         DUMP_PROPERTY(indent, "adaptation_sets[%zu]:", i);
@@ -139,9 +136,6 @@ void adaptation_set_free(adaptation_set_t* obj)
 
 void adaptation_set_dump(const adaptation_set_t* adaptation_set, unsigned indent)
 {
-    if (indent == 0) {
-        printf("AdaptationSet:\n");
-    }
     ++indent;
     DUMP_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
     DUMP_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
@@ -175,9 +169,6 @@ void representation_free(representation_t* obj)
 
 void representation_dump(const representation_t* representation, unsigned indent)
 {
-    if (indent == 0) {
-        printf("Representation:\n");
-    }
     ++indent;
     DUMP_PROPERTY(indent, "index_file_name: %s", PRINT_STR(representation->index_file_name));
     DUMP_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
@@ -212,9 +203,6 @@ void segment_free(segment_t* obj)
 
 void segment_dump(const segment_t* segment, unsigned indent)
 {
-    if (indent == 0) {
-        printf("Segment:\n");
-    }
     DUMP_PROPERTY(indent, "file_name: %s", PRINT_STR(segment->file_name));
     DUMP_PROPERTY(indent, "media_range: %s", PRINT_STR(segment->media_range));
     DUMP_PROPERTY(indent, "start: %"PRIu64, segment->start);

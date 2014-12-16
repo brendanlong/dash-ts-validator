@@ -104,6 +104,7 @@ int main(int argc, char* argv[])
     if (mpd == NULL) {
         goto cleanup;
     }
+    mpd_dump(mpd);
 
     // if there is an initialization segment, process it first in order to get the PAT and PMT tables
     for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
@@ -201,13 +202,13 @@ int main(int argc, char* argv[])
                         segment->actual_start[pv->content_component] = actual_start;
                         segment->actual_end[pv->content_component] = actual_end;
 
-                        g_info("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
+                        g_debug("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
                                 segment->file_name, pv->PID, content_component_to_string(pv->content_component),
                                 actual_start, actual_end, actual_duration);
 
                         if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
                             uint64_t previous_video_end = previous_segment ? previous_segment->actual_end[VIDEO_CONTENT_COMPONENT] : 0;
-                            g_info("%s: VIDEO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
+                            g_debug("%s: VIDEO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
                                           segment->file_name, previous_video_end, actual_start,
                                           actual_start - (int64_t)previous_video_end);
 
@@ -222,41 +223,48 @@ int main(int argc, char* argv[])
                                     segment->validator.status = 0;
                                 }
                             } else {
-                                g_info("startWithSAP not set -- skipping SAP check");
+                                g_debug("startWithSAP not set -- skipping SAP check");
                             }
                         } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
                             uint64_t previous_audio_end = previous_segment ? previous_segment->actual_end[AUDIO_CONTENT_COMPONENT] : 0;
-                            g_info("%s: AUDIO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
+                            g_debug("%s: AUDIO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
                                     segment->file_name, previous_audio_end, actual_start,
                                     actual_start - (int64_t)previous_audio_end);
                         }
 
+                        GLogLevelFlags log_level;
+                        if (pv->content_component == VIDEO_CONTENT_COMPONENT) {
+                            log_level = G_LOG_LEVEL_CRITICAL;
+                        } else {
+                            log_level = G_LOG_LEVEL_INFO;
+                        }
 
                         if(actual_start != segment->start) {
-                            g_info("%s: %s: Invalid start time: expected = %"PRIu64", actual = %"PRIu64", delta = %"PRId64"",
-                                          segment->file_name, content_component_to_string(pv->content_component),
-                                   segment->start, actual_start, actual_start - (int64_t)segment->start);
-
-                            if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
+                            if (pv->content_component == VIDEO_CONTENT_COMPONENT) {
                                 segment->validator.status = 0;
                             } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
                                 /* Audio is allowed to be off? */
                             }
+                            g_log(G_LOG_DOMAIN, log_level,
+                                    "%s: %s: Invalid start time: expected = %"PRIu64", actual = %"PRIu64", delta = %"PRId64"",
+                                    segment->file_name, content_component_to_string(pv->content_component),
+                                    segment->start, actual_start, actual_start - (int64_t)segment->start);
                         }
 
                         if(actual_end != segment->end) {
-                            g_info("%s: %s: Invalid end time: expected %"PRId64", actual %"PRId64", delta = %"PRId64"",
-                                          segment->file_name, content_component_to_string(pv->content_component),
-                                          segment->end, actual_end, actual_end - (int64_t)segment->end);
-
-                            if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
+                            if (pv->content_component == VIDEO_CONTENT_COMPONENT) {
                                 segment->validator.status = 0;
                             } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
                                 /* Audio is allowed to be off? */
                             }
+                            g_log(G_LOG_DOMAIN, log_level,
+                                    "%s: %s: Invalid end time: expected %"PRId64", actual %"PRId64", delta = %"PRId64"",
+                                    segment->file_name, content_component_to_string(pv->content_component),
+                                    segment->end, actual_end, actual_end - (int64_t)segment->end);
                         }
                     }
                 }
+                g_critical(" ");
 
                 /*
                 for(int repIndex1 = 0; repIndex1 < numRepresentations; repIndex1++) {
@@ -291,11 +299,14 @@ int main(int argc, char* argv[])
                 for(gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
 
-                    g_print("SEGMENT TEST RESULT: %s: %s\n", segment->file_name,
-                            segment->validator.status ? "PASS" : "FAIL");
-                    overallStatus &= segment->validator.status;
+                    if (segment->validator.status) {
+                        g_info("SEGMENT TEST RESULT: %s: SUCCESS", segment->file_name);
+                    } else {
+                        g_critical("SEGMENT TEST RESULT: %s: FAIL", segment->file_name);
+                        overallStatus = 0;
+                    }
                 }
-                g_print("\n");
+                g_critical(" ");
 
                 if(conformance_level & TS_TEST_SIMPLE) {
                     /* For the simple profile, the PSI must be the same for all Representations in an
@@ -330,59 +341,103 @@ cleanup:
 
 void print_gap_matrix(GPtrArray* representations, content_component_t content_component)
 {
-    g_print("%sGapMatrix\n", content_component_to_string(content_component));
     if (representations->len == 0) {
         g_warning("Can't print gap matrix for empty set of representations.");
         return;
     }
-
-    g_print("    \t");
-
     representation_t* first_representation = g_ptr_array_index(representations, 0);
+
+    /* First figure out if there are any gaps, so we can be quieter if there are none */
+    GLogLevelFlags flags = G_LOG_LEVEL_INFO;
     for (gsize s_i = 1; s_i < first_representation->segments->len; ++s_i) {
         for (gsize r_i = 0; r_i < representations->len; ++r_i) {
             representation_t* representation = g_ptr_array_index(representations, r_i);
-            segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-            g_print("%s\t", segment->file_name);
+            segment_t* segment1 = g_ptr_array_index(representation->segments, s_i - 1);
+
+            for(gsize r_i2 = 0; r_i2 < representations->len; ++r_i2) {
+                representation_t* representation2 = g_ptr_array_index(representations, r_i2);
+                segment_t* segment2 = g_ptr_array_index(representation2->segments, s_i);
+
+                int64_t pts_delta = segment2->actual_start[content_component] - (int64_t)segment1->actual_end[content_component];
+                if (pts_delta) {
+                    flags = G_LOG_LEVEL_WARNING;
+                    goto found_delta;
+                }
+            }
         }
-        g_print("\n");
+    }
+found_delta:
+
+    g_log(G_LOG_DOMAIN, flags, "%sGapMatrix", content_component_to_string(content_component));
+    for (gsize s_i = 1; s_i < first_representation->segments->len; ++s_i) {
+        GString* line = g_string_new("    \t");
+        for (gsize r_i = 0; r_i < representations->len; ++r_i) {
+            representation_t* representation = g_ptr_array_index(representations, r_i);
+            segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+            g_string_append_printf(line, "%s\t", segment->file_name);
+        }
+        g_log(G_LOG_DOMAIN, flags, line->str);
 
         for (gsize r_i = 0; r_i < representations->len; ++r_i) {
             representation_t* representation = g_ptr_array_index(representations, r_i);
             segment_t* segment1 = g_ptr_array_index(representation->segments, s_i - 1);
-            printf("%s\t", segment1->file_name);
+            g_string_printf(line, "%s\t", segment1->file_name);
 
             for(gsize r_i2 = 0; r_i2 < representations->len; ++r_i2) {
                 representation_t* representation2 = g_ptr_array_index(representations, r_i2);
                 segment_t* segment2 = g_ptr_array_index(representation2->segments, s_i);
 
                 int64_t pts_delta = segment2->actual_start[content_component] - segment1->actual_end[content_component];
-                g_print("%"PRId64"\t", pts_delta);
+                g_string_append_printf(line, "%"PRId64"\t", pts_delta);
             }
-            g_print("\n");
+            g_log(G_LOG_DOMAIN, flags, line->str);
         }
-        g_print("\n");
+        g_log(G_LOG_DOMAIN, flags, " ");
+        g_string_free(line, true);
     }
 }
 
 void print_timing_matrix(GPtrArray* segments, content_component_t content_component)
 {
-    g_print("%sTiming\n", content_component_to_string(content_component));
-    g_print("segmentFile\texpectedStart\texpectedEnd\tactualStart\tactualEnd\tdeltaStart\tdeltaEnd\n");
+    if (segments->len == 0) {
+        g_warning("Can't print timing matrix for empty set of segments.");
+        return;
+    }
 
+    /* First figure out if there are any gaps, so we can be quieter if there are none */
+    GLogLevelFlags flags = G_LOG_LEVEL_INFO;
     for(gsize i = 0; i < segments->len; ++i) {
         segment_t* segment = g_ptr_array_index(segments, i);
-        g_print("%s\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\n",
+        int64_t delta_start = segment->actual_start[content_component] - (int64_t)segment->start;
+        int64_t delta_end = segment->actual_end[content_component] - (int64_t)segment->end;
+        if (delta_start || delta_end) {
+            flags = G_LOG_LEVEL_WARNING;
+            break;
+        }
+    }
+
+    g_log(G_LOG_DOMAIN, flags, "%sTiming", content_component_to_string(content_component));
+    g_log(G_LOG_DOMAIN, flags, "segmentFile\texpectedStart\texpectedEnd\tactualStart\tactualEnd\tdeltaStart\tdeltaEnd");
+    for(gsize i = 0; i < segments->len; ++i) {
+        segment_t* segment = g_ptr_array_index(segments, i);
+        g_log(G_LOG_DOMAIN, flags,
+               "%s\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64,
                segment->file_name, segment->start, segment->end,
                segment->actual_start[content_component], segment->actual_end[content_component],
                segment->actual_start[content_component] - segment->start,
                segment->actual_end[content_component] - segment->end);
     }
+    g_log(G_LOG_DOMAIN, flags, " ");
 }
 
 // check that each segment has the same videoPID, audioPID, PMT version, PMT program num, and PCR PID
 int check_psi_identical(GPtrArray* representations)
 {
+    if (representations->len == 0) {
+        g_warning("Can't check PSI for empty set of representations.");
+        return 1;
+    }
+
     g_info("Validating that PSI info is identical in each segment\n");
     int status = 0; // 0=PASS, 1-FAIL
 

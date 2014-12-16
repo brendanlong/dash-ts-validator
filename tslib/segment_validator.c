@@ -226,7 +226,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
     dash_validator_dest->PCR_PID = dash_validator_source->PCR_PID;
     dash_validator_dest->psi_tables_seen = 0;
 
-    g_info("copy_pmt_info: dash_validator_source->pids->len = %u",
+    g_debug("copy_pmt_info: dash_validator_source->pids->len = %u",
                   dash_validator_source->pids->len);
     for(gsize i = 0; i < dash_validator_source->pids->len; ++i) {
         pid_validator_t* pid_validator_src = g_ptr_array_index(dash_validator_source->pids, i);
@@ -256,7 +256,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
 
         pid_validator_dest = pid_validator_new(PID, content_component);
 
-        g_info("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
+        g_debug("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
                       PID);
         g_ptr_array_add(dash_validator_dest->pids, pid_validator_dest);
         // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
@@ -419,13 +419,13 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         pid_validator->duration = 3000;
 
         if(g_pIFrameData->doIFrameValidation && first_ts->adaptation_field.random_access_indicator) {
-            g_info("Performing IFrame validation");
+            g_debug("Performing IFrame validation");
             // check iFrame location against index file
 
             if(g_nIFrameCntr < g_pIFrameData->numIFrames) {
                 unsigned int expectedIFramePTS = g_pIFrameData->pIFrameLocations_Time[g_nIFrameCntr];
                 unsigned int actualIFramePTS = pes->header.PTS;
-                g_info("expectedIFramePTS = %u, actualIFramePTS = %u", expectedIFramePTS, actualIFramePTS);
+                g_debug("expectedIFramePTS = %u, actualIFramePTS = %u", expectedIFramePTS, actualIFramePTS);
                 if(expectedIFramePTS != actualIFramePTS) {
                     g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actual: %d",
                                    expectedIFramePTS, actualIFramePTS);
@@ -435,7 +435,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 // check frame byte location
                 uint64_t expectedFrameByteLocation = g_pIFrameData->pIFrameLocations_Byte[g_nIFrameCntr];
                 uint64_t actualFrameByteLocation = pes->payload_pos_in_stream;
-                g_info("expectedIFrameByteLocation = %"PRId64", actualIFrameByteLocation = %"PRId64"",
+                g_debug("expectedIFrameByteLocation = %"PRId64", actualIFrameByteLocation = %"PRId64"",
                               expectedFrameByteLocation, actualFrameByteLocation);
                 if(expectedFrameByteLocation != actualFrameByteLocation) {
                     g_critical("DASH Conformance: expected IFrame Byte Locaton does not match actual.  Expected: %"PRId64", Actual: %"PRId64"",
@@ -447,7 +447,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 unsigned char expectedStartsWithSAP = g_pIFrameData->pStartsWithSAP[g_nIFrameCntr];
                 unsigned char expectedSAPType = g_pIFrameData->pSAPType[g_nIFrameCntr];
                 unsigned char actualSAPType = pid_validator->SAP_type;
-                g_info("expectedStartsWithSAP = %d, expectedSAPType = %d, actualSAPType = %d",
+                g_debug("expectedStartsWithSAP = %d, expectedSAPType = %d, actualSAPType = %d",
                               expectedStartsWithSAP, expectedSAPType, actualSAPType);
                 if(expectedStartsWithSAP == 1 && expectedSAPType != 0 && expectedSAPType != actualSAPType) {
                     g_critical("DASH Conformance: expected IFrame SAP Type does not match actual: expectedStartsWithSAP = %d, \
@@ -492,7 +492,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
     g_pIFrameData = pIFrameData;
     g_segmentDuration = segmentDuration;
 
-    g_info("doSegmentValidation : %s", fname);
+    g_debug("doSegmentValidation : %s", fname);
 
     mpeg2ts_stream_t* m2s = NULL;
 
@@ -537,7 +537,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
                                       201 /* GORP */);
         prog->pmt = dash_validator_init->initializaion_segment_pmt;
 
-        g_info("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
+        g_debug("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
         g_ptr_array_add(m2s->programs, prog);
 
         int returnCode = copy_pmt_info(prog, dash_validator_init, g_p_dash_validator);
@@ -584,7 +584,7 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
     // need to reset the mpeg stream to be sure to process the last PES packet
     mpeg2ts_stream_reset(m2s);
 
-    g_info("%"PRIo64" TS packets read", packets_read);
+    g_debug("%"PRIo64" TS packets read", packets_read);
 
     if(g_p_dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, 0);  // should be only one program

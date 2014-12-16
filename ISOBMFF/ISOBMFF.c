@@ -648,21 +648,22 @@ int validateIndexSegment(char* fname, size_t numSegments, uint64_t* segmentDurat
         returnCode = validateSingleIndexSegmentBoxes(numBoxes, box_types, box_data, box_sizes,
                       segmentDurations[0], pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
     } else {
-        printf("Start\n");
         returnCode = validateRepresentationIndexSegmentBoxes(numSegments, numBoxes, box_types, box_data,
                       box_sizes,
                       segmentDurations, pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
     }
+    g_info(" ");
 
-    printf("\n\n");
+    /* What is the purpose of this? */
     for(size_t i = 0; i < numSegments; i++) {
-        printf("data_segment_iframes %zu: doIFrameValidation = %d, numIFrames = %d\n",
+        g_info("data_segment_iframes %zu: doIFrameValidation = %d, numIFrames = %d",
                i, pIFrames[i].doIFrameValidation, pIFrames[i].numIFrames);
         for(int j = 0; j < pIFrames[i].numIFrames; j++) {
-            printf("   pIFrameLocations_Time[%d] = %d, \tpIFrameLocations_Byte[%d] = %"PRId64"\n", j,
+            g_info("   pIFrameLocations_Time[%d] = %d, \tpIFrameLocations_Byte[%d] = %"PRId64, j,
                    pIFrames[i].pIFrameLocations_Time[j], j, pIFrames[i].pIFrameLocations_Byte[j]);
         }
     }
+    g_info(" ");
 
 cleanup:
     freeBoxes(numBoxes, box_types, box_data);
@@ -1063,122 +1064,125 @@ int parseEmsg(unsigned char* buffer, int bufferSize, data_emsg_t* emsg)
 
 void printEmsg(data_emsg_t* emsg)
 {
-    printf("\n####### EMSG ######\n");
+    g_debug("####### EMSG ######");
 
-    printf("scheme_id_uri = %s\n", emsg->scheme_id_uri);
-    printf("value = %s\n", emsg->value);
-    printf("timescale = %d\n", emsg->timescale);
-    printf("presentation_time_delta = %d\n", emsg->presentation_time_delta);
-    printf("event_duration = %d\n", emsg->event_duration);
-    printf("id = %d\n", emsg->id);
+    g_debug("scheme_id_uri = %s", emsg->scheme_id_uri);
+    g_debug("value = %s", emsg->value);
+    g_debug("timescale = %d", emsg->timescale);
+    g_debug("presentation_time_delta = %d", emsg->presentation_time_delta);
+    g_debug("event_duration = %d", emsg->event_duration);
+    g_debug("id = %d", emsg->id);
 
-    printf("message_data:\n");
+    g_debug("message_data:");
     size_t i = 0;
+    GString* line = g_string_new(NULL);
     for(i = 0; i < emsg->message_data_size; i++) {
-        printf("0x%x ", emsg->message_data[i]);
+        g_string_append_printf(line, "0x%x ", emsg->message_data[i]);
         if(i % 8 == 7) {
-            printf("\n");
+            g_debug("%s", line->str);
+            g_string_truncate(line, 0);
         }
     }
 
-    if(i % 8 != 7) {
-        printf("\n");
+    if(line->len) {
+        g_debug("%s", line->str);
     }
+    g_string_free(line, true);
 
-    printf("###################\n\n");
+    g_debug("###################\n");
 }
 
 void printStyp(data_styp_t* styp)
 {
     char strTemp[] = {0, 0, 0, 0, 0};
 
-    printf("\n####### STYP ######\n");
+    g_debug("####### STYP ######");
 
     convertUintToString(strTemp, styp->major_brand);
-    printf("major_brand = %s\n", strTemp);
+    g_debug("major_brand = %s", strTemp);
 
-    printf("minor_version = %u\n", styp->minor_version);
+    g_debug("minor_version = %u", styp->minor_version);
 
-    printf("num_compatible_brands = %zu\n", styp->num_compatible_brands);
+    g_debug("num_compatible_brands = %zu", styp->num_compatible_brands);
     for(size_t i = 0; i < styp->num_compatible_brands; i++) {
         convertUintToString(strTemp, styp->compatible_brands[i]);
-        printf("    %zu: %s\n", i, strTemp);
+        g_debug("    %zu: %s", i, strTemp);
     }
-    printf("###################\n\n");
+    g_debug("###################\n");
 }
 
 void printSidx(data_sidx_t* sidx)
 {
-    printf("\n####### SIDX ######\n");
+    g_debug("####### SIDX ######");
 
-    printf("size = %u\n", sidx->size);
-    printf("version = %u\n", sidx->version);
-    printf("flags = %u\n", sidx->flags);
-    printf("reference_ID = %u\n", sidx->reference_ID);
-    printf("timescale = %u\n", sidx->timescale);
+    g_debug("size = %u", sidx->size);
+    g_debug("version = %u", sidx->version);
+    g_debug("flags = %u", sidx->flags);
+    g_debug("reference_ID = %u", sidx->reference_ID);
+    g_debug("timescale = %u", sidx->timescale);
 
-    printf("earliest_presentation_time = %"PRId64"\n", sidx->earliest_presentation_time);
-    printf("first_offset = %"PRId64"\n", sidx->first_offset);
+    g_debug("earliest_presentation_time = %"PRId64, sidx->earliest_presentation_time);
+    g_debug("first_offset = %"PRId64, sidx->first_offset);
 
-    printf("reserved = %u\n", sidx->reserved);
-    printf("reference_count = %u\n", sidx->reference_count);
+    g_debug("reserved = %u", sidx->reserved);
+    g_debug("reference_count = %u", sidx->reference_count);
 
     for(size_t i = 0; i < sidx->reference_count; i++) {
         printSidxReference(&(sidx->references[i]));
     }
 
-    printf("###################\n\n");
+    g_debug("###################\n");
 }
 
 void printSidxReference(data_sidx_reference_t* reference)
 {
-    printf("    SidxReference:\n");
+    g_debug("    SidxReference:");
 
-    printf("        reference_type = %u\n", reference->reference_type);
-    printf("        referenced_size = %u\n", reference->referenced_size);
-    printf("        subsegment_duration = %u\n", reference->subsegment_duration);
-    printf("        starts_with_SAP = %u\n", reference->starts_with_SAP);
-    printf("        SAP_type = %u\n", reference->SAP_type);
-    printf("        SAP_delta_time = %u\n", reference->SAP_delta_time);
+    g_debug("        reference_type = %u", reference->reference_type);
+    g_debug("        referenced_size = %u", reference->referenced_size);
+    g_debug("        subsegment_duration = %u", reference->subsegment_duration);
+    g_debug("        starts_with_SAP = %u", reference->starts_with_SAP);
+    g_debug("        SAP_type = %u", reference->SAP_type);
+    g_debug("        SAP_delta_time = %u", reference->SAP_delta_time);
 }
 
 void printSsixSubsegment(data_ssix_subsegment_t* subsegment)
 {
-    printf("    SsixSubsegment:\n");
+    g_debug("    SsixSubsegment:");
 
-    printf("        ranges_count = %u\n", subsegment->ranges_count);
+    g_debug("        ranges_count = %u", subsegment->ranges_count);
     for(size_t i = 0; i < subsegment->ranges_count; i++) {
-        printf("            level = %u, range_size = %u\n", subsegment->ranges[i].level,
+        g_debug("            level = %u, range_size = %u", subsegment->ranges[i].level,
                subsegment->ranges[i].range_size);
     }
 }
 
 void printPcrb(data_pcrb_t* pcrb)
 {
-    printf("\n####### PCRB ######\n");
+    g_debug("####### PCRB ######");
 
-    printf("version = %u\n", pcrb->version);
-    printf("flags = %u\n", pcrb->flags);
-    printf("reference_track_ID = %u\n", pcrb->reference_track_ID);
-    printf("ntp_timestamp = %"PRId64"\n", pcrb->ntp_timestamp);
-    printf("media_time = %"PRId64"\n", pcrb->media_time);
+    g_debug("version = %u", pcrb->version);
+    g_debug("flags = %u", pcrb->flags);
+    g_debug("reference_track_ID = %u", pcrb->reference_track_ID);
+    g_debug("ntp_timestamp = %"PRId64, pcrb->ntp_timestamp);
+    g_debug("media_time = %"PRId64, pcrb->media_time);
 
-    printf("###################\n\n");
+    g_debug("###################\n");
 }
 
 void printSsix(data_ssix_t* ssix)
 {
-    printf("\n####### SSIX ######\n");
+    g_debug("####### SSIX ######");
 
-    printf("version = %u\n", ssix->version);
-    printf("flags = %u\n", ssix->flags);
-    printf("subsegment_count = %u\n", ssix->subsegment_count);
+    g_debug("version = %u", ssix->version);
+    g_debug("flags = %u", ssix->flags);
+    g_debug("subsegment_count = %u", ssix->subsegment_count);
 
     for(int i = 0; i < ssix->subsegment_count; i++) {
         printSsixSubsegment(&(ssix->subsegments[i]));
     }
 
-    printf("###################\n\n");
+    g_debug("###################\n");
 }
 
 void convertUintToString(char* str, unsigned int uintStr)
