@@ -72,7 +72,7 @@ int main(int argc, char* argv[])
     extern char* optarg;
     extern int optind;
 
-    uint32_t conformance_level;
+    uint32_t conformance_level = 0;
 
     if(argc < 2) {
         usage(argv[0]);
@@ -124,9 +124,6 @@ int main(int argc, char* argv[])
     }
     mpd_dump(mpd);
 
-    dash_validator_t* dash_validator_init_segment = calloc(1, sizeof(dash_validator_t));
-    dash_validator_init_segment->segment_type = INITIALIZATION_SEGMENT;
-
     /*
     char* content_component_table[NUM_CONTENT_COMPONENTS] =
     { "<unknown>", "video", "audio" };
@@ -142,12 +139,12 @@ int main(int argc, char* argv[])
                 if (representation->initialization_file_name == NULL) {
                     continue;
                 }
-                if(doSegmentValidation(dash_validator_init_segment, representation->initialization_file_name,
+                if(doSegmentValidation(representation->dash_validator_init_segment, representation->initialization_file_name,
                                        NULL, NULL, 0) != 0) {
                     g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
-                    dash_validator_init_segment->status = 0;
+                    representation->dash_validator_init_segment->status = 0;
                 }
-                if(dash_validator_init_segment->status == 0) {
+                if(representation->dash_validator_init_segment->status == 0) {
                     overallStatus = 0;
                 }
             }
@@ -426,7 +423,6 @@ int main(int argc, char* argv[])
     }*/
     printf("\nOVERALL TEST RESULT: %s\n", overallStatus ? "PASS" : "FAIL");
 cleanup:
-    free(dash_validator_init_segment);
     mpd_free(mpd);
     xmlCleanupParser();
     return returnCode;

@@ -146,6 +146,8 @@ void adaptation_set_dump(const adaptation_set_t* adaptation_set, unsigned indent
         printf("AdaptationSet:\n");
     }
     ++indent;
+    DUMP_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
+    DUMP_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
     DUMP_PROPERTY(indent, "segment_alignment: %"PRIu32, adaptation_set->segment_alignment);
     DUMP_PROPERTY(indent, "subsegment_alignment: %"PRIu32, adaptation_set->subsegment_alignment);
     DUMP_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(adaptation_set->bitstream_switching));
@@ -171,6 +173,8 @@ void representation_free(representation_t* obj)
     g_free(obj->index_file_name);
     freeIFrames(obj->segment_iframes, obj->segments->len);
     g_ptr_array_free(obj->segments, true);
+    dash_validator_free(obj->dash_validator_init_segment);
+    g_ptr_array_free(obj->dash_validators, true);
 
     free(obj);
 }
@@ -353,6 +357,8 @@ bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url)
             xmlChar* type = xmlGetProp(cur_node, "contentType");
             if (xmlStrEqual(type, "video")) {
                 adaptation_set->video_pid = read_uint64(cur_node, "id");
+            } else if (xmlStrEqual(type, "audio")) {
+                adaptation_set->audio_pid = read_uint64(cur_node, "id");
             }
             xmlFree(type);
         } else {
@@ -412,6 +418,11 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
 
     representation->segment_iframes = calloc(representation->segments->len,
             sizeof(data_segment_iframes_t));
+    representation->dash_validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT);
+    representation->dash_validators = g_ptr_array_new_with_free_func((GDestroyNotify)dash_validator_free);
+    for (size_t i = 0; i < representation->segments->len; ++i) {
+        g_ptr_array_add(representation->dash_validators, dash_validator_new(MEDIA_SEGMENT));
+    }
 
 cleanup:
     g_free(base_url);

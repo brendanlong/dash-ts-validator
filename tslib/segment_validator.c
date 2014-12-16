@@ -31,6 +31,19 @@ void pid_validator_free(pid_validator_t* obj)
     free(obj);
 }
 
+dash_validator_t* dash_validator_new(segment_type_t segment_type)
+{
+    dash_validator_t* obj = calloc(1, sizeof *obj);
+    obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
+    return obj;
+}
+
+void dash_validator_free(dash_validator_t* obj)
+{
+    g_ptr_array_free(obj->pids, true);
+    free(obj);
+}
+
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
     if(g_p_dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
@@ -483,7 +496,10 @@ int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
 
     g_p_dash_validator->last_pcr = PCR_INVALID;
     g_p_dash_validator->status = 1;
-    g_p_dash_validator->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
+    if (g_p_dash_validator->pids->len != 0) {
+        g_error("Re-using DASH validator pids!");
+        return 1;
+    }
 
     // if had intialization segment, then copy program info and setup PES callbacks
     if(dash_validator_init != NULL) {

@@ -72,6 +72,8 @@ typedef struct {
     program_map_section_t* initializaion_segment_pmt;      /// parsed PMT
 } dash_validator_t;
 
+dash_validator_t* dash_validator_new(segment_type_t);
+void dash_validator_free(dash_validator_t*);
 
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
 int pmt_processor(mpeg2ts_program_t* m2p, void* arg);

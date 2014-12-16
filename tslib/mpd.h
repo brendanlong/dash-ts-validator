@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #include "ISOBMFF.h"
+#include "segment_validator.h"
 
 
 typedef struct {
@@ -23,9 +24,12 @@ typedef struct {
     uint64_t presentation_time_offset;
     GPtrArray* segments;
     data_segment_iframes_t* segment_iframes;
+    dash_validator_t* dash_validator_init_segment;
+    GPtrArray* dash_validators;
 } representation_t;
 
 typedef struct {
+    uint32_t audio_pid;
     uint32_t video_pid;
     uint32_t segment_alignment;
     uint32_t subsegment_alignment;
