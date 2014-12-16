@@ -205,6 +205,8 @@ void segment_free(segment_t* obj)
     g_free(obj->index_file_name);
     xmlFree(obj->index_range);
 
+    dash_validator_destroy(&obj->validator);
+
     free(obj);
 }
 

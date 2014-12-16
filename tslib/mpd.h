@@ -20,6 +20,7 @@ typedef struct {
     /* These don't really belong here, but they make things much easier */
     uint64_t actual_start[NUM_CONTENT_COMPONENTS];
     uint64_t actual_end[NUM_CONTENT_COMPONENTS];
+    dash_validator_t validator;
 } segment_t;
 
 typedef struct {
