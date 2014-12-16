@@ -16,6 +16,10 @@ typedef struct {
     uint64_t end;
     char* index_file_name;
     char* index_range;
+
+    /* These don't really belong here, but they make things much easier */
+    uint64_t actual_start[NUM_CONTENT_COMPONENTS];
+    uint64_t actual_end[NUM_CONTENT_COMPONENTS];
 } segment_t;
 
 typedef struct {

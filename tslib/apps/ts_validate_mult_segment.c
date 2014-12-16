@@ -26,27 +26,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mpd.h"
 
 
-#define SEGMENT_FILE_NAME_MAX_LENGTH    512 
+void print_gap_matrix(GPtrArray* representations, content_component_t);
+void print_timing_matrix(GPtrArray* segments, content_component_t);
 
-
-void printAudioGapMatrix(int numRepresentations, int numSegments, int64_t* lastVideoEndTime,
-                         int64_t* actualVideoStartTime,
-                         int segNum, char* segFileNames);
-void printVideoGapMatrix(int numRepresentations, int numSegments, int64_t* lastVideoEndTime,
-                         int64_t* actualVideoStartTime,
-                         int segNum, char* segFileNames);
-
-void printVideoTimingMatrix(char* segFileNames, int64_t* actualVideoStartTime,
-                            int64_t* actualVideoEndTime,
-                            int64_t* expectedStartTime, int64_t* expectedEndTime, int numSegments, int numRepresentations,
-                            int repNum);
-void printAudioTimingMatrix(char* segFileNames, int64_t* actualAudioStartTime,
-                            int64_t* actualAudioEndTime,
-                            int64_t* expectedStartTime, int64_t* expectedEndTime, int numSegments, int numRepresentations,
-                            int repNum);
-
-int checkPSIIdentical(dash_validator_t* dash_validator, int numDashValidators);
-int getArrayIndex(int repNum, int segNum, int numSegments);
+int checkPSIIdentical(dash_validator_t* dash_validators, int numDashValidators);
 
 static struct option long_options[] = {
     { "verbose",	   no_argument,        NULL, 'v' },
@@ -139,26 +122,9 @@ int main(int argc, char* argv[])
                 dash_validator_t* dash_validators = calloc(representation->segments->len, sizeof(dash_validator_t));
                 dash_validator_t* dash_validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, conformance_level);
 
-                uint64_t* expected_start_times = calloc(representation->segments->len, sizeof(int64_t));
-                uint64_t* expected_end_times = calloc(representation->segments->len, sizeof(int64_t));
-                uint64_t* expected_durations = calloc(representation->segments->len, sizeof(int64_t));
-
-                uint64_t* actual_audio_start_times = calloc(representation->segments->len, sizeof(int64_t));
-                uint64_t* actual_video_start_times = calloc(representation->segments->len, sizeof(int64_t));
-                uint64_t* actual_audio_end_times = calloc(representation->segments->len, sizeof(int64_t));
-                uint64_t* actual_video_end_times = calloc(representation->segments->len, sizeof(int64_t));
-
-                uint64_t* last_audio_end_times = calloc(representation->segments->len + 1, sizeof(int64_t));
-                uint64_t* last_video_end_times = calloc(representation->segments->len + 1, sizeof(int64_t));
-
                 data_segment_iframes_t* iframe_data = calloc(representation->segments->len, sizeof(data_segment_iframes_t));
 
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
-                    segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-                    expected_start_times[s_i] = segment->start + representation->presentation_time_offset;
-                    expected_end_times[s_i] = segment->end;
-                    expected_durations[s_i] = segment->duration;
-
                     dash_validator_t* validator = &dash_validators[s_i];
                     dash_validator_init(validator, MEDIA_SEGMENT, conformance_level);
                     validator->use_initialization_segment = representation->initialization_file_name != NULL;
@@ -178,13 +144,14 @@ int main(int argc, char* argv[])
                 // next process index files, either representation index files or single segment index files
                 // the index files contain iFrame locations which are stored here and then validated when the actual
                 // media segments are processed later
+                segment_t* first_segment = g_ptr_array_index(representation->segments, 0);
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
 
                     /* Validate Segment Index */
                     if(segment->index_file_name && validateIndexSegment(segment->index_file_name,
-                                1, &expected_durations[s_i], &iframe_data[s_i],
-                                expected_start_times[0],
+                                1, &segment->duration, &iframe_data[s_i],
+                                first_segment->start,
                                 adaptation_set->video_pid, conformance_level & TS_TEST_SIMPLE) != 0) {
                         g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
                         overallStatus = 0;
@@ -192,18 +159,28 @@ int main(int argc, char* argv[])
                 }
 
                 /* Validate Representation Index */
-                if (representation->index_file_name && validateIndexSegment(representation->index_file_name,
-                        representation->segments->len, expected_durations,
-                        iframe_data, expected_start_times[0],
-                        adaptation_set->video_pid,
-                        conformance_level & TS_TEST_SIMPLE) != 0) {
-                    g_critical("Validation of RepresentationIndex %s FAILED", PRINT_STR(representation->index_file_name));
-                    overallStatus = 0;
+                if (representation->index_file_name) {
+
+                    uint64_t* expected_durations = malloc(representation->segments->len * sizeof(uint64_t));
+                    for (gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
+                        segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+                        expected_durations[s_i] = segment->duration;
+                    }
+                    if (validateIndexSegment(representation->index_file_name,
+                            representation->segments->len, expected_durations,
+                            iframe_data, first_segment->start,
+                            adaptation_set->video_pid,
+                            conformance_level & TS_TEST_SIMPLE) != 0) {
+                        g_critical("Validation of RepresentationIndex %s FAILED", PRINT_STR(representation->index_file_name));
+                        overallStatus = 0;
+                    }
+                    free(expected_durations);
                 }
 
                 // Next, validate media files for each segment
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+                    segment_t* previous_segment = s_i > 0 ? g_ptr_array_index(representation->segments, s_i - 1) : NULL;
                     dash_validator_t* validator = &dash_validators[s_i];
                     returnCode = doSegmentValidation(validator, segment->file_name,
                             dash_validator_init_segment,
@@ -222,21 +199,22 @@ int main(int argc, char* argv[])
                         // start time is relative to the start time of the first segment
 
                         // units of 90kHz ticks
-                        int64_t actualStartTime = pv->EPT;
-                        int64_t actualDuration = (pv->LPT - pv->EPT) + pv->duration;
-                        int64_t actualEndTime = actualStartTime + actualDuration;
+                        int64_t actual_start = pv->EPT;
+                        int64_t actual_duration = (pv->LPT - pv->EPT) + pv->duration;
+                        int64_t actual_end = actual_start + actual_duration;
+
+                        segment->actual_start[pv->content_component] = actual_start;
+                        segment->actual_end[pv->content_component] = actual_end;
 
                         g_info("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
                                 segment->file_name, pv->PID, content_component_to_string(pv->content_component),
-                                actualStartTime, actualEndTime, actualDuration);
+                                actual_start, actual_end, actual_duration);
 
                         if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
+                            uint64_t previous_video_end = previous_segment ? previous_segment->actual_end[VIDEO_CONTENT_COMPONENT] : 0;
                             g_info("%s: VIDEO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
-                                          segment->file_name, last_video_end_times[s_i], actualStartTime,
-                                          actualStartTime - last_video_end_times[s_i]);
-
-                            actual_video_start_times[s_i] = actualStartTime;
-                            actual_video_end_times[s_i] = actualEndTime;
+                                          segment->file_name, previous_video_end, actual_start,
+                                          actual_start - (int64_t)previous_video_end);
 
                             // check SAP and SAP Type
                             if(representation->start_with_sap != 0) {
@@ -252,40 +230,91 @@ int main(int argc, char* argv[])
                                 g_info("startWithSAP not set -- skipping SAP check");
                             }
                         } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
+                            uint64_t previous_audio_end = previous_segment ? previous_segment->actual_end[AUDIO_CONTENT_COMPONENT] : 0;
                             g_info("%s: AUDIO: Last end time: %"PRId64", Current start time: %"PRId64", Delta: %"PRId64"",
-                                    segment->file_name, last_audio_end_times[s_i], actualStartTime,
-                                    actualStartTime - last_audio_end_times[s_i]);
-
-                            actual_audio_start_times[s_i] = actualStartTime;
-                            actual_audio_end_times[s_i] = actualEndTime;
+                                    segment->file_name, previous_audio_end, actual_start,
+                                    actual_start - (int64_t)previous_audio_end);
                         }
 
 
-                        if(actualStartTime != segment->start) {
-                            g_info("%s: %s: Invalid start time: expected = %"PRId64", actual = %"PRId64", delta = %"PRId64"",
+                        if(actual_start != segment->start) {
+                            g_info("%s: %s: Invalid start time: expected = %"PRIu64", actual = %"PRIu64", delta = %"PRId64"",
                                           segment->file_name, content_component_to_string(pv->content_component),
-                                   segment->start, actualStartTime, actualStartTime - segment->start);
+                                   segment->start, actual_start, actual_start - (int64_t)segment->start);
 
                             if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
                                 validator->status = 0;
                             } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
-                                /* Is this right? Should we do something here? */
+                                /* Audio is allowed to be off? */
                             }
                         }
 
-                        if(actualEndTime != segment->end) {
+                        if(actual_end != segment->end) {
                             g_info("%s: %s: Invalid end time: expected %"PRId64", actual %"PRId64", delta = %"PRId64"",
                                           segment->file_name, content_component_to_string(pv->content_component),
-                                          segment->end, actualEndTime, actualEndTime - segment->end);
+                                          segment->end, actual_end, actual_end - (int64_t)segment->end);
 
                             if(pv->content_component == VIDEO_CONTENT_COMPONENT) {
                                 validator->status = 0;
                             } else if(pv->content_component == AUDIO_CONTENT_COMPONENT) {
-                                /* Is this right? Should we do something here? */
+                                /* Audio is allowed to be off? */
                             }
                         }
                     }
                 }
+
+                /*
+                for(int repIndex1 = 0; repIndex1 < numRepresentations; repIndex1++) {
+                    int arrayIndex1 = getArrayIndex(repIndex1, segIndex, numSegments);
+                    for(int repIndex2 = 0; repIndex2 < numRepresentations; repIndex2++) {
+                        int arrayIndex2 = getArrayIndex(repIndex2, segIndex, numSegments);
+
+                        if(lastAudioEndTime[arrayIndex1] == 0 || lastAudioEndTime[arrayIndex2] == 0 ||
+                                lastVideoEndTime[arrayIndex1] == 0 || lastVideoEndTime[arrayIndex2] == 0) {
+                            continue;
+                        }
+
+                        int64_t audioPTSDelta = actualAudioStartTime[arrayIndex2] - lastAudioEndTime[arrayIndex1];
+                        int64_t videoPTSDelta = actualVideoStartTime[arrayIndex2] - lastVideoEndTime[arrayIndex1];
+
+                        if(audioPTSDelta > maxAudioGapPTSTicks) {
+                            LOG_INFO_ARGS("FAIL: Audio gap between (%d, %d) is %"PRId64" and exceeds limit %d",
+                                          repIndex1, repIndex2, audioPTSDelta, maxAudioGapPTSTicks);
+                            dash_validator[arrayIndex1].status = 0;
+                            dash_validator[arrayIndex2].status = 0;
+                        }
+
+                        if(videoPTSDelta > maxVideoGapPTSTicks) {
+                            LOG_INFO_ARGS("FAIL: Video gap between (%d, %d) is %"PRId64" and exceeds limit %d",
+                                          repIndex1, repIndex2, videoPTSDelta, maxVideoGapPTSTicks);
+                            dash_validator[arrayIndex1].status = 0;
+                            dash_validator[arrayIndex2].status = 0;
+                        }
+                    }
+                }*/
+
+                for(gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
+                    segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+
+                    g_print("SEGMENT TEST RESULT: %s: %s\n", segment->file_name,
+                            dash_validators[s_i].status ? "PASS" : "FAIL");
+                    overallStatus &= dash_validators[s_i].status;
+                }
+                g_print("\n");
+
+                if(conformance_level & TS_TEST_SIMPLE) {
+                    /* For the simple profile, the PSI must be the same for all Representations in an
+                     * AdaptationSet */
+                    /* TODO: Make this work correctly */
+                    if(checkPSIIdentical(dash_validators, representation->segments->len) != 0) {
+                        g_critical("Validation FAILED: PSI info not identical for all segments");
+                        overallStatus = 0;
+                    }
+                }
+
+                // print out results
+                print_timing_matrix(representation->segments, AUDIO_CONTENT_COMPONENT);
+                print_timing_matrix(representation->segments, VIDEO_CONTENT_COMPONENT);
 
                 for(gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
                     dash_validator_destroy(&dash_validators[s_i]);
@@ -293,219 +322,71 @@ int main(int argc, char* argv[])
                 free(dash_validators);
                 dash_validator_free(dash_validator_init_segment);
 
-                free(expected_start_times);
-                free(expected_end_times);
-                free(expected_durations);
-
-                free(actual_audio_start_times);
-                free(actual_video_start_times);
-                free(actual_audio_end_times);
-                free(actual_video_end_times);
-
-                free(last_audio_end_times);
-                free(last_video_end_times);
-
                 freeIFrames(iframe_data, representation->segments->len);
             }
+
+            // segment cross checking: check that the gap between all adjacent segments is acceptably small
+            print_gap_matrix(adaptation_set->representations, AUDIO_CONTENT_COMPONENT);
+            print_gap_matrix(adaptation_set->representations, VIDEO_CONTENT_COMPONENT);
         }
     }
 
-    /*
-
-        // segment cross checking: check that the gap between all adjacent segments is acceptably small
-
-        printAudioGapMatrix(numRepresentations, numSegments, lastAudioEndTime, actualAudioStartTime,
-                            segIndex, segFileNames);
-        printVideoGapMatrix(numRepresentations, numSegments, lastVideoEndTime, actualVideoStartTime,
-                            segIndex, segFileNames);
-        printf("\n");
-
-        for(int repIndex1 = 0; repIndex1 < numRepresentations; repIndex1++) {
-            int arrayIndex1 = getArrayIndex(repIndex1, segIndex, numSegments);
-            for(int repIndex2 = 0; repIndex2 < numRepresentations; repIndex2++) {
-                int arrayIndex2 = getArrayIndex(repIndex2, segIndex, numSegments);
-
-                if(lastAudioEndTime[arrayIndex1] == 0 || lastAudioEndTime[arrayIndex2] == 0 ||
-                        lastVideoEndTime[arrayIndex1] == 0 || lastVideoEndTime[arrayIndex2] == 0) {
-                    continue;
-                }
-
-                int64_t audioPTSDelta = actualAudioStartTime[arrayIndex2] - lastAudioEndTime[arrayIndex1];
-                int64_t videoPTSDelta = actualVideoStartTime[arrayIndex2] - lastVideoEndTime[arrayIndex1];
-
-                if(audioPTSDelta > maxAudioGapPTSTicks) {
-                    g_info("FAIL: Audio gap between (%d, %d) is %"PRId64" and exceeds limit %d",
-                                  repIndex1, repIndex2, audioPTSDelta, maxAudioGapPTSTicks);
-                    dash_validator[arrayIndex1].status = 0;
-                    dash_validator[arrayIndex2].status = 0;
-                }
-
-                if(videoPTSDelta > maxVideoGapPTSTicks) {
-                    g_info("FAIL: Video gap between (%d, %d) is %"PRId64" and exceeds limit %d",
-                                  repIndex1, repIndex2, videoPTSDelta, maxVideoGapPTSTicks);
-                    dash_validator[arrayIndex1].status = 0;
-                    dash_validator[arrayIndex2].status = 0;
-                }
-            }
-        }
-
-        for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-            int arrayIndex0 = getArrayIndex(repIndex, segIndex, numSegments);
-            int arrayIndex1 = getArrayIndex(repIndex, segIndex + 1, numSegments);
-            lastAudioEndTime[arrayIndex1] = actualAudioEndTime[arrayIndex0];
-            lastVideoEndTime[arrayIndex1] = actualVideoEndTime[arrayIndex0];
-
-            g_info("SEGMENT TEST RESULT: %s: %s",
-                          segFileNames + arrayIndex0 * SEGMENT_FILE_NAME_MAX_LENGTH,
-                          dash_validator[arrayIndex0].status ? "PASS" : "FAIL");
-        }
-
-        printf("\n");
-    }
-
-    if(conformance_level & TS_TEST_SIMPLE) {
-        // for a simple profile, the PSI info must be the same for all segments
-        if(checkPSIIdentical(dash_validator, numRepresentations * numSegments) != 0) {
-            g_critical("Validation FAILED: PSI info not identical for all segments");
-            overallStatus = 0;
-        }
-    }
-
-
-    // print out results
-    for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-        printAudioTimingMatrix(segFileNames, actualAudioStartTime, actualAudioEndTime,
-                               expectedStartTime, expectedEndTime, numSegments, numRepresentations, repIndex);
-    }
-    for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-        printVideoTimingMatrix(segFileNames, actualVideoStartTime, actualVideoEndTime,
-                               expectedStartTime, expectedEndTime, numSegments, numRepresentations, repIndex);
-    }
-
-    // get overall pass/fail status: 1=PASS, 0=FAIL
-    for(int i = 0; i < numRepresentations * numSegments; i++) {
-        overallStatus = overallStatus && dash_validator[i].status;
-    }*/
-    printf("\nOVERALL TEST RESULT: %s\n", overallStatus ? "PASS" : "FAIL");
+    printf("OVERALL TEST RESULT: %s\n", overallStatus ? "PASS" : "FAIL");
 cleanup:
     mpd_free(mpd);
     xmlCleanupParser();
     return returnCode;
 }
 
-int getArrayIndex(int repNum, int segNum, int numSegments)
+void print_gap_matrix(GPtrArray* representations, content_component_t content_component)
 {
-    return (segNum + repNum * numSegments);
-}
-
-void printAudioGapMatrix(int numRepresentations, int numSegments, int64_t* lastAudioEndTime,
-                         int64_t* actualAudioStartTime,
-                         int segNum, char* segFileNames)
-{
-    if(segNum == 0) {
+    g_print("%sGapMatrix\n", content_component_to_string(content_component));
+    if (representations->len == 0) {
+        g_warning("Can't print gap matrix for empty set of representations.");
         return;
     }
 
-    printf("\nAudioGapMatrix\n");
-    printf("    \t");
-    for(int repNum = 0; repNum < numRepresentations; repNum++) {
-        int arrayIndex = getArrayIndex(repNum, segNum, numSegments);
-        printf("%s\t", segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH);
-    }
-    printf("\n");
+    g_print("    \t");
 
-    for(int repNum1 = 0; repNum1 < numRepresentations; repNum1++) {
-        int arrayIndex0 = getArrayIndex(repNum1, segNum - 1, numSegments);
-        int arrayIndex1 = getArrayIndex(repNum1, segNum, numSegments);
-
-        printf("%s\t", segFileNames + arrayIndex0 * SEGMENT_FILE_NAME_MAX_LENGTH);
-
-        for(int repNum2 = 0; repNum2 < numRepresentations; repNum2++) {
-            int arrayIndex2 = getArrayIndex(repNum2, segNum, numSegments);
-            if(lastAudioEndTime[arrayIndex1] == 0 || lastAudioEndTime[arrayIndex2] == 0) {
-                continue;
-            }
-
-            int64_t audioPTSDelta = actualAudioStartTime[arrayIndex2] - lastAudioEndTime[arrayIndex1];
-            printf("%"PRId64"\t", audioPTSDelta);
+    representation_t* first_representation = g_ptr_array_index(representations, 0);
+    for (gsize s_i = 1; s_i < first_representation->segments->len; ++s_i) {
+        for (gsize r_i = 0; r_i < representations->len; ++r_i) {
+            representation_t* representation = g_ptr_array_index(representations, r_i);
+            segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+            g_print("%s\t", segment->file_name);
         }
+        g_print("\n");
 
-        printf("\n");
-    }
-}
+        for (gsize r_i = 0; r_i < representations->len; ++r_i) {
+            representation_t* representation = g_ptr_array_index(representations, r_i);
+            segment_t* segment1 = g_ptr_array_index(representation->segments, s_i - 1);
+            printf("%s\t", segment1->file_name);
 
-void printVideoGapMatrix(int numRepresentations, int numSegments, int64_t* lastVideoEndTime,
-                         int64_t* actualVideoStartTime,
-                         int segNum, char* segFileNames)
-{
-    if(segNum == 0) {
-        return;
-    }
+            for(gsize r_i2 = 0; r_i2 < representations->len; ++r_i2) {
+                representation_t* representation2 = g_ptr_array_index(representations, r_i2);
+                segment_t* segment2 = g_ptr_array_index(representation2->segments, s_i);
 
-    printf("\nVideoGapMatrix\n");
-    printf("    \t");
-    for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-        int arrayIndex = getArrayIndex(repIndex, segNum, numSegments);
-        printf("%s\t", segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH);
-    }
-    printf("\n");
-
-    for(int repIndex1 = 0; repIndex1 < numRepresentations; repIndex1++) {
-        int arrayIndex0 = getArrayIndex(repIndex1, segNum - 1, numSegments);
-        int arrayIndex1 = getArrayIndex(repIndex1, segNum, numSegments);
-
-        printf("%s\t", segFileNames + arrayIndex0 * SEGMENT_FILE_NAME_MAX_LENGTH);
-
-        for(int repIndex2 = 0; repIndex2 < numRepresentations; repIndex2++) {
-            int arrayIndex2 = getArrayIndex(repIndex2, segNum, numSegments);
-
-            if(lastVideoEndTime[arrayIndex1] == 0 || lastVideoEndTime[arrayIndex2] == 0) {
-                continue;
+                int64_t pts_delta = segment2->actual_start[content_component] - segment1->actual_end[content_component];
+                g_print("%"PRId64"\t", pts_delta);
             }
-
-            int64_t videoPTSDelta = actualVideoStartTime[arrayIndex2] - lastVideoEndTime[arrayIndex1];
-            printf("%"PRId64"\t", videoPTSDelta);
+            g_print("\n");
         }
-
-        printf("\n");
+        g_print("\n");
     }
 }
 
-void printVideoTimingMatrix(char* segFileNames, int64_t* actualVideoStartTime,
-                            int64_t* actualVideoEndTime,
-                            int64_t* expectedStartTime, int64_t* expectedEndTime, int numSegments, int numRepresentations,
-                            int repNum)
+void print_timing_matrix(GPtrArray* segments, content_component_t content_component)
 {
-    printf("\nVideoTiming\n");
-    printf("segmentFile\texpectedStart\texpectedEnd\tvideoStart\tvideoEnd\tdeltaStart\tdeltaEnd\n");
+    g_print("%sTiming\n", content_component_to_string(content_component));
+    g_print("segmentFile\texpectedStart\texpectedEnd\tactualStart\tactualEnd\tdeltaStart\tdeltaEnd\n");
 
-    for(int segIndex = 0; segIndex < numSegments; segIndex++) {
-        int arrayIndex = getArrayIndex(repNum, segIndex, numSegments);
-        printf("%s\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\n",
-               segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH,
-               expectedStartTime[arrayIndex], expectedEndTime[arrayIndex], actualVideoStartTime[arrayIndex],
-               actualVideoEndTime[arrayIndex],
-               actualVideoStartTime[arrayIndex] - expectedStartTime[arrayIndex],
-               actualVideoEndTime[arrayIndex] - expectedEndTime[arrayIndex]);
-    }
-}
-
-void printAudioTimingMatrix(char* segFileNames, int64_t* actualAudioStartTime,
-                            int64_t* actualAudioEndTime,
-                            int64_t* expectedStartTime, int64_t* expectedEndTime, int numSegments, int numRepresentations,
-                            int repNum)
-{
-    printf("\nAudioTiming\n");
-    printf("segmentFile\texpectedStart\texpectedEnd\taudioStart\taudioEnd\tdeltaStart\tdeltaEnd\n");
-
-    for(int segIndex = 0; segIndex < numSegments; segIndex++) {
-        int arrayIndex = getArrayIndex(repNum, segIndex, numSegments);
-        printf("%s\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\n",
-               segFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH,
-               expectedStartTime[arrayIndex], expectedEndTime[arrayIndex], actualAudioStartTime[arrayIndex],
-               actualAudioEndTime[arrayIndex],
-               actualAudioStartTime[arrayIndex] - expectedStartTime[arrayIndex],
-               actualAudioEndTime[arrayIndex] - expectedEndTime[arrayIndex]);
+    for(gsize i = 0; i < segments->len; ++i) {
+        segment_t* segment = g_ptr_array_index(segments, i);
+        g_print("%s\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\t%"PRId64"\n",
+               segment->file_name, segment->start, segment->end,
+               segment->actual_start[content_component], segment->actual_end[content_component],
+               segment->actual_start[content_component] - segment->start,
+               segment->actual_end[content_component] - segment->end);
     }
 }
 
@@ -530,17 +411,6 @@ int checkPSIIdentical(dash_validator_t* dash_validator, int numDashValidators)
         int audioPID_Temp = dash_validator[i].audioPID;
         uint32_t pmt_program_number_Temp = dash_validator[i].pmt_program_number;
         uint32_t pmt_version_number_Temp = dash_validator[i].pmt_version_number;
-
-        /*
-        g_info ("");
-        g_info ("PSI Table Validation: num %d", i);
-        g_info ("PSI Table Validation: PCR_PID = %d", PCR_PID_Temp);
-        g_info ("PSI Table Validation: videoPID = %d", videoPID_Temp);
-        g_info ("PSI Table Validation: audioPID = %d", audioPID_Temp);
-        g_info ("PSI Table Validation: pmt_program_number = %d", pmt_program_number_Temp);
-        g_info ("PSI Table Validation: pmt_version_number = %d", pmt_version_number_Temp);
-        g_info ("");
-        */
 
         if(initialized) {
             if(PCR_PID != PCR_PID_Temp) {
@@ -569,8 +439,6 @@ int checkPSIIdentical(dash_validator_t* dash_validator, int numDashValidators)
                 status = -1;
             }
         } else {
-//            g_info ("PSI Table Validation: INITIALIZING");
-
             PCR_PID = PCR_PID_Temp;
             videoPID = videoPID_Temp;
             audioPID = audioPID_Temp;
