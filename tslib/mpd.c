@@ -418,7 +418,9 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
 
     representation->segment_iframes = calloc(representation->segments->len,
             sizeof(data_segment_iframes_t));
-    representation->dash_validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT);
+    if (representation->initialization_file_name) {
+        representation->dash_validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT);
+    }
     representation->dash_validators = g_ptr_array_new_with_free_func((GDestroyNotify)dash_validator_free);
     for (size_t i = 0; i < representation->segments->len; ++i) {
         g_ptr_array_add(representation->dash_validators, dash_validator_new(MEDIA_SEGMENT));

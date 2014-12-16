@@ -40,6 +40,9 @@ dash_validator_t* dash_validator_new(segment_type_t segment_type)
 
 void dash_validator_free(dash_validator_t* obj)
 {
+    if (obj == NULL) {
+        return;
+    }
     g_ptr_array_free(obj->pids, true);
     free(obj);
 }

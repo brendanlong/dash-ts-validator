@@ -196,37 +196,27 @@ int main(int argc, char* argv[])
         }
     }
 
-    /*
-    if(strlen(&(representationIndexFileNames[0])) != 0) {
-        for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-            data_segment_iframes_t* pIFramesTemp = pIFrames + getArrayIndex(repIndex, 0 ,
-                                                   numSegments);
-            if(validateIndexSegment(representationIndexFileNames + repIndex * SEGMENT_FILE_NAME_MAX_LENGTH,
-                                    numSegments, segDurations, pIFramesTemp, presentationTimeOffset, videoPID,
-                                    conformance_level & TS_TEST_SIMPLE) != 0) {
-                g_critical("Validation of RepresentationIndexFile %s FAILED",
-                               representationIndexFileNames + repIndex * SEGMENT_FILE_NAME_MAX_LENGTH);
-                overallStatus = 0;
-            }
-        }
-    } else if(strlen(segmentIndexFileNames) != 0) {
-        // read single-segment index files and fill in pIFrames
-        for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
-            for(int segIndex = 0; segIndex < numSegments; segIndex++) {
-                int arrayIndex = getArrayIndex(repIndex, segIndex, numSegments);
-                data_segment_iframes_t* pIFramesTemp = pIFrames + arrayIndex;
-
-                char* segmentIndexFileName = segmentIndexFileNames + arrayIndex * SEGMENT_FILE_NAME_MAX_LENGTH;
-                if(validateIndexSegment(segmentIndexFileName, 1, &(segDurations[segIndex]), pIFramesTemp,
-                                        presentationTimeOffset, videoPID, conformance_level & TS_TEST_SIMPLE) != 0) {
-                    g_critical("Validation of SegmentIndexFile %s FAILED", segmentIndexFileName);
-                    overallStatus = 0;
+    // Next, validate media files for each segment
+    for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
+        period_t* period = g_ptr_array_index(mpd->periods, p_i);
+        for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
+            adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
+            for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
+                representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
+                for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
+                    segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+                    dash_validator_t* validator = g_ptr_array_index(representation->dash_validators, s_i);
+                    validator->conformance_level = conformance_level;
+                    validator->use_initialization_segment = representation->initialization_file_name != NULL;
+                    returnCode = doSegmentValidation(validator, segment->file_name,
+                            representation->dash_validator_init_segment,
+                            &representation->segment_iframes[s_i], segment->duration);
                 }
             }
         }
     }
 
-    // Next, validate media files for each segment
+    /*
     // store timing info for each segment so that segment-segment timing can be tested
     for(int repIndex = 0; repIndex < numRepresentations; repIndex++) {
         expectedStartTime[getArrayIndex(repIndex, 0, numSegments + 1)] = presentationTimeOffset;
