@@ -119,7 +119,7 @@ int main(int argc, char* argv[])
                 }
 
                 /* At some point we should replace these gigantic arrays with more reasonable data structures */
-                dash_validator_t* validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, conformance_level);
+                dash_validator_t* validator_init_segment = NULL;
 
                 data_segment_iframes_t* iframe_data = calloc(representation->segments->len, sizeof(data_segment_iframes_t));
 
@@ -130,6 +130,7 @@ int main(int argc, char* argv[])
                 }
 
                 if (representation->initialization_file_name) {
+                    validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, conformance_level);
                     if(doSegmentValidation(validator_init_segment, representation->initialization_file_name,
                                            NULL, NULL, 0) != 0) {
                         g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
@@ -179,8 +180,7 @@ int main(int argc, char* argv[])
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     segment_t* previous_segment = s_i > 0 ? g_ptr_array_index(representation->segments, s_i - 1) : NULL;
                     int return_code = doSegmentValidation(&segment->validator, segment->file_name,
-                            validator_init_segment,
-                            &iframe_data[s_i], segment->duration);
+                            validator_init_segment, &iframe_data[s_i], segment->duration);
                     if (return_code != 0) {
                         overallStatus = 0;
                         goto cleanup;
