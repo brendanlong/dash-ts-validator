@@ -15,7 +15,7 @@
 #pragma GCC diagnostic ignored "-Wpointer-sign"
 
 #define DUMP_PROPERTY(indent, printf_str, ...) \
-g_debug("%.*s"printf_str"\n", \
+g_debug("%.*s"printf_str, \
         indent < sizeof(INDENT_BUFFER) ? indent : (int)sizeof(INDENT_BUFFER), \
         INDENT_BUFFER, __VA_ARGS__)
 
@@ -62,7 +62,7 @@ void mpd_free(mpd_t* obj)
 
 void mpd_dump(const mpd_t* mpd)
 {
-    g_debug("MPD:\n");
+    g_debug("MPD:");
     unsigned indent = 1;
 
     const char* mpd_type = NULL;

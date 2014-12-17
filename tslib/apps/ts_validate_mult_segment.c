@@ -43,8 +43,7 @@ static char options[] =
 
 static void usage(char* name)
 {
-    fprintf(stderr, "\n%s\n", name);
-    fprintf(stderr, "\nUsage: \n%s [options] MPD_file\n\nOptions:\n%s\n", name,
+    fprintf(stderr, "Usage: \n%s [options] MPD_file\n\nOptions:\n%s\n", name,
             options);
 }
 
