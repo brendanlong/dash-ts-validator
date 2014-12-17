@@ -24,6 +24,7 @@ typedef struct {
 } segment_t;
 
 typedef struct {
+    char* id;
     char* index_file_name;
     char* initialization_file_name;
     uint8_t start_with_sap;

@@ -90,6 +90,9 @@ int main(int argc, char* argv[])
 
     int overallStatus = 1;    // overall pass/fail, with 1=PASS, 0=FAIL
 
+    /* This should probably be configurable */
+    int64_t max_gap_pts_ticks[NUM_CONTENT_COMPONENTS] = {0};
+
     /* Read MPD file */
     char* file_name = argv[optind];
     if(file_name == NULL || file_name[0] == 0) {
@@ -264,36 +267,6 @@ int main(int argc, char* argv[])
                 }
                 g_critical(" ");
 
-                /*
-                for(int repIndex1 = 0; repIndex1 < numRepresentations; repIndex1++) {
-                    int arrayIndex1 = getArrayIndex(repIndex1, segIndex, numSegments);
-                    for(int repIndex2 = 0; repIndex2 < numRepresentations; repIndex2++) {
-                        int arrayIndex2 = getArrayIndex(repIndex2, segIndex, numSegments);
-
-                        if(lastAudioEndTime[arrayIndex1] == 0 || lastAudioEndTime[arrayIndex2] == 0 ||
-                                lastVideoEndTime[arrayIndex1] == 0 || lastVideoEndTime[arrayIndex2] == 0) {
-                            continue;
-                        }
-
-                        int64_t audioPTSDelta = actualAudioStartTime[arrayIndex2] - lastAudioEndTime[arrayIndex1];
-                        int64_t videoPTSDelta = actualVideoStartTime[arrayIndex2] - lastVideoEndTime[arrayIndex1];
-
-                        if(audioPTSDelta > maxAudioGapPTSTicks) {
-                            LOG_INFO_ARGS("FAIL: Audio gap between (%d, %d) is %"PRId64" and exceeds limit %d",
-                                          repIndex1, repIndex2, audioPTSDelta, maxAudioGapPTSTicks);
-                            dash_validator[arrayIndex1].status = 0;
-                            dash_validator[arrayIndex2].status = 0;
-                        }
-
-                        if(videoPTSDelta > maxVideoGapPTSTicks) {
-                            LOG_INFO_ARGS("FAIL: Video gap between (%d, %d) is %"PRId64" and exceeds limit %d",
-                                          repIndex1, repIndex2, videoPTSDelta, maxVideoGapPTSTicks);
-                            dash_validator[arrayIndex1].status = 0;
-                            dash_validator[arrayIndex2].status = 0;
-                        }
-                    }
-                }*/
-
                 for(gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
 
@@ -327,6 +300,33 @@ int main(int argc, char* argv[])
             // segment cross checking: check that the gap between all adjacent segments is acceptably small
             print_gap_matrix(adaptation_set->representations, AUDIO_CONTENT_COMPONENT);
             print_gap_matrix(adaptation_set->representations, VIDEO_CONTENT_COMPONENT);
+
+            for (gsize r_i1 = 0; r_i1 < adaptation_set->representations->len; ++r_i1) {
+                representation_t* representation1 = g_ptr_array_index(adaptation_set->representations, r_i1);
+                for (gsize r_i2 = 0; r_i2 < adaptation_set->representations->len; ++r_i2) {
+                    representation_t* representation2 = g_ptr_array_index(adaptation_set->representations, r_i2);
+
+                    for (gsize s_i = 1; s_i < representation1->segments->len; ++s_i) {
+                        segment_t* segment1 = g_ptr_array_index(representation1->segments, s_i);
+                        segment_t* segment2 = g_ptr_array_index(representation2->segments, s_i);
+
+                        content_component_t components[2] = {AUDIO_CONTENT_COMPONENT, VIDEO_CONTENT_COMPONENT};
+                        for (size_t c_i = 0; c_i < 2; ++c_i) {
+                            content_component_t component = components[c_i];
+                            int64_t delta = segment2->actual_start[component] - (int64_t)segment1->actual_end[component];
+
+                            if (delta > max_gap_pts_ticks[component]) {
+                                g_critical("FAIL: %s gap between for segment %zu for representations %s and %s is %"PRId64" and exceeds limit %"PRId64,
+                                        content_component_to_string(component), s_i, representation1->id, representation2->id,
+                                        delta, max_gap_pts_ticks[component]);
+                                segment1->validator.status = 0;
+                                segment2->validator.status = 0;
+                                overallStatus = 0;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -161,6 +161,7 @@ void representation_free(representation_t* obj)
         return;
     }
 
+    xmlFree(obj->id);
     g_free(obj->index_file_name);
     g_ptr_array_free(obj->segments, true);
 
@@ -170,6 +171,7 @@ void representation_free(representation_t* obj)
 void representation_dump(const representation_t* representation, unsigned indent)
 {
     ++indent;
+    DUMP_PROPERTY(indent, "id: %s", PRINT_STR(representation->id));
     DUMP_PROPERTY(indent, "index_file_name: %s", PRINT_STR(representation->index_file_name));
     DUMP_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
     DUMP_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
@@ -369,6 +371,8 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
 
     representation_t* representation = representation_new();
     g_ptr_array_add(adaptation_set->representations, representation);
+
+    representation->id = xmlGetProp(node, "id");
 
     start_with_sap = xmlGetProp(node, "startWithSAP");
     if (start_with_sap) {
