@@ -131,8 +131,6 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         return 0;
     }
 
-    //program_map_section_print(m2p->pmt);
-
     g_p_dash_validator->PCR_PID = m2p->pmt->PCR_PID;
     g_p_dash_validator->psi_tables_seen |= (1 << m2p->pmt->table_id);
     g_p_dash_validator->pmt_program_number = m2p->pmt->program_number;

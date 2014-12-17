@@ -229,13 +229,6 @@ int main(int argc, char* argv[])
                 }
                 g_critical(" ");
 
-                if(conformance_level & TS_TEST_SIMPLE) {
-                    /* For the simple profile, the PSI must be the same for all Representations in an
-                     * AdaptationSet */
-                    /* TODO: Make this work correctly */
-                    overallStatus &= check_psi_identical(adaptation_set->representations);
-                }
-
                 // print out results
                 overallStatus &= check_segment_timing(representation->segments, AUDIO_CONTENT_COMPONENT);
                 overallStatus &= check_segment_timing(representation->segments, VIDEO_CONTENT_COMPONENT);
@@ -249,6 +242,13 @@ int main(int argc, char* argv[])
                     AUDIO_CONTENT_COMPONENT, max_gap_pts_ticks[AUDIO_CONTENT_COMPONENT]);
             overallStatus &= check_representation_gaps(adaptation_set->representations,
                     VIDEO_CONTENT_COMPONENT, max_gap_pts_ticks[VIDEO_CONTENT_COMPONENT]);
+
+            if(conformance_level & TS_TEST_SIMPLE) {
+                /* For the simple profile, the PSI must be the same for all Representations in an
+                 * AdaptationSet */
+                /* TODO: Make this work correctly */
+                overallStatus &= check_psi_identical(adaptation_set->representations);
+            }
         }
     }
 
@@ -397,11 +397,11 @@ int check_psi_identical(GPtrArray* representations)
 {
     if (representations->len == 0) {
         g_warning("Can't check PSI for empty set of representations.");
-        return 1;
+        return 0;
     }
 
     g_info("Validating that PSI info is identical in each segment\n");
-    int status = 0; // 0=PASS, 1-FAIL
+    int status = 1; // 1=PASS, 0=FAIL
 
     int video_pid;
     int audio_pid;
@@ -425,33 +425,33 @@ int check_psi_identical(GPtrArray* representations)
                 if (video_pid != validator->videoPID) {
                     g_critical("PSI Table Validation FAILED: Incorrect videoPID: Expected = %d, Actual = %d",
                             video_pid, validator->videoPID);
-                    status = -1;
+                    status = 0;
                 }
                 if (audio_pid != validator->audioPID) {
                     g_critical("PSI Table Validation FAILED: Incorrect audioPID: Expected = %d, Actual = %d",
                             audio_pid, validator->audioPID);
-                    status = -1;
+                    status = 0;
                 }
                 if (pcr_pid != validator->PCR_PID) {
                     g_critical("PSI Table Validation FAILED: Incorrect PCR_PID: Expected = %d, Actual = %d",
                             pcr_pid, validator->PCR_PID);
-                    status = -1;
+                    status = 0;
                 }
                 if (pmt_program_number != validator->pmt_program_number) {
                     g_critical("PSI Table Validation FAILED: Incorrect pmt_program_number: Expected = %d, Actual = %d",
                             pmt_program_number, validator->pmt_program_number);
-                    status = -1;
+                    status = 0;
                 }
                 if (pmt_version_number != validator->pmt_version_number) {
                     g_critical("PSI Table Validation FAILED: Incorrect pmt_version_number: Expected = %d, Actual = %d",
                             pmt_version_number, validator->pmt_version_number);
-                    status = -1;
+                    status = 0;
                 }
             }
         }
     }
-    if (status != 0) {
-        g_critical("Validation FAILED: PSI info not identical for all segments");
+    if (status != 1) {
+        g_critical("Validation FAILED: PSI info not identical for all segments\n");
     }
     return status;
 }
