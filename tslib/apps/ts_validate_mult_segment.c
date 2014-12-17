@@ -37,14 +37,14 @@ static struct option long_options[] = {
 };
 
 static char options[] =
-    "\t-d, --dash\n"
+    "\t-d(main|simple), --dash(main|simple)\n"
     "\t-v, --verbose\n"
     "\t-h, --help\n";
 
 static void usage(char* name)
 {
     fprintf(stderr, "\n%s\n", name);
-    fprintf(stderr, "\nUsage: \n%s [options] <input file with segment info>\n\nOptions:\n%s\n", name,
+    fprintf(stderr, "\nUsage: \n%s [options] MPD_file\n\nOptions:\n%s\n", name,
             options);
 }
 
@@ -88,18 +88,15 @@ int main(int argc, char* argv[])
 
     g_log_set_default_handler(log_handler, NULL);
 
-    // read segment_info file (tab-delimited) which lists segment file paths
+    int overallStatus = 1;    // overall pass/fail, with 1=PASS, 0=FAIL
+
+    /* Read MPD file */
     char* file_name = argv[optind];
     if(file_name == NULL || file_name[0] == 0) {
-        g_critical("No segment_info file provided");
+        g_critical("No MPD file provided");
         usage(argv[0]);
         return 1;
     }
-
-    // for all the 2D arrays in the following, see getArrayIndex for array ordering
-    int overallStatus = 1;    // overall pass/fail, with 1=PASS, 0=FAIL
-
-    int returnCode = 0;
     mpd_t* mpd = read_mpd(file_name);
     if (mpd == NULL) {
         goto cleanup;
@@ -178,10 +175,11 @@ int main(int argc, char* argv[])
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     segment_t* previous_segment = s_i > 0 ? g_ptr_array_index(representation->segments, s_i - 1) : NULL;
-                    returnCode = doSegmentValidation(&segment->validator, segment->file_name,
+                    int return_code = doSegmentValidation(&segment->validator, segment->file_name,
                             validator_init_segment,
                             &iframe_data[s_i], segment->duration);
-                    if (returnCode != 0) {
+                    if (return_code != 0) {
+                        overallStatus = 0;
                         goto cleanup;
                     }
 
@@ -336,7 +334,7 @@ int main(int argc, char* argv[])
 cleanup:
     mpd_free(mpd);
     xmlCleanupParser();
-    return returnCode;
+    return overallStatus != 0;
 }
 
 void print_gap_matrix(GPtrArray* representations, content_component_t content_component)
