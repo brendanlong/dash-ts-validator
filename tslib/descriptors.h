@@ -25,8 +25,8 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TSLIB_DESCRIPTORS_H_
-#define _TSLIB_DESCRIPTORS_H_
+#ifndef TSLIB_DESCRIPTORS_H
+#define TSLIB_DESCRIPTORS_H
 
 #include <glib.h>
 
@@ -110,14 +110,14 @@ descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b);
 void descriptor_print(const descriptor_t* desc, int level);
 
 typedef struct {
-    char ISO_639_language_code[4];
+    char iso_639_language_code[4];
     uint32_t audio_type;
 } iso639_lang_t;
 
 typedef struct {
     descriptor_t descriptor;
     iso639_lang_t* languages;
-    int _num_languages;
+    int num_languages;
 } language_descriptor_t;
 
 descriptor_t* language_descriptor_new(descriptor_t* desc);
@@ -127,10 +127,10 @@ void language_descriptor_print(const descriptor_t* desc, int level);
 
 typedef struct {
     descriptor_t descriptor;
-    uint32_t CA_system_ID;
-    uint32_t CA_PID;
+    uint32_t ca_system_id;
+    uint32_t ca_pid;
     uint8_t* private_data_bytes;
-    size_t _private_data_bytes_buf_len;
+    size_t private_data_bytes_buf_len;
 } ca_descriptor_t;
 
 descriptor_t* ca_descriptor_new(descriptor_t* desc);

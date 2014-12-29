@@ -36,16 +36,16 @@
 
 pid_info_t* pid_info_new()
 {
-    pid_info_t* pi = calloc(1, sizeof(pid_info_t));
+    pid_info_t* pi = calloc(1, sizeof(*pi));
     return pi;
 }
 
 void demux_pid_handler_free(demux_pid_handler_t* dph)
 {
-    if(dph == NULL) {
+    if (dph == NULL) {
         return;
     }
-    if(dph->arg && dph->arg_destructor) {
+    if (dph->arg && dph->arg_destructor) {
         dph->arg_destructor(dph->arg);
     }
     free(dph);
@@ -53,7 +53,7 @@ void demux_pid_handler_free(demux_pid_handler_t* dph)
 
 void pid_info_free(pid_info_t* pi)
 {
-    if(pi == NULL) {
+    if (pi == NULL) {
         return;
     }
     demux_pid_handler_free(pi->demux_handler);
@@ -65,11 +65,11 @@ void pid_info_free(pid_info_t* pi)
     free(pi);
 }
 
-mpeg2ts_program_t* mpeg2ts_program_new(int program_number, int PID)
+mpeg2ts_program_t* mpeg2ts_program_new(int program_number, int pid)
 {
-    mpeg2ts_program_t* m2p = calloc(1, sizeof(mpeg2ts_program_t));
+    mpeg2ts_program_t* m2p = calloc(1, sizeof(*m2p));
     m2p->pids = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify)pid_info_free);
-    m2p->PID = PID;
+    m2p->pid = pid;
     m2p->program_number = program_number;
 
     // initialize PCR state
@@ -81,7 +81,7 @@ mpeg2ts_program_t* mpeg2ts_program_new(int program_number, int PID)
 
 void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
 {
-    if(m2p == NULL) {
+    if (m2p == NULL) {
         return;
     }
 
@@ -90,58 +90,57 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
     // GORP: if this is a test with an initialization segment, then dont want to free the pmt
     program_map_section_free(m2p->pmt);
 
-    if(m2p->arg_destructor && m2p->arg) {
+    if (m2p->arg_destructor && m2p->arg) {
         m2p->arg_destructor(m2p->arg);
     }
-
     free(m2p);
 }
 
-int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t PID,
+int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
         demux_pid_handler_t* handler, demux_pid_handler_t* validator)
 {
-    if(m2p->pmt == NULL || handler == NULL) {
+    if (m2p->pmt == NULL || handler == NULL) {
         return 0;
     }
 
-    pid_info_t* pid = pid_info_new();
+    pid_info_t* pi = pid_info_new();
     elementary_stream_info_t* esi = NULL;
-    for(gsize i = 0; i < m2p->pmt->es_info->len; i++) {
+    for (gsize i = 0; i < m2p->pmt->es_info->len; i++) {
         elementary_stream_info_t* tmp = g_ptr_array_index(m2p->pmt->es_info, i);
-        if(tmp && tmp->elementary_PID == PID) {
+        if (tmp && tmp->elementary_pid == pid) {
             esi = tmp;
             break;
         }
     }
-    if(esi == NULL) {
-        g_critical("Elementary stream with PID 0x%02X not found in PMT of program %d", PID,
+    if (esi == NULL) {
+        g_critical("Elementary stream with PID 0x%02X not found in PMT of program %d", pid,
                        m2p->program_number);
-        free(pid);
+        free(pi);
         return 0;
     }
-    pid->es_info = esi;
-    pid->demux_handler = handler;
-    if(validator != NULL) {
-        pid->demux_validator = validator;
+    pi->es_info = esi;
+    pi->demux_handler = handler;
+    if (validator != NULL) {
+        pi->demux_validator = validator;
     }
 
-    mpeg2ts_program_replace_pid_processor(m2p, pid);
+    mpeg2ts_program_replace_pid_processor(m2p, pi);
     return 1;
 }
 
-int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t PID)
+int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid)
 {
-    g_hash_table_remove(m2p->pids, GINT_TO_POINTER(PID));
+    g_hash_table_remove(m2p->pids, GINT_TO_POINTER(pid));
     return 0;
 }
 
-int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* piNew)
+int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* pi_new)
 {
-    if(m2p == NULL) {
+    if (m2p == NULL) {
         return 0;
     }
 
-    g_hash_table_replace(m2p->pids, GINT_TO_POINTER(piNew->es_info->elementary_PID), piNew);
+    g_hash_table_replace(m2p->pids, GINT_TO_POINTER(pi_new->es_info->elementary_pid), pi_new);
     return 0;
 }
 
@@ -152,21 +151,21 @@ pid_info_t* mpeg2ts_program_get_pid_info(mpeg2ts_program_t* m2p, uint32_t pid)
 
 mpeg2ts_stream_t* mpeg2ts_stream_new()
 {
-    mpeg2ts_stream_t* m2s = calloc(1, sizeof(mpeg2ts_stream_t));
+    mpeg2ts_stream_t* m2s = calloc(1, sizeof(*m2s));
     m2s->programs = g_ptr_array_new_with_free_func((GDestroyNotify)mpeg2ts_program_free);
     return m2s;
 }
 
 void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
 {
-    if(m2s == NULL) {
+    if (m2s == NULL) {
         return;
     }
     g_ptr_array_free(m2s->programs, true);
-    if(m2s->pat != NULL) {
+    if (m2s->pat != NULL) {
         program_association_section_free(m2s->pat);
     }
-    if(m2s->arg_destructor && m2s->arg) {
+    if (m2s->arg_destructor && m2s->arg) {
         m2s->arg_destructor(m2s->arg);
     }
     free(m2s);
@@ -176,12 +175,12 @@ int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
     int ret = 0;
     conditional_access_section_t* new_cas = conditional_access_section_new();
-
-    if(new_cas == NULL) {
+    if (new_cas == NULL) {
+        g_critical("Failed to construct a conditional_access_section_t.");
         goto cleanup;
     }
 
-    if(conditional_access_section_read(new_cas, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
+    if (conditional_access_section_read(new_cas, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
         conditional_access_section_free(new_cas);
         goto cleanup;
     }
@@ -189,18 +188,18 @@ int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     // FIXME: allow >1 packet cat
     if (!m2s->cat || (m2s->cat->version_number != new_cas->version_number
             && new_cas->current_next_indicator == 1)) {
-        if(m2s->cat != NULL) {
+        if (m2s->cat != NULL) {
             g_warning("New cat section in force, discarding the old one");
             conditional_access_section_free(m2s->cat);
         }
 
         m2s->cat = new_cas;
 
-        for(gsize i = 0; i < m2s->cat->descriptors->len; ++i) {
+        for (gsize i = 0; i < m2s->cat->descriptors->len; ++i) {
             ca_descriptor_t* cad = g_ptr_array_index(m2s->cat->descriptors, i);
 
             // we think it's a ca_descriptor, but we don't really know
-            if(cad->descriptor.tag != CA_DESCRIPTOR) {
+            if (cad->descriptor.tag != CA_DESCRIPTOR) {
                 continue;
             }
 
@@ -208,7 +207,7 @@ int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 
             // TODO: do something intelligent for EMM PIDs
         }
-        if(m2s->cat_processor != NULL) {
+        if (m2s->cat_processor != NULL) {
             m2s->cat_processor(m2s, m2s->arg);
         }
     }
@@ -222,33 +221,33 @@ int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
     int ret = 0;
     program_association_section_t* new_pas = program_association_section_new();
-
-    if(new_pas == NULL) {
+    if (new_pas == NULL) {
+        g_critical("Failed to construct a program_association_section_t.");
         goto cleanup;
     }
 
-    if(program_association_section_read(new_pas, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
+    if (program_association_section_read(new_pas, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
         program_association_section_free(new_pas);
         goto cleanup;
     }
 
     // FIXME: allow >1 packet PAT
-    if(!m2s->pat || (m2s->pat->version_number != new_pas->version_number
+    if (!m2s->pat || (m2s->pat->version_number != new_pas->version_number
             && new_pas->current_next_indicator == 1)) {
-        if(m2s->pat != NULL) {
+        if (m2s->pat != NULL) {
             g_warning("New PAT section in force, discarding the old one");
             program_association_section_free(m2s->pat);
         }
 
         m2s->pat = new_pas;
-        for(int i = 0; i < m2s->pat->_num_programs; i++) {
+        for (gsize i = 0; i < m2s->pat->num_programs; i++) {
             mpeg2ts_program_t* prog = mpeg2ts_program_new(
-                                          m2s->pat->programs[i].program_number,
-                                          m2s->pat->programs[i].program_map_PID);
+                    m2s->pat->programs[i].program_number,
+                    m2s->pat->programs[i].program_map_pid);
             g_ptr_array_add(m2s->programs, prog);
         }
 
-        if(m2s->pat_processor) {
+        if (m2s->pat_processor) {
             m2s->pat_processor(m2s, m2s->arg);
         }
     } else {
@@ -262,7 +261,7 @@ cleanup:
 
 int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
-    doDASHEventValidation(ts->payload.bytes, ts->payload.len);
+    validate_dash_events(ts->payload.bytes, ts->payload.len);
 
     // GORP: allow >1 packet event
     ts_free(ts);
@@ -273,34 +272,34 @@ int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
 {
     int ret = 0;
     program_map_section_t* new_pms = program_map_section_new();
-
-    if(new_pms == NULL) {
+    if (new_pms == NULL) {
+        g_critical("Failed to construct a program_map_section_t.");
         goto cleanup;
     }
 
-    if(program_map_section_read(new_pms, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
+    if (program_map_section_read(new_pms, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
         program_map_section_free(new_pms);
         goto cleanup;
     }
 
     // FIXME: allow >1 packet PAT
-    if(m2p->pmt == NULL || (m2p->pmt->version_number != new_pms->version_number
+    if (m2p->pmt == NULL || (m2p->pmt->version_number != new_pms->version_number
             && new_pms->current_next_indicator == 1)) {
-        if(m2p->pmt != NULL) {
+        if (m2p->pmt != NULL) {
             g_warning("New PMT in force, discarding the old one");
             program_map_section_free(m2p->pmt);
         }
 
         m2p->pmt = new_pms;
 
-        for(int es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
+        for (int es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
             elementary_stream_info_t* es = g_ptr_array_index(m2p->pmt->es_info, es_idx);
             pid_info_t* pi = pid_info_new();
             pi->es_info = es;
-            g_hash_table_insert(m2p->pids, GINT_TO_POINTER(pi->es_info->elementary_PID), pi);
+            g_hash_table_insert(m2p->pids, GINT_TO_POINTER(pi->es_info->elementary_pid), pi);
         }
 
-        if(m2p->pmt_processor != NULL) {
+        if (m2p->pmt_processor != NULL) {
             m2p->pmt_processor(m2p, m2p->arg);
         }
     } else {
@@ -315,7 +314,7 @@ cleanup:
 int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s)
 {
     int pid_cnt = 0;
-    for(gsize i = 0; i < m2s->programs->len; ++i) {
+    for (gsize i = 0; i < m2s->programs->len; ++i) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, i);
 
         GHashTableIter j;
@@ -323,10 +322,10 @@ int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s)
         pid_info_t* pi;
         while (g_hash_table_iter_next (&j, NULL, (void**)&pi)) {
             ++pid_cnt;
-            if(pi->demux_validator && pi->demux_validator->process_ts_packet) {
+            if (pi->demux_validator && pi->demux_validator->process_ts_packet) {
                 pi->demux_validator->process_ts_packet(NULL, pi->es_info, pi->demux_handler->arg);
             }
-            if(pi->demux_handler && pi->demux_handler->process_ts_packet) {
+            if (pi->demux_handler && pi->demux_handler->process_ts_packet) {
                 pi->demux_handler->process_ts_packet(NULL, pi->es_info, pi->demux_handler->arg);
             }
         }
@@ -336,40 +335,41 @@ int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s)
 
 int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
-    if(ts == NULL) {
+    if (ts == NULL) {
         mpeg2ts_stream_reset(m2s);
         return 0;
     }
 
-    if(ts->header.PID == PAT_PID) {
+    if (ts->header.pid == PAT_PID) {
         return mpeg2ts_stream_read_pat(m2s, ts);
     }
-    if(ts->header.PID == CAT_PID) {
+    if (ts->header.pid == CAT_PID) {
         return mpeg2ts_stream_read_cat(m2s, ts);
     }
-    if(ts->header.PID == DASH_PID) {
+    if (ts->header.pid == DASH_PID) {
         return mpeg2ts_stream_read_dash_event_msg(m2s, ts);
     }
-    if(ts->header.PID == NULL_PID) {
+    if (ts->header.pid == NULL_PID) {
         ts_free(ts);
         return 0;
     }
 
-    if(m2s->pat == NULL) {
-        g_critical("PAT missing -- unknown PID 0x%02X", ts->header.PID);
+    if (m2s->pat == NULL) {
+        g_critical("PAT missing -- unknown PID 0x%02X", ts->header.pid);
         ts_free(ts);
         return 0;
     }
 
-    for(gsize i = 0; i < m2s->programs->len; ++i) {
+    for (gsize i = 0; i < m2s->programs->len; ++i) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, i);
 
-        if(m2p->PID == ts->header.PID) {
+        if (m2p->pid == ts->header.pid) {
             return mpeg2ts_program_read_pmt(m2p, ts);    // got a PMT
         }
 
+        pid_info_t* pi = mpeg2ts_program_get_pid_info(m2p, ts->header.pid);
+
         // pi == NULL => this PID does not belong to this program
-        pid_info_t* pi = mpeg2ts_program_get_pid_info(m2p, ts->header.PID);
         if (pi == NULL) {
             continue;
         }
@@ -379,19 +379,19 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 
         // FIXME: this can misfire if we have an MPTS and same PID is "owned" by more than one program
         // this is an *extremely unlikely* case
-        if((pi->demux_validator != NULL) && (pi->demux_validator->process_ts_packet != NULL)) {
+        if (pi->demux_validator != NULL && pi->demux_validator->process_ts_packet != NULL) {
             // TODO: check return value and do something intelligent
             pi->demux_validator->process_ts_packet(ts, pi->es_info, pi->demux_handler->arg);
         }
 
-        if((pi->demux_handler != NULL) && (pi->demux_handler->process_ts_packet != NULL)) {
+        if(pi->demux_handler != NULL && pi->demux_handler->process_ts_packet != NULL) {
             return pi->demux_handler->process_ts_packet(ts, pi->es_info, pi->demux_handler->arg);
         }
         break;
     }
 
     // if we are here, we have no clue what this PID is
-    g_warning("Unknown PID 0x%02X", ts->header.PID);
+    g_warning("Unknown PID 0x%02X", ts->header.pid);
     ts_free(ts);
     return 0;
 }

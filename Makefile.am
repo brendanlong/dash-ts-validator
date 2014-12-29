@@ -1,7 +1,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
-CFLAGS = -std=c99 -g -Wall $(GLIB_CFLAGS) -Werror
-LDFLAGS = $(GLIB_LIBS)
+CFLAGS = -std=c99 -g -Wall $(GLIB_CFLAGS) $(GIO_CFLAGS) -Werror
+LDFLAGS = $(GLIB_LIBS) $(GIO_LIBS)
 
 SUBDIRS = h264bitstream
 

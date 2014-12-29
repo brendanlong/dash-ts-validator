@@ -216,6 +216,7 @@ void segment_dump(const segment_t* segment, unsigned indent)
 mpd_t* read_mpd(char* file_name)
 {
     mpd_t* mpd = NULL;
+    char* base_url = NULL;
     xmlDoc* doc = xmlReadFile(file_name, NULL, 0);
     if (doc == NULL) {
         g_critical("Could not parse MPD %s.", file_name);
@@ -243,7 +244,7 @@ mpd_t* read_mpd(char* file_name)
 
     /* Ignore BaseURL here because we want a local path */
     //char* base_url = find_base_url(root, NULL);
-    char* base_url = g_path_get_dirname(file_name);
+    base_url = g_path_get_dirname(file_name);
     puts(base_url);
 
     for (xmlNode* cur_node = root->children; cur_node; cur_node = cur_node->next) {

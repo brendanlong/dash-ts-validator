@@ -25,17 +25,12 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _TSLIB_TSCOMMON_H_
-#define _TSLIB_TSCOMMON_H_
+#ifndef TSLIB_TSCOMMON_H
+#define TSLIB_TSCOMMON_H
 
 #include <stdint.h>
 
 #include "bs.h"
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 #define ARRAYSIZE(x)   ((sizeof(x))/(sizeof((x)[0])))
 
@@ -97,8 +92,4 @@ extern volatile int tslib_errno;
 // This macro is NOT thread-safe
 #define SAFE_REPORT_TS_ERR(errCode)		if (tslib_errno == 0) tslib_errno = (errCode)
 
-#ifdef __cplusplus
-}
 #endif
-
-#endif // _TSLIB_TSCOMMON_H_

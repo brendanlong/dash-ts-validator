@@ -1,5 +1,4 @@
 /*
-
  Copyright (c) 2014-, ISO/IEC JTC1/SC29/WG11
 
  Written by Alex Giladi <alex.giladi@gmail.com>
@@ -30,11 +29,6 @@
 #ifndef TSLIB_CAS_H
 #define TSLIB_CAS_H
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #include <glib.h>
 #include <stdint.h>
 
@@ -45,23 +39,22 @@ extern "C"
 #include "psi.h"
 #include "ts.h"
 
+
 typedef struct {
-    int PID;
+    int pid;
     ts_packet_t* ecm;
     GPtrArray* elementary_pids;
 } ecm_pid_t;
 
 typedef struct {
     int id;
-    int EMM_PID;
+    int emm_pid;
     GPtrArray* ecm_pids;
     buf_t emm;
 } ca_system_t;
 
-
-ca_system_t* ca_system_new(int CA_system_id);
+ca_system_t* ca_system_new(int ca_system_id);
 void ca_system_free(ca_system_t* cas);
-
 
 /**
  * Process a TS packet from an ECM PID
@@ -78,9 +71,5 @@ int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
 
 int ca_system_process_ca_descriptor(GPtrArray* cas_list, elementary_stream_info_t* esi,
                                     ca_descriptor_t* cad);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -101,12 +101,12 @@ int pmt_processor_split(mpeg2ts_program_t* m2p, void* arg)
         case STREAM_TYPE_MPEG2_VIDEO:
             process_pid = 1;
             snprintf(filename, 0x100, "%s_video_%04X.%s", prefix == NULL ? "track" : prefix,
-                     pi->es_info->elementary_PID, "mpg");
+                     pi->es_info->elementary_pid, "mpg");
             break;
         case STREAM_TYPE_AVC:
             process_pid = 1;
             snprintf(filename, 0x100, "%s_video_%04X.%s", prefix == NULL ? "track" : prefix,
-                     pi->es_info->elementary_PID, "264");
+                     pi->es_info->elementary_pid, "264");
             break;
         default:
             process_pid = 0;
@@ -128,7 +128,7 @@ int pmt_processor_split(mpeg2ts_program_t* m2p, void* arg)
             demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
 
             // hook PID processor to PID
-            mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_PID, demux_handler, NULL);
+            mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_pid, demux_handler, NULL);
         }
     }
     return 1;
@@ -149,9 +149,7 @@ int main(int argc, char* argv[])
     extern char* optarg;
     extern int optind;
 
-    mpeg2ts_stream_t* m2s = NULL;
-
-    if(argc < 2) {
+    if (argc < 2) {
         usage(argv[0]);
         return 1;
     }
@@ -176,20 +174,20 @@ int main(int argc, char* argv[])
     g_log_set_default_handler(log_handler, NULL);
 
     char* fname = argv[optind];
-    if(fname == NULL || fname[0] == 0) {
+    if (fname == NULL || fname[0] == 0) {
         g_critical("No input file provided");
         usage(argv[0]);
         return 1;
     }
 
-    FILE* infile = NULL;
-    if((infile = fopen(fname, "rb")) == NULL) {
+    FILE* infile = fopen(fname, "rb");
+    if (infile == NULL) {
         g_critical("Cannot open file %s - %s", fname, strerror(errno));
         return 1;
     }
 
-
-    if(NULL == (m2s = mpeg2ts_stream_new())) {
+    mpeg2ts_stream_t* m2s = mpeg2ts_stream_new();
+    if (m2s == NULL) {
         g_critical("Error creating MPEG-2 STREAM object");
         return 1;
     }
@@ -200,8 +198,8 @@ int main(int argc, char* argv[])
     uint8_t* ts_buf = malloc(TS_SIZE * 4096);
     uint64_t packets_read = 0;
 
-    while((num_packets = fread(ts_buf, TS_SIZE, 4096, infile)) > 0) {
-        for(int i = 0; i < num_packets; i++) {
+    while ((num_packets = fread(ts_buf, TS_SIZE, 4096, infile)) > 0) {
+        for (int i = 0; i < num_packets; i++) {
             ts_packet_t* ts = ts_new();
             ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read);
             mpeg2ts_stream_read_ts_packet(m2s, ts);
@@ -210,8 +208,6 @@ int main(int argc, char* argv[])
     }
 
     mpeg2ts_stream_free(m2s);
-
     fclose(infile);
-
     return tslib_errno;
 }

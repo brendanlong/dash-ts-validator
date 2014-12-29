@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
     g_log_set_default_handler(log_handler, NULL);
 
     char* fname = argv[optind];
-    if(fname == NULL || fname[0] == 0) {
+    if (fname == NULL || fname[0] == 0) {
         g_critical("No input file provided");
         usage(argv[0]);
         return 1;
@@ -118,10 +118,10 @@ int main(int argc, char* argv[])
 
     ///////////////////////////////////
     data_segment_iframes_t iframe_data = {0};
-    int returnCode = doSegmentValidation(&dash_validator, fname, NULL, &iframe_data,
+    int return_code = validate_segment(&dash_validator, fname, NULL, &iframe_data,
                                          0 /* GORP: segment duration */);
-    if(returnCode != 0) {
-        return returnCode;
+    if (return_code != 0) {
+        return return_code;
     }
 
     fprintf(stdout, "RESULT: %s\n", dash_validator.status ? "PASS" : "FAIL");
@@ -132,12 +132,13 @@ int main(int argc, char* argv[])
     char* content_component_table[NUM_CONTENT_COMPONENTS] =
     { "<unknown>", "video", "audio" };
 
-    for(gsize i = 0; i < dash_validator.pids->len; ++i) {
+    for (gsize i = 0; i < dash_validator.pids->len; ++i) {
         pv = g_ptr_array_index(dash_validator.pids, i);
         g_info("%04X: %s EPT=%"PRId64" SAP=%d SAP Type=%d DURATION=%"PRId64"\n",
-                      pv->PID, content_component_table[pv->content_component], pv->EPT, pv->SAP, pv->SAP_type,
-                      pv->LPT - pv->EPT);
+                      pv->pid, content_component_table[pv->content_component], pv->earliest_playout_time, pv->sap, pv->sap_type,
+                      pv->latest_playout_time - pv->earliest_playout_time);
 
     }
     g_ptr_array_free(dash_validator.pids, true);
+    return 0;
 }

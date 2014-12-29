@@ -25,19 +25,14 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#ifndef _PES_H_
-#define _PES_H_
+#ifndef PES_H
+#define PES_H
 
 #include <stdint.h>
 
 #include "bs.h"
 #include "libts_common.h"
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 // PTS/DTS
 #define PES_PTS_FLAG 0x02
@@ -101,49 +96,49 @@ extern "C"
 
 typedef struct {
     uint32_t stream_id;
-    uint32_t PES_packet_length;
-    uint32_t PES_scrambling_control;
-    uint32_t PES_priority;
+    uint32_t pes_packet_length;
+    uint32_t pes_scrambling_control;
+    uint32_t pes_priority;
     uint32_t data_alignment_indicator;
     uint32_t copyright;
     uint32_t original_or_copy;
-    uint32_t PTS_DTS_flags;
-    uint32_t ESCR_flag;
-    uint32_t ES_rate_flag;
-    uint32_t DSM_trick_mode_flag;
+    uint32_t pts_dts_flags;
+    uint32_t escr_flag;
+    uint32_t es_rate_flag;
+    uint32_t dsm_trick_mode_flag;
     uint32_t additional_copy_info_flag;
-    uint32_t PES_CRC_flag;
-    uint32_t PES_extension_flag;
-    uint32_t PES_header_data_length;
-    int64_t PTS;
-    int64_t DTS;
-    int64_t ESCR_base;
-    int32_t ESCR_extension;
-    uint32_t ES_rate;
+    uint32_t pes_crc_flag;
+    uint32_t pes_extension_flag;
+    uint32_t pes_header_data_length;
+    int64_t pts;
+    int64_t dts;
+    int64_t escr_base;
+    int32_t escr_extension;
+    uint32_t es_rate;
     uint32_t trick_mode_control;
     uint32_t field_id;
     uint32_t intra_slice_refresh;
     uint32_t frequency_truncation;
     uint32_t rep_cntrl;
     uint32_t additional_copy_info;
-    uint32_t previous_PES_packet_CRC;
-    uint32_t PES_private_data_flag;
+    uint32_t previous_pes_packet_crc;
+    uint32_t pes_private_data_flag;
     uint32_t pack_header_field_flag;
     uint32_t program_packet_sequence_counter_flag;
-    uint32_t PSTD_buffer_flag;
-    uint32_t PES_extension_flag_2;
-    uint8_t PES_private_data[16];
+    uint32_t pstd_buffer_flag;
+    uint32_t pes_extension_flag_2;
+    uint8_t pes_private_data[16];
     uint32_t pack_field_length;
     uint32_t program_packet_sequence_counter;
-    uint32_t MPEG1_MPEG2_identifier;
+    uint32_t mpeg1_mpeg2_identifier;
     uint32_t original_stuff_length;
-    uint32_t PSTD_buffer_scale;
-    uint32_t PSTD_buffer_size;
-    uint32_t PES_extension_field_length;
+    uint32_t pstd_buffer_scale;
+    uint32_t pstd_buffer_size;
+    uint32_t pes_extension_field_length;
     uint32_t stream_id_extension_flag;
     uint32_t stream_id_extension;
     uint32_t tref_extension_flag;
-    uint64_t TREF;
+    uint64_t tref;
 } pes_header_t;
 
 typedef struct {
@@ -153,7 +148,7 @@ typedef struct {
     size_t payload_len;   /// length of the payload
     size_t buf_len;       /// length of the buffer (which includes payload)
     void* opaque;         /// opaque pointer that should always be passed through
-    uint32_t PID;
+    uint32_t pid;
     int status;
 
     uint64_t payload_pos_in_stream;  // byte location of payload in transport stream
@@ -178,7 +173,6 @@ int pes_read_header(pes_header_t* ph, bs_t* b);
  */
 int pes_read_buf(pes_packet_t* pes, const uint8_t* buf, size_t len);
 
-
 /**
  * scatter-gather version of pes_read_buf
  * removes an extra malloc/copy/free set necessary to build a continuous buffer
@@ -193,15 +187,10 @@ int pes_read_buf(pes_packet_t* pes, const uint8_t* buf, size_t len);
  */
 int pes_read_vec(pes_packet_t* pes, const buf_t* vec, int buf_count, uint64_t pes_pos_in_stream);
 
-
 int pes_write_header(pes_header_t* ph, bs_t* b);
 int pes_write(pes_packet_t* pes, uint8_t* buf, size_t len);
 
 void pes_print_header(pes_header_t* pes_header);
 void pes_print(pes_packet_t* pes);
 
-#ifdef __cplusplus
-}
 #endif
-
-#endif // _PES_H_

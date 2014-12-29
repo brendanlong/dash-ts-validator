@@ -19,6 +19,7 @@ AC_CHECK_LIB([logging], [skit_log_struct])
 AC_CHECK_LIB([m], [cos])
 
 PKG_CHECK_MODULES(GLIB, [glib-2.0])
+PKG_CHECK_MODULES(GIO, [gio-2.0])
 PKG_CHECK_MODULES(LIBXML2, [libxml-2.0])
 
 # Checks for header files.

@@ -12,8 +12,8 @@
 #include "ts.h"
 
 
-#ifndef SEGMENT_VALIDATOR_H
-#define SEGMENT_VALIDATOR_H
+#ifndef TSLIB_SEGMENT_VALIDATOR_H
+#define TSLIB_SEGMENT_VALIDATOR_H
 
 #define TS_STATE_PAT   0x01
 #define TS_STATE_PMT   0x02
@@ -41,14 +41,14 @@ typedef enum {
 } segment_type_t;
 
 typedef struct {
-    int PID;
-    int SAP;
-    int SAP_type;
-    int64_t EPT; // earliest playout time
-    int64_t LPT; // latest playout time
+    int pid;
+    int sap;
+    int sap_type;
+    int64_t earliest_playout_time;
+    int64_t latest_playout_time;
     int64_t duration; // duration of latest pes packet
-    uint64_t pes_cnt;
-    uint64_t ts_cnt;
+    uint64_t pes_count;
+    uint64_t ts_count;
     content_component_t content_component;
     int continuity_counter;
     GPtrArray* ecm_pids;
@@ -60,9 +60,9 @@ typedef struct {
     long segment_start;
     long segment_end;
     GPtrArray* pids;
-    int PCR_PID;
-    int videoPID;
-    int audioPID;
+    int pcr_pid;
+    int video_pid;
+    int audio_pid;
     uint32_t pmt_program_number;
     uint32_t pmt_version_number;
     int status; // 0 == fail
@@ -83,10 +83,10 @@ int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
 int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
 int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
 int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
-                        void* arg);
-int doSegmentValidation(dash_validator_t* dash_validator, char* fname,
-                        dash_validator_t* dash_validator_init,
-                        data_segment_iframes_t* pIFrameData, uint64_t segmentDuration);
-void doDASHEventValidation(uint8_t* buf, int len);
+        void* arg);
+int validate_segment(dash_validator_t* dash_validator, char* fname,
+        dash_validator_t* dash_validator_init,
+        data_segment_iframes_t* pIFrameData, uint64_t segmentDuration);
+void validate_dash_events(uint8_t* buf, int len);
 
 #endif

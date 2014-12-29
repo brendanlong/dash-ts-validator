@@ -32,7 +32,7 @@
 
 stc_t* stc_new()
 {
-    stc_t* stc = malloc(sizeof(stc_t));
+    stc_t* stc = malloc(sizeof(*stc));
     stc->prev_pcr = UINT64_MAX;
     stc->ts_in = g_queue_new();
     stc->ts_out = g_queue_new();
@@ -42,7 +42,7 @@ stc_t* stc_new()
 
 void stc_free(stc_t* stc)
 {
-    if(stc == NULL) {
+    if (stc == NULL) {
         return;
     }
 
@@ -54,31 +54,27 @@ void stc_free(stc_t* stc)
 
 int stc_put_ts_packet(stc_t* stc, ts_packet_t* ts)
 {
-    if(ts == NULL) {
+    if (ts == NULL) {
         return 0;
     }
 
     uint64_t real_pcr = ts_read_pcr(ts);
 
-    if(real_pcr < PCR_MAX) {
+    if (real_pcr < PCR_MAX) {
         // we have a vald PCR
-        if(stc->prev_pcr < PCR_MAX) {
+        if (stc->prev_pcr < PCR_MAX) {
             // this is the first PCR we're seeing in this stream
             stc->prev_pcr = real_pcr;
             stc->num_bytes = TS_SIZE;
-
         } else {
             // adjust for mod42 operations
             uint64_t adj_pcr = (real_pcr > stc->prev_pcr) ? real_pcr : real_pcr + PCR_MAX;
             stc->pcr_rate = ((double)stc->num_bytes) / (adj_pcr - stc->prev_pcr);
 
-            for(int i = 1; ; i++) {
+            for (int i = 1; ; i++) {
                 ts_packet_t* qtsp = g_queue_pop_head(stc->ts_in);
-                if (!qtsp) {
-                    break;
-                }
-                qtsp->pcr_int = stc->prev_pcr + (uint64_t)llrint(i * TS_SIZE * stc->pcr_rate);
-                if(qtsp->pcr_int >= PCR_MAX) {
+                qtsp->pcr_int = stc->prev_pcr + llrint(i * TS_SIZE * stc->pcr_rate);
+                if (qtsp->pcr_int >= PCR_MAX) {
                     qtsp->pcr_int -= PCR_MAX;
                 }
                 qtsp->pcr_int = real_pcr; // debug
@@ -104,10 +100,10 @@ ts_packet_t* stc_get_ts_packet(stc_t* stc)
 
 void stc_flush(stc_t* stc)
 {
-    for(int i = 1; ; i++) {
+    for (int i = 1; ; i++) {
         ts_packet_t* qtsp = g_queue_pop_head(stc->ts_in);
-        if(isnormal(qtsp->pcr_int)) {
-            qtsp->pcr_int = stc->prev_pcr + (uint64_t)llrint(i * TS_SIZE * stc->pcr_rate);
+        if (isnormal(qtsp->pcr_int)) {
+            qtsp->pcr_int = stc->prev_pcr + llrint(i * TS_SIZE * stc->pcr_rate);
             if(qtsp->pcr_int >= PCR_MAX) {
                 qtsp->pcr_int -= PCR_MAX;
             }

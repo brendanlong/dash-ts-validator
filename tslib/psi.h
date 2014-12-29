@@ -1,5 +1,4 @@
 /*
-
  Written by Alex Giladi <alex.giladi@gmail.com> and Vlad Zbarsky <zbarsky@cornell.edu>
  All rights reserved.
  Copyright (c) 2014-, ISO/IEC JTC1/SC29/WG11
@@ -26,8 +25,8 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _PSI_H_
-#define _PSI_H_
+#ifndef PSI_H
+#define PSI_H
 
 #include <glib.h>
 
@@ -56,7 +55,7 @@ typedef enum {
 // PAT
 typedef struct {
     uint32_t program_number;
-    uint32_t program_map_PID; // a.k.a. network pid for prog 0
+    uint32_t program_map_pid; // a.k.a. network pid for prog 0
 } program_info_t;
 
 typedef struct {
@@ -70,8 +69,8 @@ typedef struct {
     uint32_t last_section_number;
 
     program_info_t* programs;
-    size_t _num_programs;
-    uint32_t CRC_32;
+    size_t num_programs;
+    uint32_t crc_32;
 } program_association_section_t;
 
 program_association_section_t* program_association_section_new();
@@ -92,7 +91,7 @@ typedef struct {
 
     GPtrArray* descriptors;
 
-    uint32_t CRC_32;
+    uint32_t crc_32;
 } conditional_access_section_t;
 
 conditional_access_section_t* conditional_access_section_new();
@@ -104,8 +103,8 @@ void conditional_access_section_print(const conditional_access_section_t* cas);
 // PMT
 typedef struct {
     uint32_t stream_type;
-    uint32_t elementary_PID;
-    uint32_t ES_info_length;
+    uint32_t elementary_pid;
+    uint32_t es_info_length;
     GPtrArray* descriptors;
 } elementary_stream_info_t;
 
@@ -118,11 +117,11 @@ typedef struct {
     uint32_t current_next_indicator;
     uint32_t section_number;
     uint32_t last_section_number;
-    uint32_t PCR_PID;
+    uint32_t pcr_pid;
     uint32_t program_info_length;
     GPtrArray* descriptors;
     GPtrArray* es_info;
-    uint32_t CRC_32;
+    uint32_t crc_32;
 } program_map_section_t;
 
 program_map_section_t* program_map_section_new();

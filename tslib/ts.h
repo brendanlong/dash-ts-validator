@@ -26,18 +26,14 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _TSLIB_TS_H_
-#define _TSLIB_TS_H_
+#ifndef TSLIB_TS_H
+#define TSLIB_TS_H
 
 #include <stdint.h>
 
 #include "bs.h"
 #include "libts_common.h"
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 #define TS_SIZE                 188
 #define TS_HEADER_SIZE            4
@@ -54,7 +50,7 @@ typedef struct {
     uint32_t transport_error_indicator;
     uint32_t payload_unit_start_indicator;
     uint32_t transport_priority;
-    uint32_t PID;
+    uint32_t pid;
 
     uint32_t transport_scrambling_control;
     uint32_t adaptation_field_control;
@@ -88,7 +84,7 @@ typedef struct {
     uint32_t ltw_offset;
     uint32_t piecewise_rate;
     uint32_t splice_type;
-    uint64_t DTS_next_AU;
+    uint64_t dts_next_au;
 
     buf_t private_data_bytes;
 
@@ -133,9 +129,5 @@ typedef enum {
     TS_ERROR_NOT_ENOUGH_DATA = -1,
     TS_ERROR_NO_SYNC_BYTE    = -2,
 } ts_error_t;
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

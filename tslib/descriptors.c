@@ -37,7 +37,7 @@ int read_descriptor_loop(GPtrArray* desc_list, bs_t* b, int length)
 {
     int desc_start = bs_pos(b);
 
-    while(length > bs_pos(b) - desc_start) {
+    while (length > bs_pos(b) - desc_start) {
         descriptor_t* desc = descriptor_new();
         desc = descriptor_read(desc, b);
         g_ptr_array_add(desc_list, desc);
@@ -54,26 +54,24 @@ int write_descriptor_loop(GPtrArray* desc_list, bs_t* b)
 
 void print_descriptor_loop(GPtrArray* desc_list, int level)
 {
-    for(gsize i = 0; i < desc_list->len; ++i) {
+    for (gsize i = 0; i < desc_list->len; ++i) {
         descriptor_t* desc = g_ptr_array_index(desc_list, i);
-        if(desc != NULL) {
-            descriptor_print(desc, level);
-        }
+        descriptor_print(desc, level);
     }
 }
 
 descriptor_t* descriptor_new()
 {
-    descriptor_t* desc = malloc(sizeof(descriptor_t));
+    descriptor_t* desc = malloc(sizeof(*desc));
     return desc;
 }
 
 void descriptor_free(descriptor_t* desc)
 {
-    if(!desc) {
+    if (!desc) {
         return;
     }
-    switch(desc->tag) {
+    switch (desc->tag) {
     case ISO_639_LANGUAGE_DESCRIPTOR:
         language_descriptor_free(desc);
         break;
@@ -88,7 +86,7 @@ descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b)
     desc->tag = bs_read_u8(b);
     desc->length = bs_read_u8(b);
 
-    switch(desc->tag) {
+    switch (desc->tag) {
     case ISO_639_LANGUAGE_DESCRIPTOR:
         desc = language_descriptor_read(desc, b);
         break;
@@ -104,10 +102,10 @@ descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b)
 
 void descriptor_print(const descriptor_t* desc, int level)
 {
-    if(desc == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+    if (desc == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
-    switch(desc->tag) {
+    switch (desc->tag) {
     case ISO_639_LANGUAGE_DESCRIPTOR:
         language_descriptor_print(desc, level);
         break;
@@ -123,28 +121,28 @@ void descriptor_print(const descriptor_t* desc, int level)
 descriptor_t* language_descriptor_new(descriptor_t* desc)
 {
     language_descriptor_t* ld = NULL;
-    if(desc == NULL) {
-        ld = (language_descriptor_t*)calloc(1, sizeof(language_descriptor_t));
+    if (desc == NULL) {
+        ld = calloc(1, sizeof(*ld));
         ld->descriptor.tag = ISO_639_LANGUAGE_DESCRIPTOR;
     } else {
-        ld = realloc(desc, sizeof(language_descriptor_t));
+        ld = realloc(desc, sizeof(*ld));
         ld->languages = NULL;
-        ld->_num_languages = 0;
+        ld->num_languages = 0;
     }
     return (descriptor_t*)ld;
 }
 
 int language_descriptor_free(descriptor_t* desc)
 {
-    if(desc == NULL) {
+    if (desc == NULL) {
         return 0;
     }
-    if(desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
+    if (desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
         return 0;
     }
 
     language_descriptor_t* ld = (language_descriptor_t*)desc;
-    if(ld->languages != NULL) {
+    if (ld->languages != NULL) {
         free(ld->languages);
     }
     free(ld);
@@ -153,7 +151,7 @@ int language_descriptor_free(descriptor_t* desc)
 
 descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b)
 {
-    if((desc == NULL) || (b == NULL)) {
+    if(desc == NULL || b == NULL) {
         SAFE_REPORT_TS_ERR(-1);
         return NULL;
     }
@@ -164,20 +162,20 @@ descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b)
         return NULL;
     }
 
-    language_descriptor_t* ld = (language_descriptor_t*)calloc(1, sizeof(language_descriptor_t));
+    language_descriptor_t* ld = calloc(1, sizeof(*ld));
 
     ld->descriptor.tag = desc->tag;
     ld->descriptor.length = desc->length;
 
-    ld->_num_languages = ld->descriptor.length / 4; // language takes 4 bytes
+    ld->num_languages = ld->descriptor.length / 4; // language takes 4 bytes
 
-    if(ld->_num_languages > 0) {
-        ld->languages = malloc(ld->_num_languages * sizeof(language_descriptor_t));
-        for(int i = 0; i < ld->_num_languages; i++) {
-            ld->languages[i].ISO_639_language_code[0] = bs_read_u8(b);
-            ld->languages[i].ISO_639_language_code[1] = bs_read_u8(b);
-            ld->languages[i].ISO_639_language_code[2] = bs_read_u8(b);
-            ld->languages[i].ISO_639_language_code[3] = 0;
+    if (ld->num_languages > 0) {
+        ld->languages = malloc(ld->num_languages * sizeof(language_descriptor_t));
+        for (int i = 0; i < ld->num_languages; i++) {
+            ld->languages[i].iso_639_language_code[0] = bs_read_u8(b);
+            ld->languages[i].iso_639_language_code[1] = bs_read_u8(b);
+            ld->languages[i].iso_639_language_code[2] = bs_read_u8(b);
+            ld->languages[i].iso_639_language_code[3] = 0;
             ld->languages[i].audio_type = bs_read_u8(b);
         }
     }
@@ -188,10 +186,10 @@ descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b)
 
 void language_descriptor_print(const descriptor_t* desc, int level)
 {
-    if(desc == NULL) {
+    if (desc == NULL) {
         return;
     }
-    if(desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
+    if (desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
         return;
     }
 
@@ -200,21 +198,19 @@ void language_descriptor_print(const descriptor_t* desc, int level)
     SKIT_LOG_UINT_VERBOSE(level, desc->tag, "ISO_639_language_descriptor");
     SKIT_LOG_UINT(level, desc->length);
 
-    if(ld->_num_languages > 0) {
-        for(int i = 0; i < ld->_num_languages; i++) {
-            SKIT_LOG_STR(level, strtol(ld->languages[i].ISO_639_language_code, NULL, 10));
+    if (ld->num_languages > 0) {
+        for (int i = 0; i < ld->num_languages; i++) {
+            SKIT_LOG_STR(level, strtol(ld->languages[i].iso_639_language_code, NULL, 10));
             SKIT_LOG_UINT(level, ld->languages[i].audio_type);
         }
     }
 }
 
-
 descriptor_t* ca_descriptor_new(descriptor_t* desc)
 {
-    ca_descriptor_t* cad = NULL;
-    cad = (ca_descriptor_t*)calloc(1, sizeof(ca_descriptor_t));
+    ca_descriptor_t* cad = calloc(1, sizeof(*cad));
     cad->descriptor.tag = CA_DESCRIPTOR;
-    if(desc != NULL) {
+    if (desc != NULL) {
         cad->descriptor.tag = desc->length;
     }
     free(desc);
@@ -223,15 +219,15 @@ descriptor_t* ca_descriptor_new(descriptor_t* desc)
 
 int ca_descriptor_free(descriptor_t* desc)
 {
-    if(desc == NULL) {
+    if (desc == NULL) {
         return 0;
     }
-    if(desc->tag != CA_DESCRIPTOR) {
+    if (desc->tag != CA_DESCRIPTOR) {
         return 0;
     }
 
     ca_descriptor_t* cad = (ca_descriptor_t*)desc;
-    if(cad->private_data_bytes != NULL) {
+    if (cad->private_data_bytes != NULL) {
         free(cad->private_data_bytes);
     }
 
@@ -241,28 +237,28 @@ int ca_descriptor_free(descriptor_t* desc)
 
 descriptor_t* ca_descriptor_read(descriptor_t* desc, bs_t* b)
 {
-    if((desc == NULL) || (b == NULL)) {
+    if (desc == NULL || b == NULL) {
         return NULL;
     }
 
     ca_descriptor_t* cad = (ca_descriptor_t*)ca_descriptor_new(desc);
 
-    cad->CA_system_ID = bs_read_u16(b);
+    cad->ca_system_id = bs_read_u16(b);
     bs_skip_u(b, 3);
-    cad->CA_PID = bs_read_u(b, 13);
-    cad->_private_data_bytes_buf_len = cad->descriptor.length - 4; // we just read 4 bytes
-    cad->private_data_bytes = malloc(cad->_private_data_bytes_buf_len);
-    bs_read_bytes(b, cad->private_data_bytes, cad->_private_data_bytes_buf_len);
+    cad->ca_pid = bs_read_u(b, 13);
+    cad->private_data_bytes_buf_len = cad->descriptor.length - 4; // we just read 4 bytes
+    cad->private_data_bytes = malloc(cad->private_data_bytes_buf_len);
+    bs_read_bytes(b, cad->private_data_bytes, cad->private_data_bytes_buf_len);
 
     return (descriptor_t*)cad;
 }
 
 void ca_descriptor_print(const descriptor_t* desc, int level)
 {
-    if(desc == NULL) {
+    if (desc == NULL) {
         return;
     }
-    if(desc->tag != CA_DESCRIPTOR) {
+    if (desc->tag != CA_DESCRIPTOR) {
         return;
     }
 
@@ -271,8 +267,8 @@ void ca_descriptor_print(const descriptor_t* desc, int level)
     SKIT_LOG_UINT_VERBOSE(level, desc->tag, "CA_descriptor");
     SKIT_LOG_UINT(level, desc->length);
 
-    SKIT_LOG_UINT(level, cad->CA_PID);
-    SKIT_LOG_UINT(level, cad->CA_system_ID);
+    SKIT_LOG_UINT(level, cad->ca_pid);
+    SKIT_LOG_UINT(level, cad->ca_system_id);
 }
 
 /*

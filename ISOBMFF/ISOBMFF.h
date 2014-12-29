@@ -13,13 +13,17 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef __H_ISOBMFF_CONFORMANCE
-#define __H_ISOBMFF_CONFORMANCE
+#ifndef ISOBMFF_CONFORMANCE_H
+#define ISOBMFF_CONFORMANCE_H
 
-#include <stdlib.h>
+#include <glib.h>
 #include <stdint.h>
 #include <stdbool.h>
 
+
+typedef enum {
+    ISOBMFF_ERROR_BAD_BOX_SIZE
+} isobmff_error_t;
 
 typedef enum {
     BRAND_RISX = 0x72697378,
@@ -27,10 +31,20 @@ typedef enum {
     BRAND_SSSS = 0x73737373
 } brand_t;
 
-// styp, sidx, pcrb, ssix
+typedef struct {
+    uint32_t size;
+    uint32_t type;
+} box_t;
+
+typedef struct {
+    box_t box;
+    uint8_t version;
+    uint32_t flags;
+} fullbox_t;
 
 typedef struct {
     uint32_t size;
+    uint32_t type;
     uint32_t major_brand;
     uint32_t minor_version;
     size_t num_compatible_brands;
@@ -41,17 +55,17 @@ typedef struct {
     uint8_t reference_type;
     uint32_t referenced_size;
     uint32_t subsegment_duration;
-    uint8_t starts_with_SAP;
-    uint8_t SAP_type;
-    uint32_t SAP_delta_time;
-
+    uint8_t starts_with_sap;
+    uint8_t sap_type;
+    uint32_t sap_delta_time;
 } data_sidx_reference_t;
 
 typedef struct {
     uint32_t size;
+    uint32_t type;
     uint8_t version;
     uint32_t flags;
-    uint32_t reference_ID;
+    uint32_t reference_id;
     uint32_t timescale;
     uint64_t earliest_presentation_time;
     uint64_t first_offset;
@@ -59,42 +73,40 @@ typedef struct {
     uint16_t reserved;
     uint16_t reference_count;
     data_sidx_reference_t* references;
-
 } data_sidx_t;
 
 typedef struct {
     uint8_t level;
     uint32_t range_size;
-
 } data_ssix_subsegment_range_t;
 
 typedef struct {
     uint32_t ranges_count;
     data_ssix_subsegment_range_t* ranges;
-
 } data_ssix_subsegment_t;
 
 typedef struct {
     uint32_t size;
+    uint32_t type;
     uint8_t version;
     uint32_t flags;
     uint32_t subsegment_count;
     data_ssix_subsegment_t* subsegments;
-
 } data_ssix_t;
 
 typedef struct {
     uint32_t size;
+    uint32_t type;
     uint8_t version;
     uint32_t flags;
-    uint32_t reference_track_ID;
+    uint32_t reference_track_id;
     uint64_t ntp_timestamp;
     uint64_t media_time;
-
 } data_pcrb_t;
 
 typedef struct {
     uint32_t size;
+    uint32_t type;
     uint8_t version;
     uint32_t flags;
     char* scheme_id_uri;
@@ -105,18 +117,15 @@ typedef struct {
     uint32_t id;
     uint8_t* message_data;
     size_t message_data_size;
-
 } data_emsg_t;
 
 typedef struct {
-    unsigned int doIFrameValidation;  // 0 = FALSE, 1 = TRUE
-
-    int numIFrames;
-    unsigned int* pIFrameLocations_Time;
-    uint64_t* pIFrameLocations_Byte;
-    unsigned char* pStartsWithSAP;
-    unsigned char* pSAPType;
-
+    bool do_iframe_validation;
+    int num_iframes;
+    unsigned int* iframe_locations_time;
+    uint64_t* iframe_locations_byte;
+    unsigned char* starts_with_sap;
+    unsigned char* sap_type;
 } data_segment_iframes_t;
 
 typedef enum {
@@ -127,57 +136,42 @@ typedef enum {
     BOX_TYPE_STYP = 0x73747970
 } box_type_t;
 
+void print_styp(data_styp_t*);
+void print_sidx(data_sidx_t*);
+void print_pcrb(data_pcrb_t*);
+void print_ssix(data_ssix_t*);
+void print_emsg(data_emsg_t*);
 
-int parseStyp(unsigned char* buffer, int bufferSize, data_styp_t* styp);
-int parseSidx(unsigned char* buffer, int bufferSize, data_sidx_t* sidx);
-int parsePcrb(unsigned char* buffer, int bufferSize, data_pcrb_t* pcrb);
-int parseSsix(unsigned char* buffer, int bufferSize, data_ssix_t* ssix);
-int parseEmsg(unsigned char* buffer, int bufferSize, data_emsg_t* emsg);
+void print_sidx_reference(data_sidx_reference_t*);
+void print_ssix_subsegment(data_ssix_subsegment_t*);
 
-void printStyp(data_styp_t* styp);
-void printSidx(data_sidx_t* sidx);
-void printPcrb(data_pcrb_t* pcrb);
-void printSsix(data_ssix_t* ssix);
-void printEmsg(data_emsg_t* emsg);
+void free_styp(data_styp_t*);
+void free_sidx(data_sidx_t*);
+void free_pcrb(data_pcrb_t*);
+void free_ssix(data_ssix_t*);
+void free_emsg(data_emsg_t*);
 
-void freeStyp(data_styp_t* styp);
-void freeSidx(data_sidx_t* sidx);
-void freePcrb(data_pcrb_t* pcrb);
-void freeSsix(data_ssix_t* ssix);
-void freeEmsg(data_emsg_t* emsg);
+void uint_to_string(char*, unsigned);
 
-void printSidxReference(data_sidx_reference_t* reference);
-void printSsixSubsegment(data_ssix_subsegment_t* subsegment);
+void print_boxes(box_t** boxes, size_t num_boxes);
+void free_boxes(box_t** boxes, size_t num_boxes);
+int read_boxes_from_file(char* file_name, box_t*** boxes_out, size_t* num_boxes_out);
 
-void convertUintToString(char* str, unsigned int uintStr);
+int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
+        data_segment_iframes_t* iframes,
+        int presentation_time_offset, int video_pid, bool is_simple_profile);
+int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
+        uint64_t* segment_durations, data_segment_iframes_t* iframes, int presentation_time_offset,
+        int video_pid, bool is_simple_profile);
+int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
+        uint64_t segment_duration, data_segment_iframes_t* iframes,
+        int presentation_time_offset, int video_pid, bool is_simple_profile);
 
-int getNumBoxes(unsigned char* buffer, int bufferSize, size_t* numBoxes);
-void printBoxes(size_t numBoxes, box_type_t* box_types, void** box_data);
-void freeBoxes(size_t numBoxes, box_type_t* box_types, void** box_data);
-int readBoxes(char* fname, size_t* numBoxes, box_type_t** box_types_in, void** * box_data_in,
-              int** box_sizes_in);
-int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type_t** box_types_in,
-               void** * box_data_in, int** box_sizes_in);
+int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
 
-int validateIndexSegment(char* fname, size_t numSegments, uint64_t* segmentDurations,
-                         data_segment_iframes_t* pIFrames,
-                         int presentationTimeOffset, int videoPID, bool isSimpleProfile);
-int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes, box_type_t* box_types,
-        void** box_data,
-        int* box_sizes, uint64_t* segmentDurations, data_segment_iframes_t* pIFrames, int presentationTimeOffset,
-        int videoPID,
-        bool isSimpleProfile);
-int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** box_data,
-                                    int* box_sizes, uint64_t segmentDuration,
-                                    data_segment_iframes_t* pIFrames, int presentationTimeOffset, int videoPID,
-                                    bool isSimpleProfile);
+int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
+        bool is_simple_profile);
 
-int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentDuration);
+void free_segment_iframes(data_segment_iframes_t*, size_t num_segments);
 
-int analyzeSidxReferences(data_sidx_t* sidx, int* pNumIFrames, int* pNumNestedSidx,
-                          bool isSimpleProfile);
-
-void freeIFrames(data_segment_iframes_t* pIFrames, int numSegments);
-
-
-#endif  // __H_ISOBMFF_CONFORMANCE
+#endif

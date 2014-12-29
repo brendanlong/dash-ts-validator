@@ -38,11 +38,6 @@
 #include "cas.h"
 #include "descriptors.h"
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 struct _mpeg2ts_stream_;
 struct _mpeg2ts_program_;
 
@@ -54,7 +49,7 @@ typedef int (*pmt_processor_t)(struct _mpeg2ts_program_*, void*);
 typedef int (*arg_destructor_t)(void*);
 
 struct _mpeg2ts_program_ {
-    uint32_t PID; // PMT PID
+    uint32_t pid; // PMT PID
     uint32_t program_number;
 
     GHashTable* pids; // PIDs belonging to this program
@@ -121,7 +116,6 @@ mpeg2ts_stream_t* mpeg2ts_stream_new();
  * Free mpeg2ts_stream_t object
  *
  * @author agiladi (3/21/2014)
-
  */
 void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s);
 
@@ -175,7 +169,7 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p);
  *
  * @return zero if registration succeeded.
  */
-int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t PID,
+int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
         demux_pid_handler_t* handler, demux_pid_handler_t* validator);
 
 /**
@@ -189,15 +183,8 @@ int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t PID,
  *
  * @return zero if unregistration succeeded.
  */
-int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t PID);
-
+int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid);
 int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* piNew);
-
-//int mpeg2ts_program_read_ts_packet(mpeg2ts_program_t *m2p, ts_packet_t *ts);
 int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s);
 
-#ifdef __cplusplus
-}
 #endif
-
-#endif // _MPEG2TS_DEMUX_H_

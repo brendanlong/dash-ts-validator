@@ -36,11 +36,6 @@
 #include "pes.h"
 #include "psi.h"
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
      
 typedef int (*pes_processor_t)(pes_packet_t*, elementary_stream_info_t*, GQueue*, void*);
 typedef int (*pes_arg_destructor_t)(void*);
@@ -52,13 +47,8 @@ typedef struct {
     pes_arg_destructor_t pes_arg_destructor;
 } pes_demux_t;
 
-
 pes_demux_t* pes_demux_new(pes_processor_t pes_processor);
 void pes_demux_free(pes_demux_t* pdm);
 int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -185,37 +185,34 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
 
     // read bytes 6,7
 
-    pas->_num_programs = (pas->section_length - 5 - 4) / 4;
+    pas->num_programs = (pas->section_length - 5 - 4) / 4;
     // explanation: section_length gives us the length from the end of section_length
     // we used 5 bytes for the mandatory section fields, and will use another 4 bytes for CRC
     // the remaining bytes contain program information, which is 4 bytes per iteration
     // It's much shorter in C :-)
 
-    if(pas->_num_programs > 1) {
+    if (pas->num_programs > 1) {
         g_warning("%zd programs found, but only SPTS is fully supported. Patches are welcome.",
-                      pas->_num_programs);
+                      pas->num_programs);
     }
 
-    pas->programs = malloc(pas->_num_programs * sizeof(program_info_t));
-    for(uint32_t i = 0; i < pas->_num_programs; i++) {
+    pas->programs = malloc(pas->num_programs * sizeof(program_info_t));
+    for (uint32_t i = 0; i < pas->num_programs; i++) {
         pas->programs[i].program_number = bs_read_u16(b);
         bs_skip_u(b, 3);
-        pas->programs[i].program_map_PID = bs_read_u(b, 13);
+        pas->programs[i].program_map_pid = bs_read_u(b, 13);
     }
 
-    pas->CRC_32 = bs_read_u32(b);
+    pas->crc_32 = bs_read_u32(b);
 
     // check CRC
     crc_t pas_crc = crc_init();
     pas_crc = crc_update(pas_crc, buf, bs_pos(b) - 4);
     pas_crc = crc_finalize(pas_crc);
-    if(pas_crc != pas->CRC_32) {
-        g_critical("PAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pas->CRC_32, pas_crc);
+    if (pas_crc != pas->crc_32) {
+        g_critical("PAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pas->crc_32, pas_crc);
         SAFE_REPORT_TS_ERR(-33);
         return 0;
-    } else {
-        // LOG_DEBUG("PAT CRC_32 checked successfully");
-        // don't enable unless you want to see this every ~100ms
     }
 
     bs_free(b);
@@ -224,7 +221,7 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
 
 void program_association_section_print(const program_association_section_t* pas)
 {
-    if(pas == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+    if (pas == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
 
@@ -238,23 +235,23 @@ void program_association_section_print(const program_association_section_t* pas)
     SKIT_LOG_UINT(0, pas->section_number);
     SKIT_LOG_UINT(0, pas->last_section_number);
 
-    for(int i = 0; i < pas->_num_programs; i++) {
+    for (int i = 0; i < pas->num_programs; i++) {
         SKIT_LOG_UINT(1, pas->programs[i].program_number);
-        SKIT_LOG_UINT_HEX(1, pas->programs[i].program_map_PID);
+        SKIT_LOG_UINT_HEX(1, pas->programs[i].program_map_pid);
     }
-    SKIT_LOG_UINT_HEX(0, pas->CRC_32);
+    SKIT_LOG_UINT_HEX(0, pas->crc_32);
 }
 
 elementary_stream_info_t* es_info_new()
 {
-    elementary_stream_info_t* es = calloc(1, sizeof(elementary_stream_info_t));
+    elementary_stream_info_t* es = calloc(1, sizeof(*es));
     es->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
     return es;
 }
 
 void es_info_free(elementary_stream_info_t* es)
 {
-    if(es == NULL) {
+    if (es == NULL) {
         return;
     }
 
@@ -267,15 +264,14 @@ int es_info_read(elementary_stream_info_t* es, bs_t* b)
     int es_info_start = bs_pos(b);
     es->stream_type = bs_read_u8(b);
     bs_skip_u(b, 3);
-    es->elementary_PID = bs_read_u(b, 13);
+    es->elementary_pid = bs_read_u(b, 13);
     bs_skip_u(b, 4);
-    es->ES_info_length = bs_read_u(b, 12);
+    es->es_info_length = bs_read_u(b, 12);
 
-
-    read_descriptor_loop(es->descriptors, b, es->ES_info_length);
-    if(es->ES_info_length > MAX_ES_INFO_LEN) {
+    read_descriptor_loop(es->descriptors, b, es->es_info_length);
+    if (es->es_info_length > MAX_ES_INFO_LEN) {
         g_critical("ES info length is 0x%02X, larger than maximum allowed 0x%02X",
-                       es->ES_info_length, MAX_ES_INFO_LEN);
+                       es->es_info_length, MAX_ES_INFO_LEN);
         SAFE_REPORT_TS_ERR(-60);
         return 0;
     }
@@ -285,13 +281,13 @@ int es_info_read(elementary_stream_info_t* es, bs_t* b)
 
 void es_info_print(elementary_stream_info_t* es, int level)
 {
-    if(es == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+    if (es == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
 
     SKIT_LOG_UINT_VERBOSE(level, es->stream_type, stream_desc(es->stream_type));
-    SKIT_LOG_UINT_HEX(level, es->elementary_PID);
-    SKIT_LOG_UINT(level, es->ES_info_length);
+    SKIT_LOG_UINT_HEX(level, es->elementary_pid);
+    SKIT_LOG_UINT(level, es->es_info_length);
 
     print_descriptor_loop(es->descriptors, level + 1);
 }
@@ -303,7 +299,7 @@ int write_es_info_loop(GPtrArray* es_list, bs_t* b)
 
 void print_es_info_loop(GPtrArray* es_list, int level)
 {
-    for(gsize i = 0; i < es_list->len; ++i) {
+    for (gsize i = 0; i < es_list->len; ++i) {
         elementary_stream_info_t* es = g_ptr_array_index(es_list, i);
         es_info_print(es, level);
     }
@@ -311,7 +307,7 @@ void print_es_info_loop(GPtrArray* es_list, int level)
 
 program_map_section_t* program_map_section_new()
 {
-    program_map_section_t* pms = calloc(1, sizeof(program_map_section_t));
+    program_map_section_t* pms = calloc(1, sizeof(*pms));
     pms->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
     pms->es_info = g_ptr_array_new_with_free_func((GDestroyNotify)es_info_free);
     return pms;
@@ -319,7 +315,7 @@ program_map_section_t* program_map_section_new()
 
 void program_map_section_free(program_map_section_t* pms)
 {
-    if(pms == NULL) {
+    if (pms == NULL) {
         return;
     }
 
@@ -331,7 +327,7 @@ void program_map_section_free(program_map_section_t* pms)
 
 int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t buf_size)
 {
-    if(buf == NULL) {
+    if (buf == NULL) {
         SAFE_REPORT_TS_ERR(-1);
         return 0;
     }
@@ -339,7 +335,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     bs_t* b = bs_new(buf, buf_size);
 
     pms->table_id = bs_read_u8(b);
-    if(pms->table_id != TS_program_map_section) {
+    if (pms->table_id != TS_program_map_section) {
         g_critical("Table ID in PMT is 0x%02X instead of expected 0x%02X", pms->table_id,
                        TS_program_map_section);
         SAFE_REPORT_TS_ERR(-40);
@@ -347,7 +343,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     }
 
     pms->section_syntax_indicator = bs_read_u1(b);
-    if(!pms->section_syntax_indicator) {
+    if (!pms->section_syntax_indicator) {
         g_critical("section_syntax_indicator not set in PMT");
         SAFE_REPORT_TS_ERR(-41);
         return 0;
@@ -355,7 +351,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 
     bs_skip_u(b, 3);
     pms->section_length = bs_read_u(b, 12);
-    if(pms->section_length > MAX_SECTION_LEN) {
+    if (pms->section_length > MAX_SECTION_LEN) {
         g_critical("PMT section length is 0x%02X, larger than maximum allowed 0x%02X",
                        pms->section_length, MAX_SECTION_LEN);
         SAFE_REPORT_TS_ERR(-42);
@@ -371,30 +367,30 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     bs_skip_u(b, 2);
     pms->version_number = bs_read_u(b, 5);
     pms->current_next_indicator = bs_read_u1(b);
-    if(!pms->current_next_indicator) {
+    if (!pms->current_next_indicator) {
         g_warning("This PMT is not yet applicable/n");
     }
 
     // bytes 3,4
     pms->section_number = bs_read_u8(b);
     pms->last_section_number = bs_read_u8(b);
-    if(pms->section_number != 0 || pms->last_section_number != 0) {
+    if (pms->section_number != 0 || pms->last_section_number != 0) {
         g_critical("Multi-section PMT is not allowed/n");
         SAFE_REPORT_TS_ERR(-43);
         return 0;
     }
 
     bs_skip_u(b, 3);
-    pms->PCR_PID = bs_read_u(b, 13);
-    if(pms->PCR_PID < GENERAL_PURPOSE_PID_MIN || pms->PCR_PID > GENERAL_PURPOSE_PID_MAX) {
-        g_critical("PCR PID has invalid value 0x%02X", pms->PCR_PID);
+    pms->pcr_pid = bs_read_u(b, 13);
+    if (pms->pcr_pid < GENERAL_PURPOSE_PID_MIN || pms->pcr_pid > GENERAL_PURPOSE_PID_MAX) {
+        g_critical("PCR PID has invalid value 0x%02X", pms->pcr_pid);
         SAFE_REPORT_TS_ERR(-44);
         return 0;
     }
     bs_skip_u(b, 4);
 
     pms->program_info_length = bs_read_u(b, 12);
-    if(pms->program_info_length > MAX_PROGRAM_INFO_LEN) {
+    if (pms->program_info_length > MAX_PROGRAM_INFO_LEN) {
         g_critical("PMT program info length is 0x%02X, larger than maximum allowed 0x%02X",
                        pms->program_info_length, MAX_PROGRAM_INFO_LEN);
         SAFE_REPORT_TS_ERR(-45);
@@ -403,20 +399,20 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 
     read_descriptor_loop(pms->descriptors, b, pms->program_info_length);
 
-    while(pms->section_length - (bs_pos(b) - section_start) > 4) {  // account for CRC
+    while (pms->section_length - (bs_pos(b) - section_start) > 4) {  // account for CRC
         elementary_stream_info_t* es = es_info_new();
         es_info_read(es, b);
         g_ptr_array_add(pms->es_info, es);
     }
 
-    pms->CRC_32 = bs_read_u32(b);
+    pms->crc_32 = bs_read_u32(b);
 
     // check CRC
     crc_t pas_crc = crc_init();
     pas_crc = crc_update(pas_crc, buf, bs_pos(b) - 4);
     pas_crc = crc_finalize(pas_crc);
-    if(pas_crc != pms->CRC_32) {
-        g_critical("PMT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pms->CRC_32, pas_crc);
+    if(pas_crc != pms->crc_32) {
+        g_critical("PMT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pms->crc_32, pas_crc);
         SAFE_REPORT_TS_ERR(-46);
         return 0;
     } else {
@@ -431,7 +427,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 
 void program_map_section_print(program_map_section_t* pms)
 {
-    if(tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+    if (tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
 
@@ -448,7 +444,7 @@ void program_map_section_print(program_map_section_t* pms)
     SKIT_LOG_UINT(1, pms->section_number);
     SKIT_LOG_UINT(1, pms->last_section_number);
 
-    SKIT_LOG_UINT_HEX(1, pms->PCR_PID);
+    SKIT_LOG_UINT_HEX(1, pms->pcr_pid);
 
     SKIT_LOG_UINT(1, pms->program_info_length);
 
@@ -456,20 +452,19 @@ void program_map_section_print(program_map_section_t* pms)
 
     print_es_info_loop(pms->es_info, 2);
 
-    SKIT_LOG_UINT_HEX(1, pms->CRC_32);
+    SKIT_LOG_UINT_HEX(1, pms->crc_32);
 }
 
 conditional_access_section_t* conditional_access_section_new()
 {
-    conditional_access_section_t* cas = (conditional_access_section_t*)calloc(1,
-                                        sizeof(conditional_access_section_t));
+    conditional_access_section_t* cas = calloc(1, sizeof(*cas));
     cas->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
     return cas;
 }
 
 void conditional_access_section_free(conditional_access_section_t* cas)
 {
-    if(cas == NULL) {
+    if (cas == NULL) {
         return;
     }
 
@@ -479,7 +474,7 @@ void conditional_access_section_free(conditional_access_section_t* cas)
 
 int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* buf, size_t buf_len)
 {
-    if(cas == NULL || buf == NULL) {
+    if (cas == NULL || buf == NULL) {
         SAFE_REPORT_TS_ERR(-1);
         return 0;
     }
@@ -487,7 +482,7 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     bs_t* b = bs_new(buf, buf_len);
 
     cas->table_id = bs_read_u8(b);
-    if(cas->table_id != conditional_access_section) {
+    if (cas->table_id != conditional_access_section) {
         g_critical("Table ID in CAT is 0x%02X instead of expected 0x%02X",
                        cas->table_id, conditional_access_section);
         SAFE_REPORT_TS_ERR(-30);
@@ -497,20 +492,19 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     // read byte 0
 
     cas->section_syntax_indicator = bs_read_u1(b);
-    if(!cas->section_syntax_indicator) {
+    if (!cas->section_syntax_indicator) {
         g_critical("section_syntax_indicator not set in CAT");
         SAFE_REPORT_TS_ERR(-31);
         return 0;
     }
     bs_skip_u(b, 3); // TODO read the zero bit, check it to be zero
     cas->section_length = bs_read_u(b, 12);
-    if(cas->section_length > 1021) {  // max CAT length
+    if (cas->section_length > 1021) {  // max CAT length
         g_critical("CAT section length is 0x%02X, larger than maximum allowed 0x%02X",
                        cas->section_length, MAX_SECTION_LEN);
         SAFE_REPORT_TS_ERR(-32);
         return 0;
     }
-
 
     // read bytes 1-2
     bs_read_u16(b);
@@ -519,15 +513,14 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     bs_skip_u(b, 2);
     cas->version_number = bs_read_u(b, 5);
     cas->current_next_indicator = bs_read_u1(b);
-    if(!cas->current_next_indicator) {
+    if (!cas->current_next_indicator) {
         g_warning("This CAT is not yet applicable/n");
     }
 
     // read byte 5
-
     cas->section_number = bs_read_u8(b);
     cas->last_section_number = bs_read_u8(b);
-    if(cas->section_number != 0 || cas->last_section_number != 0) {
+    if (cas->section_number != 0 || cas->last_section_number != 0) {
         g_warning("Multi-section CAT is not supported yet/n");
     }
 
@@ -538,14 +531,14 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     // we used 5 bytes for the mandatory section fields, and will use another 4 bytes for CRC
     // the remaining bytes contain descriptors, most probably only one
     // again, it's much shorter in C :-)
-    cas->CRC_32 = bs_read_u32(b);
+    cas->crc_32 = bs_read_u32(b);
 
     // check CRC
     crc_t cas_crc = crc_init();
     cas_crc = crc_update(cas_crc, buf, bs_pos(b) - 4);
     cas_crc = crc_finalize(cas_crc);
-    if(cas_crc != cas->CRC_32) {
-        g_critical("CAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", cas->CRC_32, cas_crc);
+    if (cas_crc != cas->crc_32) {
+        g_critical("CAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", cas->crc_32, cas_crc);
         SAFE_REPORT_TS_ERR(-33);
         return 0;
     }
@@ -556,7 +549,7 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
 
 void conditional_access_section_print(const conditional_access_section_t* cas)
 {
-    if(cas == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+    if (cas == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
 
@@ -572,6 +565,5 @@ void conditional_access_section_print(const conditional_access_section_t* cas)
 
     print_descriptor_loop(cas->descriptors, 2);
 
-    SKIT_LOG_UINT_HEX(0, cas->CRC_32);
+    SKIT_LOG_UINT_HEX(0, cas->crc_32);
 }
-

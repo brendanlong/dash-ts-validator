@@ -15,109 +15,85 @@
  */
 #include "ISOBMFF.h"
 
-#include <glib.h>
-#include <stdbool.h>
+#include <stdlib.h>
+#include <gio/gio.h>
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <sys/stat.h>
 
 
-static uint8_t readUint8(uint8_t** buffer)
-{
-    uint8_t result;
-    memcpy(&result, *buffer, sizeof(result));
-    *buffer += sizeof(result);
-    return result;
-}
+G_DEFINE_QUARK(ISOBMFF_ERROR, isobmff_error);
 
-static uint16_t readUint16(uint8_t** buffer)
-{
-    uint16_t result;
-    memcpy(&result, *buffer, sizeof(result));
-    *buffer += sizeof(result);
-    return ntohs(result);
-}
+int read_boxes_from_stream(GDataInputStream*, box_t*** boxes_out, size_t* num_boxes_out);
 
-static uint32_t readUint24(uint8_t** buffer)
-{
-    uint32_t result = 0;
-    memcpy(&result, *buffer, 3);
-    *buffer += 3;
-    return ntohl(result >> 8);
-}
+box_t* parse_box(GDataInputStream*, GError**);
+void parse_full_box(GDataInputStream*, fullbox_t*, size_t box_size, GError**);
+box_t* parse_styp(GDataInputStream*, size_t box_size, GError**);
+box_t* parse_sidx(GDataInputStream*, size_t box_size, GError**);
+box_t* parse_pcrb(GDataInputStream*, size_t box_size, GError**);
+box_t* parse_ssix(GDataInputStream*, size_t box_size, GError**);
+box_t* parse_emsg(GDataInputStream*, size_t box_size, GError**);
 
-static uint32_t readUint32(uint8_t** buffer)
-{
-    uint32_t result;
-    memcpy(&result, *buffer, sizeof(result));
-    *buffer += sizeof(result);
-    return ntohl(result);
-}
+static void uint32_to_string(char* str, uint32_t num);
 
-static uint64_t readUint64(uint8_t** buffer)
+static uint32_t read_uint24(GDataInputStream* input, GError** error)
 {
-    uint64_t result;
-    memcpy(&result, *buffer, sizeof(result));
-    *buffer += sizeof(result);
-    return (((uint64_t)ntohl(result)) << 32) + (uint64_t)ntohl(
-                        result >> 32);
-}
-
-static char* readString(uint8_t** buffer, uint8_t* end)
-{
-    for(size_t i = 0; *buffer < end; ++i, ++(*buffer)) {
-        if ((*buffer)[i] == 0) {
-            char* result = malloc(i);
-            memcpy(result, *buffer, i);
-            return result;
-        }
+    uint32_t value = g_data_input_stream_read_uint16(input, NULL, error);
+    if (*error) {
+        return 0;
     }
-    return NULL;
+    return (value << 8) + g_data_input_stream_read_byte(input, NULL, error);
 }
 
-void freeBoxes(size_t numBoxes, box_type_t* box_types, void** box_data)
+void free_box(box_t* box)
 {
-    for(size_t i = 0; i < numBoxes; i++) {
-        switch(box_types[i]) {
-        case BOX_TYPE_STYP: {
-            data_styp_t* styp = (data_styp_t*) box_data[i];
-            freeStyp(styp);
-            break;
-        }
-        case BOX_TYPE_SIDX: {
-            data_sidx_t* sidx = (data_sidx_t*) box_data[i];
-            freeSidx(sidx);
-            break;
-        }
-        case BOX_TYPE_PCRB: {
-            data_pcrb_t* pcrb = (data_pcrb_t*) box_data[i];
-            freePcrb(pcrb);
-            break;
-        }
-        case BOX_TYPE_SSIX: {
-            data_ssix_t* ssix = (data_ssix_t*) box_data[i];
-            freeSsix(ssix);
-            break;
-        }
-        case BOX_TYPE_EMSG: {
-            data_emsg_t* emsg = (data_emsg_t*) box_data[i];
-            freeEmsg(emsg);
-            break;
-        }
-        }
+    if (box == NULL) {
+        return;
     }
-    free(box_types);
-    free(box_data);
+    switch (box->type) {
+    case BOX_TYPE_STYP: {
+        free_styp((data_styp_t*)box);
+        break;
+    }
+    case BOX_TYPE_SIDX: {
+        free_sidx((data_sidx_t*)box);
+        break;
+    }
+    case BOX_TYPE_PCRB: {
+        free_pcrb((data_pcrb_t*)box);
+        break;
+    }
+    case BOX_TYPE_SSIX: {
+        free_ssix((data_ssix_t*)box);
+        break;
+    }
+    case BOX_TYPE_EMSG: {
+        free_emsg((data_emsg_t*)box);
+        break;
+    }
+    default:
+        g_error("Attempted to free unknown box type: %x", box->type);
+        g_free(box);
+        break;
+    }
 }
 
-int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes, box_type_t* box_types,
-        void** box_data,
-        int* box_sizes, uint64_t* segmentDurations, data_segment_iframes_t* pIFrames, int presentationTimeOffset,
-        int videoPID,
-        bool isSimpleProfile)
+void free_boxes(box_t** boxes, size_t num_boxes)
+{
+    if (boxes == NULL) {
+        return;
+    }
+    for (size_t i = 0; i < num_boxes; i++) {
+        free_box(boxes[i]);
+    }
+    g_free(boxes);
+}
+
+int validate_representation_index_segment_boxes(size_t num_segments,
+        box_t** boxes, size_t num_boxes, uint64_t* segment_durations,
+        data_segment_iframes_t* iframes, int presentation_time_offset,
+        int video_pid, bool is_simple_profile)
 {
     /*
     A Representation Index Segment indexes all Media Segments of one Representation and is defined as follows:
@@ -136,270 +112,269 @@ int validateRepresentationIndexSegmentBoxes(size_t numSegments, size_t numBoxes,
     Index information for a single Media Segment.
     */
 
-    int returnCode = 0;
+    int return_code = 0;
 
-    int boxIndex = 0;
-    if(numBoxes == 0) {
+    int box_index = 0;
+    if (num_boxes == 0) {
         g_critical("ERROR validating Representation Index Segment: no boxes in segment.");
-        returnCode = -1;
+        goto fail;
     }
 
     // first box must be a styp
-    if(box_types[boxIndex] != BOX_TYPE_STYP) {
+    if (boxes[box_index]->type != BOX_TYPE_STYP) {
         g_critical("ERROR validating Representation Index Segment: first box not a styp.");
-        returnCode = -1;
+        goto fail;
     }
 
     // check brand
-    data_styp_t* styp = (data_styp_t*)box_data[boxIndex];
-    bool foundRisx = false;
-    bool foundSsss = false;
+    data_styp_t* styp = (data_styp_t*)boxes[box_index];
+    bool found_risx = false;
+    bool found_ssss = false;
     for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
         uint32_t brand = styp->compatible_brands[i];
-        if(brand == BRAND_RISX) {
-            foundRisx = true;
+        if (brand == BRAND_RISX) {
+            found_risx = true;
         } else if (brand == BRAND_SSSS) {
-            foundSsss = true;
+            found_ssss = true;
         }
-        if (foundRisx && foundSsss) {
+        if (found_risx && found_ssss) {
             break;
         }
     }
-    if(!foundRisx) {
+    if (!found_risx) {
         g_critical("ERROR validating Representation Index Segment: styp compatible brands does not contain \"risx\".");
         g_info("Brands found are:");
         g_info("styp major brand = %x", styp->major_brand);
-        for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
+        for (size_t i = 0; i < styp->num_compatible_brands; ++i) {
             g_info("styp compatible brand = %x", styp->compatible_brands[i]);
         }
-        returnCode = -1;
+        goto fail;
     }
 
-    boxIndex++;
+    box_index++;
 
     // second box must be a sidx that references other sidx boxes
-    if(box_types[boxIndex] != BOX_TYPE_SIDX) {
+    if (boxes[box_index]->type != BOX_TYPE_SIDX) {
         g_critical("ERROR validating Representation Index Segment: second box not a sidx.");
-        returnCode = -1;
+        goto fail;
     }
 
     // walk all references: they should all be of type 1 and should point to sidx boxes
-    data_sidx_t* masterSidx = (data_sidx_t*)box_data[boxIndex];
-    unsigned int masterReferenceID = masterSidx->reference_ID;
-    if(masterReferenceID != videoPID) {
+    data_sidx_t* master_sidx = (data_sidx_t*)boxes[box_index];
+    unsigned int master_reference_id = master_sidx->reference_id;
+    if (master_reference_id != video_pid) {
         g_critical("ERROR validating Representation Index Segment: master ref ID does not equal \
-video PID.  Expected %d, actual %d.", videoPID, masterReferenceID);
-        returnCode = -1;
+video PID.  Expected %d, actual %d.", video_pid, master_reference_id);
+        return_code = -1;
     }
-    for(size_t i = 0; i < masterSidx->reference_count; i++) {
-        data_sidx_reference_t ref = masterSidx->references[i];
-        if(ref.reference_type != 1) {
+    for (size_t i = 0; i < master_sidx->reference_count; i++) {
+        data_sidx_reference_t ref = master_sidx->references[i];
+        if (ref.reference_type != 1) {
             g_critical("ERROR validating Representation Index Segment: reference type not 1.");
-            returnCode = -1;
+            goto fail;
         }
 
         // validate duration
-        if(segmentDurations[i] != ref.subsegment_duration) {
+        if (segment_durations[i] != ref.subsegment_duration) {
             g_critical("ERROR validating Representation Index Segment: master ref segment duration does not equal \
-segment duration.  Expected %"PRIu64", actual %d.", segmentDurations[i], ref.subsegment_duration);
-            returnCode = -1;
+segment duration.  Expected %"PRIu64", actual %d.", segment_durations[i], ref.subsegment_duration);
+            return_code = -1;
         }
     }
-    boxIndex++;
+    box_index++;
 
-    int segmentIndex = -1;
-    bool ssixPresent = false;
-    bool pcrbPresent = false;
-    int numNestedSidx = 0;
-    unsigned int referenced_size = 0;
-
-    uint64_t segmentStartTime = presentationTimeOffset;
+    int segment_index = -1;
+    bool ssix_present = false;
+    bool pcrb_present = false;
+    int num_nested_sidx = 0;
+    uint64_t referenced_size = 0;
+    uint64_t segment_start_time = presentation_time_offset;
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
-    while(boxIndex < numBoxes) {
-        switch(box_types[boxIndex]) {
+    for (; box_index < num_boxes; ++box_index) {
+        box_t* box = boxes[box_index];
+        switch(box->type) {
         case BOX_TYPE_SIDX: {
-            ssixPresent = false;
-            pcrbPresent = false;
+            ssix_present = false;
+            pcrb_present = false;
 
-            data_sidx_t* sidx = (data_sidx_t*)box_data[boxIndex];
-            if(numNestedSidx > 0) {
-                numNestedSidx--;
+            data_sidx_t* sidx = (data_sidx_t*)box;
+            if (num_nested_sidx > 0) {
+                num_nested_sidx--;
                 // GORP: check earliest presentation time
             } else {
                 // check size:
-                g_info("Validating referenced_size for reference %d.", segmentIndex);
-                if(segmentIndex >= 0 && referenced_size != masterSidx->references[segmentIndex].referenced_size) {
+                g_info("Validating referenced_size for reference %d.", segment_index);
+                if (segment_index >= 0 && referenced_size != master_sidx->references[segment_index].referenced_size) {
                     g_critical("ERROR validating Representation Index Segment: referenced_size for reference %d. \
-Expected %d, actual %d\n", segmentIndex, masterSidx->references[segmentIndex].referenced_size,
+Expected %"PRIu32", actual %"PRIu64"\n", segment_index, master_sidx->references[segment_index].referenced_size,
                                    referenced_size);
-                    returnCode = -1;
+                    return_code = -1;
                 }
 
                 referenced_size = 0;
-                segmentIndex++;
-                if(segmentIndex > 0) {
-                    segmentStartTime += segmentDurations[segmentIndex - 1];
+                segment_index++;
+                if (segment_index > 0) {
+                    segment_start_time += segment_durations[segment_index - 1];
                 }
 
-                g_info("Validating earliest_presentation_time for reference %d.", segmentIndex);
-                if(segmentStartTime != sidx->earliest_presentation_time) {
+                g_info("Validating earliest_presentation_time for reference %d.", segment_index);
+                if (segment_start_time != sidx->earliest_presentation_time) {
                     g_critical("ERROR validating Representation Index Segment: invalid earliest_presentation_time in sidx box. \
-Expected %"PRId64", actual %"PRId64".", segmentStartTime, sidx->earliest_presentation_time);
-                    returnCode = -1;
+Expected %"PRId64", actual %"PRId64".", segment_start_time, sidx->earliest_presentation_time);
+                    return_code = -1;
                 }
             }
             referenced_size += sidx->size;
 
             g_info("Validating reference_id");
-            if(masterReferenceID != sidx->reference_ID) {
+            if (master_reference_id != sidx->reference_id) {
                 g_critical("ERROR validating Representation Index Segment: invalid reference id in sidx box. \
-Expected %d, actual %d.", masterReferenceID, sidx->reference_ID);
-                returnCode = -1;
+Expected %d, actual %d.", master_reference_id, sidx->reference_id);
+                return_code = -1;
             }
 
             // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if(analyzeSidxReferences(sidx, &(pIFrames[segmentIndex].numIFrames), &numNestedSidx,
-                                     isSimpleProfile) != 0) {
-                returnCode = -1;
+            if (analyze_sidx_references(sidx, &(iframes[segment_index].num_iframes), &num_nested_sidx,
+                                     is_simple_profile) != 0) {
+                return_code = -1;
             }
             break;
         }
         case BOX_TYPE_SSIX: {
-            data_ssix_t* ssix = (data_ssix_t*)box_data[boxIndex];
+            data_ssix_t* ssix = (data_ssix_t*)box;
             referenced_size += ssix->size;
             g_info("Validating ssix box");
-            if(ssixPresent) {
+            if (ssix_present) {
                 g_critical("ERROR validating Representation Index Segment: More than one ssix box following sidx box.");
-                returnCode = -1;
+                return_code = -1;
             } else {
-                ssixPresent = true;
+                ssix_present = true;
             }
-            if(pcrbPresent) {
+            if (pcrb_present) {
                 g_critical("ERROR validating Representation Index Segment: pcrb occurred before ssix. 6.4.6.4 says "
                         "\"The Subsegment Index box (‘ssix’) [...] shall follow immediately after the ‘sidx’ box that "
                         "documents the same Subsegment. [...] If the 'pcrb' box is present, it shall follow 'ssix'.\".");
-                returnCode = -1;
+                return_code = -1;
             }
-            if(!foundSsss) {
+            if (!found_ssss) {
                 g_critical("ERROR validating Representation Index Segment: Saw ssix box, but 'ssss' is not in compatible brands. See 6.4.6.4.");
-                returnCode = -1;
+                return_code = -1;
             }
             break;
         }
         case BOX_TYPE_PCRB: {
-            data_pcrb_t* pcrb = (data_pcrb_t*)box_data[boxIndex];
+            data_pcrb_t* pcrb = (data_pcrb_t*)box;
             referenced_size += pcrb->size;
             g_info("Validating pcrb box");
-            if(pcrbPresent) {
+            if (pcrb_present) {
                 g_critical("ERROR validating Representation Index Segment: More than one pcrb box following sidx box.");
-                returnCode = -1;
+                return_code = -1;
             } else {
-                pcrbPresent = true;
+                pcrb_present = true;
             }
             break;
         }
         default:
-            g_critical("Invalid box type: %x.", box_types[boxIndex]);
+            g_critical("Invalid box type: %x.", box->type);
             break;
         }
-        boxIndex++;
     }
 
     // check the last reference size -- the last one is not checked in the above loop
-    g_info("Validating referenced_size for reference %d. Expected %d, actual %d.",
-           segmentIndex, masterSidx->references[segmentIndex].referenced_size, referenced_size);
-    if(segmentIndex >= 0 && referenced_size != masterSidx->references[segmentIndex].referenced_size) {
+    g_info("Validating referenced_size for reference %d. Expected %"PRIu32", actual %"PRIu64".",
+           segment_index, master_sidx->references[segment_index].referenced_size, referenced_size);
+    if (segment_index >= 0 && referenced_size != master_sidx->references[segment_index].referenced_size) {
         g_critical("ERROR validating Representation Index Segment: referenced_size for reference %d. \
-Expected %d, actual %d.", segmentIndex, masterSidx->references[segmentIndex].referenced_size,
+Expected %"PRIu32", actual %"PRIu64".", segment_index, master_sidx->references[segment_index].referenced_size,
                        referenced_size);
-        returnCode = -1;
+        return_code = -1;
     }
 
-    if(numNestedSidx != 0) {
+    if (num_nested_sidx != 0) {
         g_critical("ERROR validating Representation Index Segment: Incorrect number of nested sidx boxes: %d.",
-                numNestedSidx);
-        returnCode = -1;
+                num_nested_sidx);
+        return_code = -1;
     }
 
-    if((segmentIndex + 1) != numSegments) {
+    if ((segment_index + 1) != num_segments) {
         g_critical("ERROR validating Representation Index Segment: Invalid number of segment sidx boxes following master sidx box: \
-expected %zu, found %d.", numSegments, segmentIndex);
-        returnCode = -1;
+expected %zu, found %d.", num_segments, segment_index);
+        return_code = -1;
     }
 
     // fill in iFrame locations by walking the list of sidx's again, starting from the third box
-    boxIndex = 2;
-    numNestedSidx = 0;
-    segmentIndex = -1;
-    int nIFrameCntr = 0;
+    num_nested_sidx = 0;
+    segment_index = -1;
+    int iframe_counter = 0;
     unsigned int lastIFrameDuration = 0;
     uint64_t nextIFrameByteLocation = 0;
-    segmentStartTime = presentationTimeOffset;
-    while(boxIndex < numBoxes) {
-        if(box_types[boxIndex] == BOX_TYPE_SIDX) {
-            data_sidx_t* sidx = (data_sidx_t*)box_data[boxIndex];
+    segment_start_time = presentation_time_offset;
+    for (box_index = 2; box_index < num_boxes; ++box_index) {
+        box_t* box = boxes[box_index];
+        if (box->type == BOX_TYPE_SIDX) {
+            data_sidx_t* sidx = (data_sidx_t*)box;
 
-            if(numNestedSidx > 0) {
-                numNestedSidx--;
+            if (num_nested_sidx > 0) {
+                num_nested_sidx--;
                 nextIFrameByteLocation += sidx->first_offset;  // convert from 64-bit t0 32 bit
             } else {
-                segmentIndex++;
-                if(segmentIndex > 0) {
-                    segmentStartTime += segmentDurations[segmentIndex - 1];
+                segment_index++;
+                if (segment_index > 0) {
+                    segment_start_time += segment_durations[segment_index - 1];
                 }
 
-                nIFrameCntr = 0;
+                iframe_counter = 0;
                 nextIFrameByteLocation = sidx->first_offset;
-                if(segmentIndex < numSegments) {
-                    pIFrames[segmentIndex].doIFrameValidation = 1;
-                    pIFrames[segmentIndex].pIFrameLocations_Time = calloc(
-                                pIFrames[segmentIndex].numIFrames, sizeof(unsigned int));
-                    pIFrames[segmentIndex].pIFrameLocations_Byte = calloc(pIFrames[segmentIndex].numIFrames,
+                if (segment_index < num_segments) {
+                    iframes[segment_index].do_iframe_validation = 1;
+                    iframes[segment_index].iframe_locations_time = calloc(
+                                iframes[segment_index].num_iframes, sizeof(unsigned int));
+                    iframes[segment_index].iframe_locations_byte = calloc(iframes[segment_index].num_iframes,
                             sizeof(uint64_t));
-                    pIFrames[segmentIndex].pStartsWithSAP = calloc(pIFrames[segmentIndex].numIFrames,
+                    iframes[segment_index].starts_with_sap = calloc(iframes[segment_index].num_iframes,
                                                             sizeof(unsigned char));
-                    pIFrames[segmentIndex].pSAPType = calloc(pIFrames[segmentIndex].numIFrames,
+                    iframes[segment_index].sap_type = calloc(iframes[segment_index].num_iframes,
                                                       sizeof(unsigned char));
                 }
             }
 
             // fill in Iframe locations here
-            for(int i = 0; i < sidx->reference_count; i++) {
+            for (int i = 0; i < sidx->reference_count; i++) {
                 data_sidx_reference_t ref = sidx->references[i];
-                if(ref.reference_type == 0) {
-                    (pIFrames[segmentIndex]).pStartsWithSAP[nIFrameCntr] = ref.starts_with_SAP;
-                    (pIFrames[segmentIndex]).pSAPType[nIFrameCntr] = ref.SAP_type;
-                    (pIFrames[segmentIndex]).pIFrameLocations_Byte[nIFrameCntr] = nextIFrameByteLocation;
+                if (ref.reference_type == 0) {
+                    (iframes[segment_index]).starts_with_sap[iframe_counter] = ref.starts_with_sap;
+                    (iframes[segment_index]).sap_type[iframe_counter] = ref.sap_type;
+                    (iframes[segment_index]).iframe_locations_byte[iframe_counter] = nextIFrameByteLocation;
 
 
-                    if(nIFrameCntr == 0) {
-                        (pIFrames[segmentIndex]).pIFrameLocations_Time[nIFrameCntr] = segmentStartTime + ref.SAP_delta_time;
+                    if (iframe_counter == 0) {
+                        (iframes[segment_index]).iframe_locations_time[iframe_counter] = segment_start_time + ref.sap_delta_time;
                     } else {
-                        (pIFrames[segmentIndex]).pIFrameLocations_Time[nIFrameCntr] =
-                            (pIFrames[segmentIndex]).pIFrameLocations_Time[nIFrameCntr - 1] + lastIFrameDuration +
-                            ref.SAP_delta_time;
+                        (iframes[segment_index]).iframe_locations_time[iframe_counter] =
+                            (iframes[segment_index]).iframe_locations_time[iframe_counter - 1] + lastIFrameDuration +
+                            ref.sap_delta_time;
                     }
-                    nIFrameCntr++;
+                    iframe_counter++;
                     lastIFrameDuration = ref.subsegment_duration;
                     nextIFrameByteLocation += ref.referenced_size;
                 } else {
-                    numNestedSidx++;
+                    num_nested_sidx++;
                 }
             }
         }
-
-        boxIndex++;
     }
 
-
-    return returnCode;
+cleanup:
+    return return_code;
+fail:
+    return_code = -1;
+    goto cleanup;
 }
 
-int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** box_data,
-                                    int* box_sizes,
-                                    uint64_t segmentDuration, data_segment_iframes_t* pIFrames, int presentationTimeOffset, int videoPID,
-                                    bool isSimpleProfile)
+int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
+        uint64_t segment_duration, data_segment_iframes_t* iframes,
+        int presentation_time_offset, int video_pid, bool is_simple_profile)
 {
     /*
      A Single Index Segment indexes exactly one Media Segment and is defined as follows:
@@ -415,176 +390,178 @@ int validateSingleIndexSegmentBoxes(int numBoxes, box_type_t* box_types, void** 
      -- A Single Index Segment may contain one or multiple "pcrb" boxes as defined in 6.4.7.2.
      If present, "pcrb" shall follow the "sidx" box that documents the same Subsegments, i.e. a "pcrb"
      box provides PCR information for every subsegment indexed in the last "sidx" box.
-
     */
+    int return_code = 0;
 
-    int returnCode = 0;
-
-    int boxIndex = 0;
-    if(numBoxes == 0) {
+    int box_index = 0;
+    if (num_boxes == 0) {
         g_critical("ERROR validating Single Index Segment: no boxes in segment.");
-        returnCode = -1;
+        return_code = -1;
     }
 
     // first box must be a styp
-    if(box_types[boxIndex] != BOX_TYPE_STYP) {
+    if (boxes[box_index]->type != BOX_TYPE_STYP) {
         g_critical("ERROR validating Single Index Segment: first box not a styp.");
-        returnCode = -1;
+        return_code = -1;
     }
 
     // check brand
-    data_styp_t* styp = (data_styp_t*)box_data[boxIndex];
-    if(styp->major_brand != BRAND_SISX) {
+    data_styp_t* styp = (data_styp_t*)boxes[box_index];
+    if (styp->major_brand != BRAND_SISX) {
         g_info("styp brand = %x", styp->major_brand);
         g_critical("ERROR validating Single Index Segment: styp brand not risx.");
-        returnCode = -1;
+        return_code = -1;
     }
 
-    boxIndex++;
+    box_index++;
 
-    int ssixPresent = 0;
-    int pcrbPresent = 0;
-    int numNestedSidx = 0;
+    int ssix_present = 0;
+    int pcrb_present = 0;
+    int num_nested_sidx = 0;
     unsigned int referenced_size = 0;
 
-    uint64_t segmentStartTime = presentationTimeOffset;
+    uint64_t segment_start_time = presentation_time_offset;
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
-    while(boxIndex < numBoxes) {
-        if(box_types[boxIndex] == BOX_TYPE_SIDX) {
-            ssixPresent = 0;
-            pcrbPresent = 0;
+    for (; box_index < num_boxes; ++box_index) {
+        box_t* box = boxes[box_index];
+        switch (box->type) {
+        case BOX_TYPE_SIDX: {
+            ssix_present = 0;
+            pcrb_present = 0;
 
-            data_sidx_t* sidx = (data_sidx_t*)box_data[boxIndex];
-            if(numNestedSidx > 0) {
-                numNestedSidx--;
+            data_sidx_t* sidx = (data_sidx_t*)box;
+            if (num_nested_sidx > 0) {
+                num_nested_sidx--;
                 // GORP: check earliest presentation time
             } else {
                 referenced_size = 0;
 
                 g_info("Validating earliest_presentation_time");
-                if(segmentStartTime != sidx->earliest_presentation_time) {
+                if (segment_start_time != sidx->earliest_presentation_time) {
                     g_critical("ERROR validating Single Index Segment: invalid earliest_presentation_time in sidx box. \
-Expected %"PRId64", actual %"PRId64".", segmentStartTime, sidx->earliest_presentation_time);
-                    returnCode = -1;
+Expected %"PRId64", actual %"PRId64".", segment_start_time, sidx->earliest_presentation_time);
+                    return_code = -1;
                 }
             }
             referenced_size += sidx->size;
 
             g_info("Validating reference_id");
-            if(videoPID != sidx->reference_ID) {
+            if (video_pid != sidx->reference_id) {
                 g_critical("ERROR validating Single Index Segment: invalid reference id in sidx box. \
-Expected %d, actual %d.", videoPID, sidx->reference_ID);
-                returnCode = -1;
+Expected %d, actual %d.", video_pid, sidx->reference_id);
+                return_code = -1;
             }
 
             // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if(analyzeSidxReferences(sidx, &(pIFrames->numIFrames), &numNestedSidx, isSimpleProfile) != 0) {
-                returnCode = -1;
+            if (analyze_sidx_references(sidx, &(iframes->num_iframes), &num_nested_sidx, is_simple_profile) != 0) {
+                return_code = -1;
             }
-        } else {
-            // must be a ssix or pcrb box
-            if(box_types[boxIndex] == BOX_TYPE_SSIX) {
-                data_ssix_t* ssix = (data_ssix_t*)box_data[boxIndex];
-                referenced_size += ssix->size;
-                g_info("Validating ssix box");
-                if(ssixPresent) {
-                    g_critical("ERROR validating Single Index Segment: More than one ssix box following sidx box.");
-                    returnCode = -1;
-                } else {
-                    ssixPresent = 1;
-                }
-            } else if(box_types[boxIndex] == BOX_TYPE_PCRB) {
-                data_pcrb_t* pcrb = (data_pcrb_t*)box_data[boxIndex];
-                referenced_size += pcrb->size;
-                g_info("Validating pcrb box");
-                if(pcrbPresent) {
-                    g_critical("ERROR validating Single Index Segment: More than one pcrb box following sidx box.");
-                    returnCode = -1;
-                } else {
-                    pcrbPresent = 1;
-                }
-            }
+            break;
         }
-
-        boxIndex++;
+        case BOX_TYPE_SSIX: {
+            data_ssix_t* ssix = (data_ssix_t*)box;
+            referenced_size += ssix->size;
+            g_info("Validating ssix box");
+            if (ssix_present) {
+                g_critical("ERROR validating Single Index Segment: More than one ssix box following sidx box.");
+                return_code = -1;
+            } else {
+                ssix_present = 1;
+            }
+            break;
+        }
+        case BOX_TYPE_PCRB: {
+            data_pcrb_t* pcrb = (data_pcrb_t*)box;
+            referenced_size += pcrb->size;
+            g_info("Validating pcrb box");
+            if (pcrb_present) {
+                g_critical("ERROR validating Single Index Segment: More than one pcrb box following sidx box.");
+                return_code = -1;
+            } else {
+                pcrb_present = 1;
+            }
+            break;
+        }
+        default:
+            g_debug("Ignoring box: %x", box->type);
+            break;
+        }
     }
 
-    if(numNestedSidx != 0) {
+    if (num_nested_sidx != 0) {
         g_critical("ERROR validating Single Index Segment: Incorrect number of nested sidx boxes: %d.",
-                       numNestedSidx);
-        returnCode = -1;
+                       num_nested_sidx);
+        return_code = -1;
     }
 
     // fill in iFrame locations by walking the list of sidx's again, startng from box 1
 
-    pIFrames->doIFrameValidation = 1;
-    pIFrames->pIFrameLocations_Time = (unsigned int*)calloc(pIFrames->numIFrames, sizeof(unsigned int));
-    pIFrames->pIFrameLocations_Byte = (uint64_t*)calloc(pIFrames->numIFrames, sizeof(uint64_t));
-    pIFrames->pStartsWithSAP = (unsigned char*)calloc(pIFrames->numIFrames, sizeof(unsigned char));
-    pIFrames->pSAPType = (unsigned char*)calloc(pIFrames->numIFrames, sizeof(unsigned char));
+    iframes->do_iframe_validation = 1;
+    iframes->iframe_locations_time = (unsigned int*)calloc(iframes->num_iframes, sizeof(unsigned int));
+    iframes->iframe_locations_byte = (uint64_t*)calloc(iframes->num_iframes, sizeof(uint64_t));
+    iframes->starts_with_sap = (unsigned char*)calloc(iframes->num_iframes, sizeof(unsigned char));
+    iframes->sap_type = (unsigned char*)calloc(iframes->num_iframes, sizeof(unsigned char));
 
-    boxIndex = 1;
-    numNestedSidx = 0;
-    int nIFrameCntr = 0;
+    num_nested_sidx = 0;
+    int iframe_counter = 0;
     unsigned int lastIFrameDuration = 0;
     uint64_t nextIFrameByteLocation = 0;
-    segmentStartTime = presentationTimeOffset;
-    while(boxIndex < numBoxes) {
-        if(box_types[boxIndex] == BOX_TYPE_SIDX) {
-            data_sidx_t* sidx = (data_sidx_t*)box_data[boxIndex];
+    segment_start_time = presentation_time_offset;
+    for (box_index = 1; box_index < num_boxes; ++box_index) {
+        if (boxes[box_index]->type != BOX_TYPE_SIDX) {
+                continue;
+        }
+        data_sidx_t* sidx = (data_sidx_t*)boxes[box_index];
 
-            if(numNestedSidx > 0) {
-                numNestedSidx--;
-                nextIFrameByteLocation += sidx->first_offset;  // convert from 64-bit t0 32 bit
-            }
-
-            // fill in Iframe locations here
-            for(int i = 0; i < sidx->reference_count; i++) {
-                data_sidx_reference_t ref = sidx->references[i];
-                if(ref.reference_type == 0) {
-                    pIFrames->pStartsWithSAP[nIFrameCntr] = ref.starts_with_SAP;
-                    pIFrames->pSAPType[nIFrameCntr] = ref.SAP_type;
-                    pIFrames->pIFrameLocations_Byte[nIFrameCntr] = nextIFrameByteLocation;
-
-                    if(nIFrameCntr == 0) {
-                        pIFrames->pIFrameLocations_Time[nIFrameCntr] = segmentStartTime + ref.SAP_delta_time;
-                    } else {
-                        pIFrames->pIFrameLocations_Time[nIFrameCntr] =
-                            pIFrames->pIFrameLocations_Time[nIFrameCntr - 1] + lastIFrameDuration + ref.SAP_delta_time;
-                    }
-                    nIFrameCntr++;
-                    lastIFrameDuration = ref.subsegment_duration;
-                    nextIFrameByteLocation += ref.referenced_size;
-                } else {
-                    numNestedSidx++;
-                }
-            }
+        if (num_nested_sidx > 0) {
+            num_nested_sidx--;
+            nextIFrameByteLocation += sidx->first_offset;  // convert from 64-bit t0 32 bit
         }
 
-        boxIndex++;
+        // fill in Iframe locations here
+        for (size_t i = 0; i < sidx->reference_count; i++) {
+            data_sidx_reference_t ref = sidx->references[i];
+            if (ref.reference_type == 0) {
+                iframes->starts_with_sap[iframe_counter] = ref.starts_with_sap;
+                iframes->sap_type[iframe_counter] = ref.sap_type;
+                iframes->iframe_locations_byte[iframe_counter] = nextIFrameByteLocation;
+
+                if (iframe_counter == 0) {
+                    iframes->iframe_locations_time[iframe_counter] = segment_start_time + ref.sap_delta_time;
+                } else {
+                    iframes->iframe_locations_time[iframe_counter] =
+                        iframes->iframe_locations_time[iframe_counter - 1] + lastIFrameDuration + ref.sap_delta_time;
+                }
+                iframe_counter++;
+                lastIFrameDuration = ref.subsegment_duration;
+                nextIFrameByteLocation += ref.referenced_size;
+            } else {
+                num_nested_sidx++;
+            }
+        }
     }
 
-    return returnCode;
+    return return_code;
 }
 
-int analyzeSidxReferences(data_sidx_t* sidx, int* pNumIFrames, int* pNumNestedSidx,
-                          bool isSimpleProfile)
+int analyze_sidx_references(data_sidx_t* sidx, int* pnum_iframes, int* pnum_nested_sidx,
+                          bool is_simple_profile)
 {
-    int originalNumNestedSidx = *pNumNestedSidx;
-    int originalNumIFrames = *pNumIFrames;
+    int originalnum_nested_sidx = *pnum_nested_sidx;
+    int originalnum_iframes = *pnum_iframes;
 
     for(int i = 0; i < sidx->reference_count; i++) {
         data_sidx_reference_t ref = sidx->references[i];
-        if(ref.reference_type == 1) {
-            (*pNumNestedSidx)++;
+        if (ref.reference_type == 1) {
+            (*pnum_nested_sidx)++;
         } else {
-            (*pNumIFrames)++;
+            (*pnum_iframes)++;
         }
     }
 
-    if(isSimpleProfile) {
-        if(originalNumNestedSidx != *pNumNestedSidx && originalNumIFrames != *pNumIFrames) {
+    if (is_simple_profile) {
+        if (originalnum_nested_sidx != *pnum_nested_sidx && originalnum_iframes != *pnum_iframes) {
             // failure -- references contain references to both media and nested sidx boxes
             g_critical("ERROR validating Representation Index Segment: Section 8.7.3: Simple profile requires that \
 sidx boxes have either media references or sidx references, but not both.");
@@ -595,200 +572,136 @@ sidx boxes have either media references or sidx references, but not both.");
     return 0;
 }
 
-void printBoxes(size_t numBoxes, box_type_t* box_types, void** box_data)
+void print_boxes(box_t** boxes, size_t num_boxes)
 {
-    for(size_t i = 0; i < numBoxes; i++) {
-        switch(box_types[i]) {
+    for (size_t i = 0; i < num_boxes; i++) {
+        box_t* box = boxes[i];
+        switch (box->type) {
         case BOX_TYPE_STYP: {
-            printStyp((data_styp_t*)box_data[i]);
+            print_styp((data_styp_t*)box);
             break;
         }
         case BOX_TYPE_SIDX: {
-            printSidx((data_sidx_t*)box_data[i]);
+            print_sidx((data_sidx_t*)box);
             break;
         }
         case BOX_TYPE_PCRB: {
-            printPcrb((data_pcrb_t*)box_data[i]);
+            print_pcrb((data_pcrb_t*)box);
             break;
         }
         case BOX_TYPE_SSIX: {
-            printSsix((data_ssix_t*)box_data[i]);
+            print_ssix((data_ssix_t*)box);
             break;
         }
         case BOX_TYPE_EMSG: {
-            printEmsg((data_emsg_t*)box_data[i]);
+            print_emsg((data_emsg_t*)box);
             break;
         }
         }
     }
 }
 
-int validateIndexSegment(char* fname, size_t numSegments, uint64_t* segmentDurations,
-                         data_segment_iframes_t* pIFrames,
-                         int presentationTimeOffset, int videoPID, bool isSimpleProfile)
+int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
+                         data_segment_iframes_t* iframes,
+                         int presentation_time_offset, int video_pid, bool is_simple_profile)
 {
-    g_debug("validateIndexSegment: %s", fname);
-    size_t numBoxes = 0;
-    box_type_t* box_types = NULL;
-    void** box_data = NULL;
-    int* box_sizes = NULL;
+    g_debug("validate_index_segment: %s", file_name);
+    size_t num_boxes = 0;
+    box_t** boxes = NULL;
 
-    int returnCode = readBoxes(fname, &numBoxes, &box_types, &box_data, &box_sizes);
-    if(returnCode != 0) {
+    int return_code = read_boxes_from_file(file_name, &boxes, &num_boxes);
+    if (return_code != 0) {
         g_critical("ERROR validating Index Segment: Error reading boxes from file.");
         goto fail;
     }
 
-    printBoxes(numBoxes, box_types, box_data);
+    print_boxes(boxes, num_boxes);
 
-    if(numSegments <= 0) {
+    if (num_segments <= 0) {
         g_critical("ERROR validating Index Segment: Invalid number of segments.");
         goto fail;
-    } else if(numSegments == 1) {
-        returnCode = validateSingleIndexSegmentBoxes(numBoxes, box_types, box_data, box_sizes,
-                      segmentDurations[0], pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
+    } else if (num_segments == 1) {
+        return_code = validate_single_index_segment_boxes(boxes, num_boxes,
+                segment_durations[0], iframes, presentation_time_offset,
+                video_pid, is_simple_profile);
     } else {
-        returnCode = validateRepresentationIndexSegmentBoxes(numSegments, numBoxes, box_types, box_data,
-                      box_sizes,
-                      segmentDurations, pIFrames, presentationTimeOffset, videoPID, isSimpleProfile);
+        return_code = validate_representation_index_segment_boxes(num_segments,
+                boxes, num_boxes, segment_durations, iframes,
+                presentation_time_offset, video_pid, is_simple_profile);
     }
     g_info(" ");
 
     /* What is the purpose of this? */
-    for(size_t i = 0; i < numSegments; i++) {
-        g_info("data_segment_iframes %zu: doIFrameValidation = %d, numIFrames = %d",
-               i, pIFrames[i].doIFrameValidation, pIFrames[i].numIFrames);
-        for(int j = 0; j < pIFrames[i].numIFrames; j++) {
-            g_info("   pIFrameLocations_Time[%d] = %d, \tpIFrameLocations_Byte[%d] = %"PRId64, j,
-                   pIFrames[i].pIFrameLocations_Time[j], j, pIFrames[i].pIFrameLocations_Byte[j]);
+    for(size_t i = 0; i < num_segments; i++) {
+        g_info("data_segment_iframes %zu: do_iframe_validation = %d, num_iframes = %d",
+               i, iframes[i].do_iframe_validation, iframes[i].num_iframes);
+        for(int j = 0; j < iframes[i].num_iframes; j++) {
+            g_info("   iframe_locations_time[%d] = %d, \tiframe_locations_byte[%d] = %"PRId64, j,
+                   iframes[i].iframe_locations_time[j], j, iframes[i].iframe_locations_byte[j]);
         }
     }
     g_info(" ");
 
 cleanup:
-    freeBoxes(numBoxes, box_types, box_data);
-    free(box_sizes);
-    return returnCode;
+    free_boxes(boxes, num_boxes);
+    return return_code;
 fail:
-    returnCode = -1;
+    return_code = -1;
     goto cleanup;
 }
 
-
-int readBoxes(char* fname, size_t* numBoxes, box_type_t** box_types_in, void** * box_data_in,
-              int** box_sizes_in)
+int read_boxes_from_file(char* file_name, box_t*** boxes_out, size_t* num_boxes)
 {
-    FILE* indexFile = NULL;
-    unsigned char* buffer = NULL;
-    
-    struct stat st;
-    if(stat(fname, &st) != 0) {
-        g_critical("ERROR validating Index Segment: Error getting file size for %s.", fname);
+    int return_code = 0;
+    GFile* file = g_file_new_for_path(file_name);
+    GError* error = NULL;
+    GFileInputStream* file_input = g_file_read(file, NULL, &error);
+    GDataInputStream* input = g_data_input_stream_new(G_INPUT_STREAM(file_input));
+    if (error != NULL) {
+        g_critical("Error validating index segment, unable to read file %s. Error is: %s.", file_name, error->message);
+        g_error_free(error);
         goto fail;
     }
 
-    indexFile = fopen(fname, "r");
-    if(!indexFile) {
-        g_critical("ERROR validating Index Segment: Couldn't open indexFile %s.", fname);
-        goto fail;
-    }
-
-    int bufferSize = st.st_size;
-    buffer = malloc(bufferSize);
-
-    if(fread(buffer, 1, bufferSize, indexFile) != bufferSize) {
-        goto fail;
-    }
-
-    int returnCode = readBoxes2(buffer, bufferSize, numBoxes, box_types_in, box_data_in, box_sizes_in);
+    return_code = read_boxes_from_stream(input, boxes_out, num_boxes);
 cleanup:
-    if (indexFile != NULL) {
-        fclose(indexFile);
-    }
-    free(buffer);
-    return returnCode;
+    g_object_unref(input);
+    g_object_unref(file_input);
+    g_object_unref(file);
+    return return_code;
 fail:
-    returnCode = -1;
+    return_code = -1;
     goto cleanup;
 }
 
-int readBoxes2(unsigned char* buffer, int bufferSize, size_t* numBoxes, box_type_t** box_types_in,
-               void** * box_data_in, int** box_sizes_in)
+int read_boxes_from_stream(GDataInputStream* input, box_t*** boxes_out, size_t* num_boxes)
 {
-    if(getNumBoxes(buffer, bufferSize, numBoxes) != 0) {
-        g_critical("ERROR validating Index Segment: Error reading number of boxes in buffer.");
-        return -1;
-    }
-
-    box_type_t* box_types = malloc((*numBoxes) * sizeof(box_type_t));
-    void** box_data = malloc((*numBoxes) * sizeof(void*));
-    int* box_sizes = malloc((*numBoxes) * sizeof(int));
-    *box_types_in = box_types;
-    *box_data_in = box_data;
-    *box_sizes_in = box_sizes;
-
-    for(int i = 0; i < *numBoxes; i++) {
-        uint32_t size = readUint32(&buffer);
-        box_types[i] = readUint32(&buffer);
-
-        unsigned int boxBufferSize = size - 8;
-
-        bool invalid = false;
-        int returnCode = -1;
-        switch(box_types[i]) {
-        case BOX_TYPE_STYP:
-            box_data[i] = malloc(sizeof(data_styp_t));
-            returnCode = parseStyp(buffer, boxBufferSize, (data_styp_t*)box_data[i]);
-            break;
-        case BOX_TYPE_SIDX:
-            box_data[i] = malloc(sizeof(data_sidx_t));
-            returnCode = parseSidx(buffer, boxBufferSize, (data_sidx_t*)box_data[i]);
-            break;
-        case BOX_TYPE_PCRB:
-            box_data[i] = malloc(sizeof(data_pcrb_t));
-            returnCode = parsePcrb(buffer, boxBufferSize, (data_pcrb_t*)box_data[i]);
-            break;
-        case BOX_TYPE_SSIX:
-            box_data[i] = malloc(sizeof(data_ssix_t));
-            returnCode = parseSsix(buffer, boxBufferSize, (data_ssix_t*)box_data[i]);
-            break;
-        case BOX_TYPE_EMSG:
-            box_data[i] = malloc(sizeof(data_emsg_t));
-            returnCode = parseEmsg(buffer, boxBufferSize, (data_emsg_t*)box_data[i]);
-            break;
-        default:
-            invalid = true;
+    int return_code = 0;
+    GPtrArray* boxes = g_ptr_array_new();
+    while (true) {
+        GError* error = NULL;
+        box_t* box = parse_box(input, &error);
+        if (error) {
+            g_critical("Failed to read box: %s.", error->message);
+            g_error_free(error);
+            goto fail;
+        } else if (box == NULL) {
             break;
         }
-        if(returnCode != 0) {
-            char strType[] = {0, 0, 0, 0, 0};
-            convertUintToString(strType, box_types[i]);
-            g_critical("ERROR validating Index Segment: ERROR parsing %s box%s.", strType, invalid ? " (unknown box type)" : "");
-            return -1;
-        }
-        buffer += boxBufferSize;
+        g_ptr_array_add(boxes, box);
     }
-
-    return 0;
+    *num_boxes = boxes->len;
+    *boxes_out = (box_t**)g_ptr_array_free(boxes, false);
+cleanup:
+    return return_code;
+fail:
+    return_code = -1;
+    g_ptr_array_set_free_func(boxes, (GDestroyNotify)free_box);
+    g_ptr_array_free(boxes, true);
+    goto cleanup;
 }
 
-int getNumBoxes(unsigned char* buffer, int bufferSize, size_t* numBoxes)
-{
-    uint8_t* bufferEnd = buffer + bufferSize;
-    *numBoxes = 0;
-    while(buffer < bufferEnd) {
-        uint32_t size = readUint32(&buffer);
-        buffer += size - 4;
-        (*numBoxes)++;
-    }
-    return 0;
-}
-
-typedef struct {
-    uint32_t size;
-} box_t;
-
-int parseBox(uint8_t** buffer, int bufferSize, box_t* box)
+box_t* parse_box(GDataInputStream* input, GError** error)
 {
     /*
     aligned(8) class Box (unsigned int(32) boxtype, optional unsigned int(8)[16] extended_type) {
@@ -804,17 +717,62 @@ int parseBox(uint8_t** buffer, int bufferSize, box_t* box)
         }
     }
     */
-    box->size = bufferSize + 8;
-    return 0;
+    box_t* box = NULL;
+    uint32_t size = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        /* No more data */
+        g_error_free(*error);
+        *error = NULL;
+        return NULL;
+    }
+    /* TODO: Handle largesize and "extends to end of file" */
+    uint32_t type = g_data_input_stream_read_uint32(input, NULL, error);
+    /* TODO: Handle usertype */
+    if (*error) {
+        goto fail;
+    }
+
+    /* Ignore size for Box itself */
+    uint32_t inner_size = size - 8;
+
+    switch (type) {
+    case BOX_TYPE_STYP:
+        box = parse_styp(input, inner_size, error);
+        break;
+    case BOX_TYPE_SIDX:
+        box = parse_sidx(input, inner_size, error);
+        break;
+    case BOX_TYPE_PCRB:
+        box = parse_pcrb(input, inner_size, error);
+        break;
+    case BOX_TYPE_SSIX:
+        box = parse_ssix(input, inner_size, error);
+        break;
+    case BOX_TYPE_EMSG:
+        box = parse_emsg(input, inner_size, error);
+        break;
+    default: {
+        char tmp[5] = {0};
+        uint32_to_string(tmp, type);
+        g_critical("Error parsing unknown box type: %s.", tmp);
+        goto fail;
+    }
+    }
+    if (box) {
+        box->type = type;
+        box->size = size;
+    }
+    if (*error) {
+        goto fail;
+    }
+
+    return box;
+fail:
+    free_box(box);
+    return NULL;
 }
 
-typedef struct {
-    box_t box;
-    uint8_t version;
-    uint32_t flags;
-} fullbox_t;
-
-int parseFullBox(uint8_t** buffer, int bufferSize, fullbox_t* box)
+void parse_full_box(GDataInputStream* input, fullbox_t* box, size_t box_size, GError** error)
 {
     /*
     aligned(8) class FullBox(unsigned int(32) boxtype, unsigned int(8) v, bit(24) f) extends Box(boxtype) {
@@ -822,22 +780,25 @@ int parseFullBox(uint8_t** buffer, int bufferSize, fullbox_t* box)
         bit(24) flags = f;
     }
     */
-    int result = parseBox(buffer, bufferSize, (box_t*)box);
-    if (result != 0) {
-        return result;
+    if (box_size < 4) {
+        *error = g_error_new(isobmff_error_quark(), ISOBMFF_ERROR_BAD_BOX_SIZE, "FullBox is 4 bytes, but this box size only has %zu bytes remaining.", box_size);
+        return;
     }
-    box->version = readUint8(buffer);
-    box->flags = readUint24(buffer);
-    return 0;
+    box->version = g_data_input_stream_read_byte(input, NULL, error);
+    if (*error) {
+        return;
+    }
+
+    box->flags = read_uint24(input, error);
 }
 
-void freeStyp(data_styp_t* styp)
+void free_styp(data_styp_t* box)
 {
-    free(styp->compatible_brands);
-    free(styp);
+    g_free(box->compatible_brands);
+    g_free(box);
 }
 
-int parseStyp(unsigned char* buffer, int bufferSize, data_styp_t* styp)
+box_t* parse_styp(GDataInputStream* input, size_t box_size, GError** error)
 {
     /*
     "A segment type has the same format as an 'ftyp' box [4.3], except that it takes the box type 'styp'."
@@ -847,31 +808,44 @@ int parseStyp(unsigned char* buffer, int bufferSize, data_styp_t* styp)
         unsigned int(32) compatible_brands[];
     }
     */
-    styp->size = bufferSize + 8;
-    styp->major_brand = readUint32(&buffer);
-    styp->minor_version = readUint32(&buffer);
-    styp->num_compatible_brands = (bufferSize - 8) / 4;
+    data_styp_t* box = g_new0(data_styp_t, 1);
 
-    if(styp->num_compatible_brands != 0) {
-        styp->compatible_brands = malloc(styp->num_compatible_brands * sizeof(uint32_t));
-        for(int i = 0; i < styp->num_compatible_brands; i++) {
-            styp->compatible_brands[i] = readUint32(&buffer);
+    box->major_brand = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box->minor_version = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+
+    box->num_compatible_brands = (box_size - 8) / 4;
+    if (box->num_compatible_brands != 0) {
+        box->compatible_brands = g_new(uint32_t, box->num_compatible_brands);
+        for(size_t i = 0; i < box->num_compatible_brands; ++i) {
+            box->compatible_brands[i] = g_data_input_stream_read_uint32(input, NULL, error);
+            if (*error) {
+                goto fail;
+            }
         }
     }
-    return 0;
+    return (box_t*)box;
+fail:
+    free_box((box_t*)box);
+    return NULL;
 }
 
-void freeSidx(data_sidx_t* sidx)
+void free_sidx(data_sidx_t* box)
 {
-    free(sidx->references);
-    free(sidx);
+    g_free(box->references);
+    g_free(box);
 }
 
-int parseSidx(unsigned char* buffer, int bufferSize, data_sidx_t* sidx)
+box_t* parse_sidx(GDataInputStream* input, size_t box_size, GError** error)
 {
     /*
-    aligned(8) class SegmentIndexBox extends FullBox("sidx", version, 0) {
-        unsigned int(32) reference_ID;
+    aligned(8) class segment_indexBox extends FullBox("sidx", version, 0) {
+        unsigned int(32) reference_id;
         unsigned int(32) timescale;
         if (version == 0) {
             unsigned int(32) earliest_presentation_time;
@@ -886,50 +860,90 @@ int parseSidx(unsigned char* buffer, int bufferSize, data_sidx_t* sidx)
             bit (1) reference_type;
             unsigned int(31) referenced_size;
             unsigned int(32) subsegment_duration;
-            bit(1) starts_with_SAP;
-            unsigned int(3) SAP_type;
-            unsigned int(28) SAP_delta_time;
+            bit(1) starts_with_sap;
+            unsigned int(3) sap_type;
+            unsigned int(28) sap_delta_time;
         }
     }
     */
-    int result = parseFullBox(&buffer, bufferSize, (fullbox_t*)sidx);
-    if(result != 0) {
-        return result;
+    data_sidx_t* box = g_new0(data_sidx_t, 1);
+    parse_full_box(input, (fullbox_t*)box, box_size, error);
+    if (*error) {
+        goto fail;
+    }
+    box_size -= 4;
+
+    box->reference_id = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box->timescale = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
     }
 
-    sidx->reference_ID = readUint32(&buffer);
-    sidx->timescale = readUint32(&buffer);
-
-    if(sidx->version == 0) {
-        sidx->earliest_presentation_time = readUint32(&buffer);
-        sidx->first_offset = readUint32(&buffer);
+    if (box->version == 0) {
+        box->earliest_presentation_time = g_data_input_stream_read_uint32(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
+        box->first_offset = g_data_input_stream_read_uint32(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
     } else {
-        sidx->earliest_presentation_time = readUint64(&buffer);
-        sidx->first_offset = readUint64(&buffer);
+        box->earliest_presentation_time = g_data_input_stream_read_uint64(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
+        box->first_offset = g_data_input_stream_read_uint64(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
     }
 
-    sidx->reserved = readUint16(&buffer);
-    sidx->reference_count = readUint16(&buffer);
-
-    sidx->references = malloc(sidx->reference_count * sizeof(
-                           data_sidx_reference_t));
-    for(size_t i = 0; i < sidx->reference_count; i++) {
-        sidx->references[i].reference_type = (*buffer) >> 7;
-        sidx->references[i].referenced_size = readUint32(&buffer) & 0x7fffffff;
-        sidx->references[i].subsegment_duration = readUint32(&buffer);
-        sidx->references[i].starts_with_SAP = ((*buffer) >> 7);
-        sidx->references[i].SAP_type = ((*buffer) >> 4) & 0x7;
-        sidx->references[i].SAP_delta_time = readUint32(&buffer) & 0x0fffffff;
+    box->reserved = g_data_input_stream_read_uint16(input, NULL, error);
+    if (*error) {
+        goto fail;
     }
-    return 0;
+    box->reference_count = g_data_input_stream_read_uint16(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+
+    box->references = g_new(data_sidx_reference_t, box->reference_count);
+    for (size_t i = 0; i < box->reference_count; ++i) {
+        data_sidx_reference_t* reference = &box->references[i];
+        uint32_t tmp = g_data_input_stream_read_uint32(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
+        reference->reference_type = tmp >> 31;
+        reference->referenced_size = tmp & 0x7fffffff;
+        reference->subsegment_duration = g_data_input_stream_read_uint32(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
+        tmp = g_data_input_stream_read_uint32(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
+        reference->starts_with_sap = tmp >> 31;
+        reference->sap_type = (tmp >> 28) & 0x7;
+        reference->sap_delta_time = tmp & 0x0fffffff;
+    }
+    return (box_t*)box;
+fail:
+    free_box((box_t*)box);
+    return NULL;
 }
 
-void freePcrb(data_pcrb_t* pcrb)
+void free_pcrb(data_pcrb_t* box)
 {
-    free(pcrb);
+    g_free(box);
 }
 
-int parsePcrb(unsigned char* buffer, int bufferSize, data_pcrb_t* pcrb)
+box_t* parse_pcrb(GDataInputStream* input, size_t box_size, GError** error)
 {
     /*
     aligned(8) class ProducerReferenceTimeBox extends FullBox("prft", version, 0)
@@ -943,44 +957,52 @@ int parsePcrb(unsigned char* buffer, int bufferSize, data_pcrb_t* pcrb)
         }
     }
     */
-    int result = parseFullBox(&buffer, bufferSize, (fullbox_t*)pcrb);
-    if (result != 0) {
-        return result;
+    data_pcrb_t* box = g_new0(data_pcrb_t, 1);
+    parse_full_box(input, (fullbox_t*)box, box_size, error);
+    if (*error) {
+        goto fail;
+    }
+    box_size -= 4;
+
+    box->reference_track_id = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box->ntp_timestamp = g_data_input_stream_read_uint64(input, NULL, error);
+    if (*error) {
+        goto fail;
     }
 
-    pcrb->reference_track_ID = readUint32(&buffer);
-    pcrb->ntp_timestamp = readUint64(&buffer);
-
-    if(pcrb->version == 0) {
-        pcrb->media_time = readUint32(&buffer);
+    if (box->version == 0) {
+        box->media_time = g_data_input_stream_read_uint32(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
     } else {
-        pcrb->media_time = readUint64(&buffer);
+        box->media_time = g_data_input_stream_read_uint64(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
     }
-    return 0;
+    return (box_t*)box;
+fail:
+    free_box((box_t*)box);
+    return NULL;
 }
 
-void freeSsix(data_ssix_t* ssix)
+void free_ssix(data_ssix_t* box)
 {
-    for(int i = 0; i < ssix->subsegment_count; i++) {
-        free(ssix->subsegments[i].ranges);
+    for (size_t i = 0; i < box->subsegment_count; i++) {
+        g_free(box->subsegments[i].ranges);
     }
-    free(ssix->subsegments);
-    free(ssix);
+    g_free(box->subsegments);
+    g_free(box);
 }
 
-void freeEmsg(data_emsg_t* emsg)
-{
-    free(emsg->scheme_id_uri);
-    free(emsg->value);
-    free(emsg->message_data);
-
-    free(emsg);
-}
-
-int parseSsix(unsigned char* buffer, int bufferSize, data_ssix_t* ssix)
+box_t* parse_ssix(GDataInputStream* input, size_t box_size, GError** error)
 {
     /*
-    aligned(8) class SubsegmentIndexBox extends FullBox("ssix", 0, 0) {
+    aligned(8) class Subsegment_indexBox extends FullBox("ssix", 0, 0) {
        unsigned int(32) subsegment_count;
        for(i = 1; i <= subsegment_count; i++)
        {
@@ -993,29 +1015,54 @@ int parseSsix(unsigned char* buffer, int bufferSize, data_ssix_t* ssix)
        }
     }
     */
-    int result = parseFullBox(&buffer, bufferSize, (fullbox_t*)ssix);
-    if(result != 0) {
-        return result;
+    data_ssix_t* box = g_new0(data_ssix_t, 1);
+    parse_full_box(input, (fullbox_t*)box, box_size, error);
+    if (*error) {
+        goto fail;
     }
+    box_size -= 4;
 
-    ssix->subsegment_count = readUint32(&buffer);
-    ssix->subsegments = malloc(ssix->subsegment_count * sizeof(
-                            data_ssix_subsegment_t));
+    box->subsegment_count = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box->subsegments = g_new(data_ssix_subsegment_t, box->subsegment_count);
 
-    for(size_t i = 0; i < ssix->subsegment_count; i++) {
-        ssix->subsegments[i].ranges_count = readUint32(&buffer);
-        ssix->subsegments[i].ranges = malloc(
-                                          ssix->subsegments[i].ranges_count *
-                                          sizeof(data_ssix_subsegment_range_t));
-        for(size_t ii = 0; ii < ssix->subsegments[i].ranges_count; ii++) {
-            ssix->subsegments[i].ranges[ii].level = readUint8(&buffer);
-            ssix->subsegments[i].ranges[ii].range_size = readUint24(&buffer);
+    for (size_t i = 0; i < box->subsegment_count; i++) {
+        data_ssix_subsegment_t* subsegment = &box->subsegments[i];
+        subsegment->ranges_count = g_data_input_stream_read_uint32(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
+        subsegment->ranges = g_new(data_ssix_subsegment_range_t, subsegment->ranges_count);
+        for (size_t j = 0; j < subsegment->ranges_count; ++j) {
+            data_ssix_subsegment_range_t* range = &subsegment->ranges[i];
+            range->level = g_data_input_stream_read_byte(input, NULL, error);
+            if (*error) {
+                goto fail;
+            }
+            range->range_size = read_uint24(input, error);
+            if (*error) {
+                goto fail;
+            }
         }
     }
-    return 0;
+    return (box_t*)box;
+fail:
+    free_box((box_t*)box);
+    return NULL;
 }
 
-int parseEmsg(unsigned char* buffer, int bufferSize, data_emsg_t* emsg)
+void free_emsg(data_emsg_t* box)
+{
+    g_free(box->scheme_id_uri);
+    g_free(box->value);
+    g_free(box->message_data);
+
+    g_free(box);
+}
+
+box_t* parse_emsg(GDataInputStream* input, size_t box_size, GError** error)
 {
     /*
     aligned(8) class DASHEventMessageBox extends FullBox("emsg", version = 0, flags = 0)
@@ -1029,40 +1076,69 @@ int parseEmsg(unsigned char* buffer, int bufferSize, data_emsg_t* emsg)
         unsigned int(8) message_data[];
     }
     */
-    uint8_t* bufferEnd = buffer + bufferSize;
-    int result = parseFullBox(&buffer, bufferSize, (fullbox_t*)emsg);
-    if(result != 0) {
-        return result;
+    data_emsg_t* box = g_new0(data_emsg_t, 1);
+    parse_full_box(input, (fullbox_t*)box, box_size, error);
+    if (*error) {
+        goto fail;
+    }
+    box_size -= 4;
+
+    gsize length;
+    box->scheme_id_uri = g_data_input_stream_read_upto(input, "\0", 1, &length, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    /* Skip NUL terminator */
+    g_data_input_stream_read_byte(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box_size -= length + 1;
+
+    box->value = g_data_input_stream_read_upto(input, "\0", 1, &length, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    /* Skip NUL terminator */
+    g_data_input_stream_read_byte(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box_size -= length + 1;
+
+    box->timescale = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box->presentation_time_delta = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box->event_duration = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
+    }
+    box->id = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        goto fail;
     }
 
-    emsg->scheme_id_uri = readString(&buffer, bufferEnd);
-    if(emsg->scheme_id_uri == NULL) {
-        g_critical("ERROR validating EMSG: Null terminator for scheme_id_uri not found in parseEmsg.");
-        return -1;
+    box->message_data_size = box_size - 17;
+    if (box->message_data_size != 0) {
+        box->message_data = g_new0(uint8_t, box->message_data_size);
+        g_input_stream_read(G_INPUT_STREAM(input), box->message_data, box->message_data_size, NULL, error);
+        if (*error) {
+            goto fail;
+        }
     }
 
-    emsg->value = readString(&buffer, bufferEnd);
-    if(emsg->scheme_id_uri == NULL) {
-        g_critical("ERROR validating EMSG: Null terminator for value not found in parseEmsg.");
-        return -1;
-    }
-
-    emsg->timescale = readUint32(&buffer);
-    emsg->presentation_time_delta = readUint32(&buffer);
-    emsg->event_duration = readUint32(&buffer);
-    emsg->id = readUint32(&buffer);
-
-    emsg->message_data_size = bufferEnd - buffer;
-    if(emsg->message_data_size != 0) {
-        emsg->message_data = malloc(emsg->message_data_size);
-        memcpy(emsg->message_data, buffer, emsg->message_data_size);
-        buffer += emsg->message_data_size;
-    }
-
-    return 0;
+    return (box_t*)box;
+fail:
+    free_box((box_t*)box);
+    return NULL;
 }
 
-void printEmsg(data_emsg_t* emsg)
+void print_emsg(data_emsg_t* emsg)
 {
     g_debug("####### EMSG ######");
 
@@ -1074,17 +1150,16 @@ void printEmsg(data_emsg_t* emsg)
     g_debug("id = %d", emsg->id);
 
     g_debug("message_data:");
-    size_t i = 0;
     GString* line = g_string_new(NULL);
-    for(i = 0; i < emsg->message_data_size; i++) {
+    for (size_t i = 0; i < emsg->message_data_size; i++) {
         g_string_append_printf(line, "0x%x ", emsg->message_data[i]);
-        if(i % 8 == 7) {
+        if (i % 8 == 7) {
             g_debug("%s", line->str);
             g_string_truncate(line, 0);
         }
     }
 
-    if(line->len) {
+    if (line->len) {
         g_debug("%s", line->str);
     }
     g_string_free(line, true);
@@ -1092,33 +1167,30 @@ void printEmsg(data_emsg_t* emsg)
     g_debug("###################\n");
 }
 
-void printStyp(data_styp_t* styp)
+void print_styp(data_styp_t* styp)
 {
-    char strTemp[] = {0, 0, 0, 0, 0};
-
+    char str_tmp[] = {0, 0, 0, 0, 0};
     g_debug("####### STYP ######");
 
-    convertUintToString(strTemp, styp->major_brand);
-    g_debug("major_brand = %s", strTemp);
-
+    uint32_to_string(str_tmp, styp->major_brand);
+    g_debug("major_brand = %s", str_tmp);
     g_debug("minor_version = %u", styp->minor_version);
-
     g_debug("num_compatible_brands = %zu", styp->num_compatible_brands);
-    for(size_t i = 0; i < styp->num_compatible_brands; i++) {
-        convertUintToString(strTemp, styp->compatible_brands[i]);
-        g_debug("    %zu: %s", i, strTemp);
+    for (size_t i = 0; i < styp->num_compatible_brands; i++) {
+        uint32_to_string(str_tmp, styp->compatible_brands[i]);
+        g_debug("    %zu: %s", i, str_tmp);
     }
     g_debug("###################\n");
 }
 
-void printSidx(data_sidx_t* sidx)
+void print_sidx(data_sidx_t* sidx)
 {
     g_debug("####### SIDX ######");
 
     g_debug("size = %u", sidx->size);
     g_debug("version = %u", sidx->version);
     g_debug("flags = %u", sidx->flags);
-    g_debug("reference_ID = %u", sidx->reference_ID);
+    g_debug("reference_id = %u", sidx->reference_id);
     g_debug("timescale = %u", sidx->timescale);
 
     g_debug("earliest_presentation_time = %"PRId64, sidx->earliest_presentation_time);
@@ -1128,25 +1200,25 @@ void printSidx(data_sidx_t* sidx)
     g_debug("reference_count = %u", sidx->reference_count);
 
     for(size_t i = 0; i < sidx->reference_count; i++) {
-        printSidxReference(&(sidx->references[i]));
+        print_sidx_reference(&(sidx->references[i]));
     }
 
     g_debug("###################\n");
 }
 
-void printSidxReference(data_sidx_reference_t* reference)
+void print_sidx_reference(data_sidx_reference_t* reference)
 {
     g_debug("    SidxReference:");
 
     g_debug("        reference_type = %u", reference->reference_type);
     g_debug("        referenced_size = %u", reference->referenced_size);
     g_debug("        subsegment_duration = %u", reference->subsegment_duration);
-    g_debug("        starts_with_SAP = %u", reference->starts_with_SAP);
-    g_debug("        SAP_type = %u", reference->SAP_type);
-    g_debug("        SAP_delta_time = %u", reference->SAP_delta_time);
+    g_debug("        starts_with_sap = %u", reference->starts_with_sap);
+    g_debug("        sap_type = %u", reference->sap_type);
+    g_debug("        sap_delta_time = %u", reference->sap_delta_time);
 }
 
-void printSsixSubsegment(data_ssix_subsegment_t* subsegment)
+void print_ssixSubsegment(data_ssix_subsegment_t* subsegment)
 {
     g_debug("    SsixSubsegment:");
 
@@ -1157,20 +1229,20 @@ void printSsixSubsegment(data_ssix_subsegment_t* subsegment)
     }
 }
 
-void printPcrb(data_pcrb_t* pcrb)
+void print_pcrb(data_pcrb_t* pcrb)
 {
     g_debug("####### PCRB ######");
 
     g_debug("version = %u", pcrb->version);
     g_debug("flags = %u", pcrb->flags);
-    g_debug("reference_track_ID = %u", pcrb->reference_track_ID);
+    g_debug("reference_track_ID = %u", pcrb->reference_track_id);
     g_debug("ntp_timestamp = %"PRId64, pcrb->ntp_timestamp);
     g_debug("media_time = %"PRId64, pcrb->media_time);
 
     g_debug("###################\n");
 }
 
-void printSsix(data_ssix_t* ssix)
+void print_ssix(data_ssix_t* ssix)
 {
     g_debug("####### SSIX ######");
 
@@ -1179,69 +1251,70 @@ void printSsix(data_ssix_t* ssix)
     g_debug("subsegment_count = %u", ssix->subsegment_count);
 
     for(int i = 0; i < ssix->subsegment_count; i++) {
-        printSsixSubsegment(&(ssix->subsegments[i]));
+        print_ssixSubsegment(&(ssix->subsegments[i]));
     }
 
     g_debug("###################\n");
 }
 
-void convertUintToString(char* str, unsigned int uintStr)
+void uint32_to_string(char* str, uint32_t num)
 {
-    str[0] = (uintStr >> 24) & 0xff;
-    str[1] = (uintStr >> 16) & 0xff;
-    str[2] = (uintStr >>  8) & 0xff;
-    str[3] = (uintStr >>  0) & 0xff;
+    str[0] = (num >> 24) & 0xff;
+    str[1] = (num >> 16) & 0xff;
+    str[2] = (num >>  8) & 0xff;
+    str[3] = (num >>  0) & 0xff;
 }
 
-int validateEmsgMsg(unsigned char* buffer, int bufferSize, unsigned int segmentDuration)
+int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)
 {
-    g_debug("validateEmsgMsg");
+    g_debug("validate_emsg_msg");
 
-    size_t numBoxes;
-    box_type_t* box_types;
-    void** box_data;
-    int* box_sizes;
+    box_t** boxes = NULL;
+    size_t num_boxes;
 
-    int nReturnCode = readBoxes2(buffer, bufferSize, &numBoxes, &box_types, &box_data, &box_sizes);
-    if(nReturnCode != 0) {
-        g_critical("ERROR validating EMSG: Error reading boxes.");
-        return -1;
+    GDataInputStream* input = g_data_input_stream_new(g_memory_input_stream_new_from_data(buffer, len, NULL));
+    int return_code = read_boxes_from_stream(input, &boxes, &num_boxes);
+    if (return_code != 0) {
+        goto fail;
     }
 
-    printBoxes(numBoxes, box_types, box_data);
+    print_boxes(boxes, num_boxes);
 
-    for(int i = 0; i < numBoxes; i++) {
-        if(box_types[i] != BOX_TYPE_EMSG) {
+    for (size_t i = 0; i < num_boxes; i++) {
+        data_emsg_t* box = (data_emsg_t*)boxes[i];
+        if (box->type != BOX_TYPE_EMSG) {
             g_critical("ERROR validating EMSG: Invalid box type found.");
-            freeBoxes(numBoxes, box_types, box_data);
-            return -1;
+            goto fail;
         }
 
         // GORP: anything else to verify here??
 
-        data_emsg_t* emsg = (data_emsg_t*)box_data[i];
-        if(emsg->presentation_time_delta + emsg->event_duration > segmentDuration) {
+        if (box->presentation_time_delta + box->event_duration > segment_duration) {
             g_critical("ERROR validating EMSG: event lasts longer tha segment duration.");
-            freeBoxes(numBoxes, box_types, box_data);
-            return -1;
+            goto fail;
         }
     }
 
-    freeBoxes(numBoxes, box_types, box_data);
-    return nReturnCode;
+cleanup:
+    g_object_unref(input);
+    free_boxes(boxes, num_boxes);
+    return return_code;
+fail:
+    return_code = -1;
+    goto cleanup;
 }
 
-void freeIFrames(data_segment_iframes_t* pIFrames, int numSegments)
+void free_segment_iframes(data_segment_iframes_t* iframes, size_t num_segments)
 {
-    if(pIFrames == NULL) {
+    if (iframes == NULL) {
         return;
     }
 
-    for(int i = 0; i < numSegments; i++) {
-        free(pIFrames[i].pIFrameLocations_Time);
-        free(pIFrames[i].pIFrameLocations_Byte);
-        free(pIFrames[i].pStartsWithSAP);
-        free(pIFrames[i].pSAPType);
+    for(size_t i = 0; i < num_segments; i++) {
+        free(iframes[i].iframe_locations_time);
+        free(iframes[i].iframe_locations_byte);
+        free(iframes[i].starts_with_sap);
+        free(iframes[i].sap_type);
     }
-    free(pIFrames);
+    free(iframes);
 }

@@ -35,8 +35,8 @@
 
 ecm_pid_t* ecm_pid_new(int pid, elementary_stream_info_t* esi)
 {
-    ecm_pid_t* ep = malloc(sizeof(ecm_pid_t));
-    ep->PID = pid;
+    ecm_pid_t* ep = malloc(sizeof(*ep));
+    ep->pid = pid;
     ep->elementary_pids = g_ptr_array_new();
     g_ptr_array_add(ep->elementary_pids, esi);
     ep->ecm = NULL;
@@ -53,10 +53,10 @@ void ecm_pid_free(ecm_pid_t* ep)
     free(ep);
 }
 
-ca_system_t* ca_system_new(int CA_system_id)
+ca_system_t* ca_system_new(int ca_system_id)
 {
-    ca_system_t* cas = calloc(1, sizeof(ca_system_t));
-    cas->id = CA_system_id;
+    ca_system_t* cas = calloc(1, sizeof(*cas));
+    cas->id = ca_system_id;
     cas->ecm_pids = g_ptr_array_new_with_free_func((GDestroyNotify)ecm_pid_free);
     return cas;
 }
@@ -73,65 +73,62 @@ void ca_system_free(ca_system_t* cas)
 // FIXME: for now, we ignore EMMs
 int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, GPtrArray* cas_list)
 {
-    if(ts == NULL || cas_list == NULL) {
+    if (ts == NULL || cas_list == NULL) {
         return 0;
     }
 
-    for(gsize i = 0; i < cas_list->len; ++i) {
+    for (gsize i = 0; i < cas_list->len; ++i) {
         ca_system_t* cas = g_ptr_array_index(cas_list, i);
-        for(int j  = 0; j < cas->ecm_pids->len; j++) {
+        for (gsize j  = 0; j < cas->ecm_pids->len; j++) {
             ecm_pid_t* ep = g_ptr_array_index(cas->ecm_pids, j);
-            if(ep != NULL) {
-                if(ep->PID == ts->header.PID) {
-                    ts_free(ep->ecm);
-                }
-                ep->ecm = ts;
-                return 1;
+            if(ep->pid == ts->header.pid) {
+                ts_free(ep->ecm);
             }
+            ep->ecm = ts;
+            return 1;
         }
     }
 
     ts_free(ts);
-    g_warning("PID 0x%04X does not appear to carry CAS-related information.", ts->header.PID);
+    g_warning("PID 0x%04X does not appear to carry CAS-related information.", ts->header.pid);
     return 0;
 }
 
 int ca_system_process_ca_descriptor(GPtrArray* cas_list, elementary_stream_info_t* esi,
-                                    ca_descriptor_t* cad)
+        ca_descriptor_t* cad)
 {
-    ca_system_t* cas = NULL;
-
-    if(cas_list == NULL) {
+    if (cas_list == NULL) {
         return 0;
     }
 
-    for(gsize i = 0; i < cas_list->len; ++i) {
+    ca_system_t* cas = NULL;
+    for (gsize i = 0; i < cas_list->len; ++i) {
         cas = g_ptr_array_index(cas->ecm_pids, i);
-        if(cas && cas->id == cad->CA_system_ID) {
+        if (cas && cas->id == cad->ca_system_id) {
             break;
         }
     }
 
-    if(cas == NULL) {
+    if (cas == NULL) {
         // new CAS
-        cas = ca_system_new(cad->CA_system_ID) ;
+        cas = ca_system_new(cad->ca_system_id) ;
     }
 
     if(esi == NULL) {
         // ca_descriptor is from CAT
-        cas->EMM_PID = cad->CA_PID;
+        cas->emm_pid = cad->ca_pid;
         return 1;
     }
 
     // from here onwards this descriptor is per single ES
 
     ecm_pid_t* ep = NULL;
-    for(gsize i = 0; i < cas->ecm_pids->len; i++) {
+    for (gsize i = 0; i < cas->ecm_pids->len; i++) {
         ep = g_ptr_array_index(cas->ecm_pids, i);
-        if(ep->PID == cad->CA_PID) {
-            for(gsize j = 0; j < ep->elementary_pids->len; j++) {
+        if (ep->pid == cad->ca_pid) {
+            for (gsize j = 0; j < ep->elementary_pids->len; j++) {
                 elementary_stream_info_t* tmp = g_ptr_array_index(ep->elementary_pids, i);
-                if(tmp->elementary_PID == esi->elementary_PID) {
+                if (tmp->elementary_pid == esi->elementary_pid) {
                     return 1;
                 }
             }
@@ -139,19 +136,19 @@ int ca_system_process_ca_descriptor(GPtrArray* cas_list, elementary_stream_info_
     }
 
     // we have a new ECM PID
-    if(ep == NULL) {
-        ep = ecm_pid_new(cad->CA_PID, esi);
+    if (ep == NULL) {
+        ep = ecm_pid_new(cad->ca_pid, esi);
         g_ptr_array_add(cas->ecm_pids, ep);
     }
 
     return 1;
 }
 
-ts_packet_t* ca_system_get_ecm(ca_system_t* cas, uint32_t ECM_PID)
+ts_packet_t* ca_system_get_ecm(ca_system_t* cas, uint32_t ecm_pid)
 {
     for(gsize i  = 0; i < cas->ecm_pids->len; ++i) {
         ecm_pid_t* ep = g_ptr_array_index(cas->ecm_pids, i);
-        if(ep->PID == ECM_PID) {
+        if(ep->pid == ecm_pid) {
             return ep->ecm;
         }
     }
