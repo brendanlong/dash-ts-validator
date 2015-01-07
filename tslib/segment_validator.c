@@ -457,9 +457,12 @@ expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPTyp
         int index = 0;
         int frame_counter = 0;
         while (index < pes->payload_len) {
-            unsigned int frame_length = ((pes->payload[index + 3] & 0x0003) << 11) +
+            uint64_t frame_length = ((pes->payload[index + 3] & 0x0003) << 11) +
                                         ((pes->payload[index + 4]) << 3) + ((pes->payload[index + 5] & 0x00E0) >> 5);
-
+            if (frame_length == 0) {
+                g_critical("Error: Detected 0-length frame");
+                goto fail;
+            }
             index += frame_length;
             frame_counter++;
         }
@@ -467,9 +470,13 @@ expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPTyp
         pid_validator->duration = 1920 /* 21.3 msec for 90kHz clock */ * frame_counter;
     }
 
+cleanup:
     pid_validator->pes_count++;
     pes_free(pes);
     return 1;
+fail:
+    global_dash_validator->status = 0;
+    goto cleanup;
 }
 
 int validate_segment(dash_validator_t* dash_validator, char* fname,
