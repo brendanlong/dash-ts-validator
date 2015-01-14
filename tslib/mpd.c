@@ -29,6 +29,7 @@ typedef struct {
 bool read_period(xmlNode*, mpd_t*, char* base_url);
 bool read_adaptation_set(xmlNode*, period_t*, char* base_url);
 bool read_representation(xmlNode*, adaptation_set_t*, bool saw_mime_type, char* base_url);
+bool read_segment_base(xmlNode*, representation_t*, char* base_url);
 bool read_segment_list(xmlNode*, representation_t*, char* base_url);
 GPtrArray* read_segment_timeline(xmlNode*);
 bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t duration, char* base_url);
@@ -395,6 +396,10 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
             if(!read_segment_list(cur_node, representation, base_url)) {
                 goto fail;
             }
+        } else if (xmlStrEqual(cur_node->name, "SegmentBase")) {
+            if (!read_segment_base(cur_node, representation, base_url)) {
+                goto fail;
+            }
         } else if (xmlStrEqual(cur_node->name, "BaseURL")) {
             /* Ignore */
         } else {
@@ -410,6 +415,38 @@ cleanup:
 fail:
     return_code = false;
     goto cleanup;
+}
+
+bool read_segment_base(xmlNode* node, representation_t* representation, char* base_url)
+{
+    bool return_code = true;
+
+    representation->presentation_time_offset = read_uint64(node, "presentationTimeOffset");
+
+    for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
+        if (cur_node->type != XML_ELEMENT_NODE) {
+            continue;
+        }
+        if (xmlStrEqual(cur_node->name, "RepresentationIndex")) {
+            if (representation->index_file_name != NULL) {
+                g_warning("Ignoring duplicate index file in <SegmentBase>.");
+                continue;
+            }
+            representation->index_file_name = read_filename(cur_node, "sourceURL", base_url);
+        } else if (xmlStrEqual(cur_node->name, "Initialization")) {
+            if (representation->initialization_file_name != NULL) {
+                g_warning("Ignoring duplicate initialization segment in <SegmentBase>.");
+                continue;
+            }
+            representation->initialization_file_name = read_filename(cur_node, "sourceURL", base_url);
+        } else {
+            g_debug("Ignoring element <%s> in <SegmentList>.", cur_node->name);
+        }
+    }
+
+    segment_t* segment = segment_new();
+    g_ptr_array_add(representation->segments, segment);
+    return return_code;
 }
 
 bool read_segment_list(xmlNode* node, representation_t* representation, char* parent_base_url)
@@ -466,10 +503,16 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
             start += duration;
         } else if (xmlStrEqual(cur_node->name, "RepresentationIndex")) {
             if (representation->index_file_name != NULL) {
-                g_warning("Ignoring duplicate index file in <Representation>.");
+                g_warning("Ignoring duplicate index file in <SegmentList>.");
                 continue;
             }
             representation->index_file_name = read_filename(cur_node, "sourceURL", base_url);
+        }  else if (xmlStrEqual(cur_node->name, "Initialization")) {
+            if (representation->initialization_file_name != NULL) {
+                g_warning("Ignoring duplicate initialization segment in <SegmentList>.");
+                continue;
+            }
+            representation->initialization_file_name = read_filename(cur_node, "sourceURL", base_url);
         } else if (xmlStrEqual(cur_node->name, "SegmentTimeline")) {
             /* Ignore */
         } else {
