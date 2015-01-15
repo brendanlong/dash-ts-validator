@@ -35,8 +35,9 @@
 
 
 // PTS/DTS
-#define PES_PTS_FLAG 0x02
-#define PES_DTS_FLAG 0x01
+// 0b10 means just PTS, 0b11 means both, 0b00 means neither, and 0b01 is forbidden
+#define PES_PTS_FLAG 0x2
+#define PES_DTS_FLAG 0x1
 
 // PES stream ID's
 

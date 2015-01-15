@@ -390,14 +390,13 @@ int pes_header_write(pes_header_t* ph, bs_t* b)
 
         bs_write_u8(b, ph->pes_header_data_length);
 
-        // FIXME! This seems wrong!
-        if (ph->pts_dts_flags & PES_PTS_FLAG) {
-            bs_write_u(b, 4, 0x02);
+        if (ph->pts_dts_flags == 0x2) {
+            bs_write_u(b, 4, 0x2);
             bs_write_90khz_timestamp(b, ph->pts);
-        }
-
-        if (ph->pts_dts_flags & PES_DTS_FLAG) {
-            bs_write_u(b, 4, 0x01);
+        } else if (ph->pts_dts_flags == 0x3) {
+            bs_write_u(b, 4, 0x3);
+            bs_write_90khz_timestamp(b, ph->pts);
+            bs_write_u(b, 4, 0x1);
             bs_write_90khz_timestamp(b, ph->dts);
         }
 
