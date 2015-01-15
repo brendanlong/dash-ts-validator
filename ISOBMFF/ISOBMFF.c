@@ -28,12 +28,12 @@ G_DEFINE_QUARK(ISOBMFF_ERROR, isobmff_error);
 int read_boxes_from_stream(GDataInputStream*, box_t*** boxes_out, size_t* num_boxes_out);
 
 box_t* parse_box(GDataInputStream*, GError**);
-void parse_full_box(GDataInputStream*, fullbox_t*, size_t box_size, GError**);
-box_t* parse_styp(GDataInputStream*, size_t box_size, GError**);
-box_t* parse_sidx(GDataInputStream*, size_t box_size, GError**);
-box_t* parse_pcrb(GDataInputStream*, size_t box_size, GError**);
-box_t* parse_ssix(GDataInputStream*, size_t box_size, GError**);
-box_t* parse_emsg(GDataInputStream*, size_t box_size, GError**);
+void parse_full_box(GDataInputStream*, fullbox_t*, uint64_t box_size, GError**);
+box_t* parse_styp(GDataInputStream*, uint64_t box_size, GError**);
+box_t* parse_sidx(GDataInputStream*, uint64_t box_size, GError**);
+box_t* parse_pcrb(GDataInputStream*, uint64_t box_size, GError**);
+box_t* parse_ssix(GDataInputStream*, uint64_t box_size, GError**);
+box_t* parse_emsg(GDataInputStream*, uint64_t box_size, GError**);
 
 static void uint32_to_string(char* str, uint32_t num);
 
@@ -82,7 +82,6 @@ void free_box(box_t* box)
         break;
     }
     default:
-        g_error("Attempted to free unknown box type: %x", box->type);
         g_free(box);
         break;
     }
@@ -727,14 +726,21 @@ box_t* parse_box(GDataInputStream* input, GError** error)
     }
     */
     box_t* box = NULL;
-    uint32_t size = g_data_input_stream_read_uint32(input, NULL, error);
+    uint64_t size = g_data_input_stream_read_uint32(input, NULL, error);
     if (*error) {
         /* No more data */
         g_error_free(*error);
         *error = NULL;
         return NULL;
     }
-    /* TODO: Handle largesize and "extends to end of file" */
+
+    if (size == 1) {
+        size = g_data_input_stream_read_uint64(input, NULL, error);
+        if (*error) {
+            goto fail;
+        }
+    }
+
     uint32_t type = g_data_input_stream_read_uint32(input, NULL, error);
     /* TODO: Handle usertype */
     if (*error) {
@@ -763,8 +769,12 @@ box_t* parse_box(GDataInputStream* input, GError** error)
     default: {
         char tmp[5] = {0};
         uint32_to_string(tmp, type);
-        g_critical("Error parsing unknown box type: %s.", tmp);
-        goto fail;
+        g_warning("Unknown box type: %s.", tmp);
+        g_input_stream_skip(G_INPUT_STREAM(input), size, NULL, error);
+        if (*error) {
+            goto fail;
+        }
+        box = g_new(box_t, 1);
     }
     }
     if (box) {
@@ -781,7 +791,7 @@ fail:
     return NULL;
 }
 
-void parse_full_box(GDataInputStream* input, fullbox_t* box, size_t box_size, GError** error)
+void parse_full_box(GDataInputStream* input, fullbox_t* box, uint64_t box_size, GError** error)
 {
     /*
     aligned(8) class FullBox(unsigned int(32) boxtype, unsigned int(8) v, bit(24) f) extends Box(boxtype) {
@@ -807,7 +817,7 @@ void free_styp(data_styp_t* box)
     g_free(box);
 }
 
-box_t* parse_styp(GDataInputStream* input, size_t box_size, GError** error)
+box_t* parse_styp(GDataInputStream* input, uint64_t box_size, GError** error)
 {
     /*
     "A segment type has the same format as an 'ftyp' box [4.3], except that it takes the box type 'styp'."
@@ -850,7 +860,7 @@ void free_sidx(data_sidx_t* box)
     g_free(box);
 }
 
-box_t* parse_sidx(GDataInputStream* input, size_t box_size, GError** error)
+box_t* parse_sidx(GDataInputStream* input, uint64_t box_size, GError** error)
 {
     /*
     aligned(8) class segment_indexBox extends FullBox("sidx", version, 0) {
@@ -953,7 +963,7 @@ void free_pcrb(data_pcrb_t* box)
     g_free(box);
 }
 
-box_t* parse_pcrb(GDataInputStream* input, size_t box_size, GError** error)
+box_t* parse_pcrb(GDataInputStream* input, uint64_t box_size, GError** error)
 {
     /* 6.4.7.2 MPEG-2 TS PCR information box
     aligned(8) class MPEG2TSPCRInfoBox extends Box(‘pcrb’, 0) {
@@ -972,7 +982,7 @@ box_t* parse_pcrb(GDataInputStream* input, size_t box_size, GError** error)
     }
     box_size -= 4;
 
-    size_t pcr_size = box->subsegment_count * (48 / 8);
+    uint64_t pcr_size = box->subsegment_count * (48 / 8);
     if (pcr_size != box_size) {
         *error = g_error_new(isobmff_error_quark(), ISOBMFF_ERROR_BAD_BOX_SIZE,
                 "pcrb box has subsegment_count %"PRIu32", indicating the remaining size should be %zu bytes, but the box has %zu bytes left.",
@@ -1005,7 +1015,7 @@ void free_ssix(data_ssix_t* box)
     g_free(box);
 }
 
-box_t* parse_ssix(GDataInputStream* input, size_t box_size, GError** error)
+box_t* parse_ssix(GDataInputStream* input, uint64_t box_size, GError** error)
 {
     /*
     aligned(8) class Subsegment_indexBox extends FullBox("ssix", 0, 0) {
@@ -1068,7 +1078,7 @@ void free_emsg(data_emsg_t* box)
     g_free(box);
 }
 
-box_t* parse_emsg(GDataInputStream* input, size_t box_size, GError** error)
+box_t* parse_emsg(GDataInputStream* input, uint64_t box_size, GError** error)
 {
     /*
     aligned(8) class DASHEventMessageBox extends FullBox("emsg", version = 0, flags = 0)
@@ -1193,7 +1203,7 @@ void print_sidx(data_sidx_t* sidx)
 {
     g_debug("####### SIDX ######");
 
-    g_debug("size = %u", sidx->size);
+    g_debug("size = %"PRIu64, sidx->size);
     g_debug("version = %u", sidx->version);
     g_debug("flags = %u", sidx->flags);
     g_debug("reference_id = %u", sidx->reference_id);

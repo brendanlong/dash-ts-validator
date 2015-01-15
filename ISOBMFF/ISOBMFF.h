@@ -32,7 +32,7 @@ typedef enum {
 } brand_t;
 
 typedef struct {
-    uint32_t size;
+    uint64_t size;
     uint32_t type;
 } box_t;
 
@@ -43,7 +43,7 @@ typedef struct {
 } fullbox_t;
 
 typedef struct {
-    uint32_t size;
+    uint64_t size;
     uint32_t type;
     uint32_t major_brand;
     uint32_t minor_version;
@@ -61,7 +61,7 @@ typedef struct {
 } data_sidx_reference_t;
 
 typedef struct {
-    uint32_t size;
+    uint64_t size;
     uint32_t type;
     uint8_t version;
     uint32_t flags;
@@ -86,7 +86,7 @@ typedef struct {
 } data_ssix_subsegment_t;
 
 typedef struct {
-    uint32_t size;
+    uint64_t size;
     uint32_t type;
     uint8_t version;
     uint32_t flags;
@@ -95,14 +95,14 @@ typedef struct {
 } data_ssix_t;
 
 typedef struct {
-    uint32_t size;
+    uint64_t size;
     uint32_t type;
     uint32_t subsegment_count;
     uint64_t* pcr;
 } data_pcrb_t;
 
 typedef struct {
-    uint32_t size;
+    uint64_t size;
     uint32_t type;
     uint8_t version;
     uint32_t flags;
