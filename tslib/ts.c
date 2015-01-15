@@ -36,7 +36,7 @@
 #include "libts_common.h"
 #include "log.h"
 
-// FIXME: when reading, we read in place; when writing we write from allocated memory
+// TODO: when reading, we read in place; when writing we write from allocated memory
 // figure out memory management -- either copy everything, or use flags
 // until done, we can read or write, not both.
 // idea: have an "expand" flag, if off -- everything is in place, on -- everything is nicely copied and allocated
@@ -121,7 +121,7 @@ int ts_read_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
                 af->original_program_clock_reference_extension = bs_read_u(b, 9);
             }
             if (af->splicing_point_flag) {
-                af->splice_countdown = bs_read_u8(b); //FIXME: it's signed, two's compliment #
+                af->splice_countdown = bs_read_u8(b); //TODO: it's signed, two's compliment #
             }
 
             if (af->transport_private_data_flag) {
@@ -205,7 +205,7 @@ int ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num)
         bs_read_bytes(&b, ts->payload.bytes, ts->payload.len);
     }
 
-    // FIXME read and interpret pointer field
+    // TODO read and interpret pointer field
 
     return bs_pos(&b);
 }
@@ -293,7 +293,7 @@ int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
             bs_write_u(b, 9, af->original_program_clock_reference_extension);
         }
         if (af->splicing_point_flag) {
-            bs_write_u8(b, af->splice_countdown); // fixme: it's actually signed!
+            bs_write_u8(b, af->splice_countdown); // TODO: it's actually signed!
         }
         if (af->transport_private_data_flag) {
             bs_write_u8(b, af->transport_private_data_length);

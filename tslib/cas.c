@@ -70,7 +70,7 @@ void ca_system_free(ca_system_t* cas)
     free(cas);
 }
 
-// FIXME: for now, we ignore EMMs
+// TODO: don't ignore EMMs
 int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, GPtrArray* cas_list)
 {
     if (ts == NULL || cas_list == NULL) {

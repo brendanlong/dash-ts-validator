@@ -185,7 +185,7 @@ int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         goto cleanup;
     }
 
-    // FIXME: allow >1 packet cat
+    // TODO: allow >1 packet cat
     if (!m2s->cat || (m2s->cat->version_number != new_cas->version_number
             && new_cas->current_next_indicator == 1)) {
         if (m2s->cat != NULL) {
@@ -226,7 +226,7 @@ int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         goto cleanup;
     }
 
-    // FIXME: allow >1 packet PAT
+    // TODO: allow >1 packet PAT
     if (!m2s->pat || (m2s->pat->version_number != new_pas->version_number
             && new_pas->current_next_indicator == 1)) {
         if (m2s->pat != NULL) {
@@ -277,7 +277,7 @@ int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
         goto cleanup;
     }
 
-    // FIXME: allow >1 packet PAT
+    // TODO: allow >1 packet PAT
     if (m2p->pmt == NULL || (m2p->pmt->version_number != new_pms->version_number
             && new_pms->current_next_indicator == 1)) {
         if (m2p->pmt != NULL) {
@@ -372,7 +372,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         // check for discontinuity
         pi->num_packets++;
 
-        // FIXME: this can misfire if we have an MPTS and same PID is "owned" by more than one program
+        // TODO: this can misfire if we have an MPTS and same PID is "owned" by more than one program
         // this is an *extremely unlikely* case
         if (pi->demux_validator != NULL && pi->demux_validator->process_ts_packet != NULL) {
             // TODO: check return value and do something intelligent

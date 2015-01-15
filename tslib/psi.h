@@ -169,7 +169,7 @@ void program_map_section_print(program_map_section_t* pms);
 #define STREAM_TYPE_S3D_SC_AVC              0x23
 #define STREAM_TYPE_HEVC                    0x24
 #define STREAM_TYPE_IPMP		    0x7F
-//FIXME: handle registration descriptor
+//TODO: handle registration descriptor
 #define STREAM_TYPE_AC3_AUDIO       0x81 // ATSC A/52B, A3.1 AC3 Stream Type
 
 #define PAT_PID			0

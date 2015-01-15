@@ -248,7 +248,6 @@ int main(int argc, char* argv[])
             if(conformance_level & TS_TEST_SIMPLE) {
                 /* For the simple profile, the PSI must be the same for all Representations in an
                  * AdaptationSet */
-                /* TODO: Make this work correctly */
                 overall_status &= check_psi_identical(adaptation_set->representations);
             }
         }

@@ -202,8 +202,7 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 
             pid_validator = pid_validator_new(pid, content_component);
             g_ptr_array_add(global_dash_validator->pids, pid_validator);
-            // TODO:
-            // parse CA descriptors, add ca system and ecm_pid if they don't exist yet
+            // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
         }
     }
     return 1;
@@ -399,7 +398,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
     if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
-        // FIXME: account for rollovers and discontinuities
+        // TODO: account for rollovers and discontinuities
         // frames can come in out of PTS order
         pid_validator->earliest_playout_time = (pid_validator->earliest_playout_time < pes->header.pts) ? pid_validator->earliest_playout_time : pes->header.pts;
         pid_validator->latest_playout_time = (pid_validator->latest_playout_time > pes->header.pts) ? pid_validator->latest_playout_time : pes->header.pts;

@@ -35,8 +35,7 @@
 #include "libts_common.h"
 #include "log.h"
 
-// TODO account for
-//    (1) smoothing buffer
+// TODO account for (1) smoothing buffer
 
 typedef struct {
     GQueue* ts_in;
