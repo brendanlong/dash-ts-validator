@@ -221,11 +221,6 @@ int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
     int ret = 0;
     program_association_section_t* new_pas = program_association_section_new();
-    if (new_pas == NULL) {
-        g_critical("Failed to construct a program_association_section_t.");
-        goto cleanup;
-    }
-
     if (program_association_section_read(new_pas, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
         program_association_section_free(new_pas);
         goto cleanup;

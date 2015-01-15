@@ -54,8 +54,8 @@ typedef enum {
 
 // PAT
 typedef struct {
-    uint32_t program_number;
-    uint32_t program_map_pid; // a.k.a. network pid for prog 0
+    uint16_t program_number;
+    uint16_t program_map_pid; // a.k.a. network pid for prog 0
 } program_info_t;
 
 typedef struct {
