@@ -97,11 +97,8 @@ typedef struct {
 typedef struct {
     uint32_t size;
     uint32_t type;
-    uint8_t version;
-    uint32_t flags;
-    uint32_t reference_track_id;
-    uint64_t ntp_timestamp;
-    uint64_t media_time;
+    uint32_t subsegment_count;
+    uint64_t* pcr;
 } data_pcrb_t;
 
 typedef struct {

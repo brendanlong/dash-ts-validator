@@ -46,6 +46,15 @@ static uint32_t read_uint24(GDataInputStream* input, GError** error)
     return (value << 8) + g_data_input_stream_read_byte(input, NULL, error);
 }
 
+static uint32_t read_uint48(GDataInputStream* input, GError** error)
+{
+    uint64_t value = g_data_input_stream_read_uint32(input, NULL, error);
+    if (*error) {
+        return 0;
+    }
+    return (value << 16) + g_data_input_stream_read_uint16(input, NULL, error);
+}
+
 void free_box(box_t* box)
 {
     if (box == NULL) {
@@ -831,7 +840,7 @@ box_t* parse_styp(GDataInputStream* input, size_t box_size, GError** error)
     }
     return (box_t*)box;
 fail:
-    free_box((box_t*)box);
+    free_styp(box);
     return NULL;
 }
 
@@ -934,59 +943,56 @@ box_t* parse_sidx(GDataInputStream* input, size_t box_size, GError** error)
     }
     return (box_t*)box;
 fail:
-    free_box((box_t*)box);
+    free_sidx(box);
     return NULL;
 }
 
 void free_pcrb(data_pcrb_t* box)
 {
+    g_free(box->pcr);
     g_free(box);
 }
 
 box_t* parse_pcrb(GDataInputStream* input, size_t box_size, GError** error)
 {
-    /*
-    aligned(8) class ProducerReferenceTimeBox extends FullBox("prft", version, 0)
-    {
-        unsigned int(32) reference_track_ID;
-        unsigned int(64) ntp_timestamp;
-        if (version == 0) {
-            unsigned int(32) media_time;
-        } else {
-            unsigned int(64) media_time;
+    /* 6.4.7.2 MPEG-2 TS PCR information box
+    aligned(8) class MPEG2TSPCRInfoBox extends Box(‘pcrb’, 0) {
+        unsigned int(32) subsegment_count;
+        for (i = 1; i <= subsegment_count; i++) {
+            unsigned int(42) pcr;
+            unsigned int(6) pad = 0;
         }
     }
     */
     data_pcrb_t* box = g_new0(data_pcrb_t, 1);
-    parse_full_box(input, (fullbox_t*)box, box_size, error);
+
+    box->subsegment_count = g_data_input_stream_read_uint32(input, NULL, error);
     if (*error) {
         goto fail;
     }
     box_size -= 4;
 
-    box->reference_track_id = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
+    size_t pcr_size = box->subsegment_count * (48 / 8);
+    if (pcr_size != box_size) {
+        *error = g_error_new(isobmff_error_quark(), ISOBMFF_ERROR_BAD_BOX_SIZE,
+                "pcrb box has subsegment_count %"PRIu32", indicating the remaining size should be %zu bytes, but the box has %zu bytes left.",
+                box->subsegment_count, pcr_size, box_size);
+        if (box_size == box->subsegment_count * 8) {
+            g_critical("Note: Your encoder appears to be writing 64-bit pcrb entries instead of 48-bit. See https://github.com/gpac/gpac/issues/34 for details.");
+        }
         goto fail;
     }
-    box->ntp_timestamp = g_data_input_stream_read_uint64(input, NULL, error);
-    if (*error) {
-        goto fail;
+    box->pcr = g_new(uint64_t, box->subsegment_count);
+    for (size_t i = 0; i < box->subsegment_count; ++i) {
+        box->pcr[i] = read_uint48(input, error) >> 6;
+        if (*error) {
+            goto fail;
+        }
     }
 
-    if (box->version == 0) {
-        box->media_time = g_data_input_stream_read_uint32(input, NULL, error);
-        if (*error) {
-            goto fail;
-        }
-    } else {
-        box->media_time = g_data_input_stream_read_uint64(input, NULL, error);
-        if (*error) {
-            goto fail;
-        }
-    }
     return (box_t*)box;
 fail:
-    free_box((box_t*)box);
+    free_pcrb(box);
     return NULL;
 }
 
@@ -1049,7 +1055,7 @@ box_t* parse_ssix(GDataInputStream* input, size_t box_size, GError** error)
     }
     return (box_t*)box;
 fail:
-    free_box((box_t*)box);
+    free_ssix(box);
     return NULL;
 }
 
@@ -1134,7 +1140,7 @@ box_t* parse_emsg(GDataInputStream* input, size_t box_size, GError** error)
 
     return (box_t*)box;
 fail:
-    free_box((box_t*)box);
+    free_emsg(box);
     return NULL;
 }
 
@@ -1231,14 +1237,12 @@ void print_ssixSubsegment(data_ssix_subsegment_t* subsegment)
 
 void print_pcrb(data_pcrb_t* pcrb)
 {
-    g_debug("####### PCRB ######");
+    g_debug("####### MPEG-2 TS PCR information box (pcrb) ######");
 
-    g_debug("version = %u", pcrb->version);
-    g_debug("flags = %u", pcrb->flags);
-    g_debug("reference_track_ID = %u", pcrb->reference_track_id);
-    g_debug("ntp_timestamp = %"PRId64, pcrb->ntp_timestamp);
-    g_debug("media_time = %"PRId64, pcrb->media_time);
-
+    g_debug("subsegment_count = %"PRIu32, pcrb->subsegment_count);
+    for (size_t i = 0; i < pcrb->subsegment_count; ++i) {
+        g_debug("    pcr = %"PRIu64, pcrb->pcr[i]);
+    }
     g_debug("###################\n");
 }
 
