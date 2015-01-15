@@ -335,9 +335,16 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid);
 
     if (first_ts->header.pid == PID_EMSG) {
+        if (first_ts->header.transport_scrambling_control != 0) {
+            g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
+                    "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
+                    "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
+                    first_ts->header.transport_scrambling_control);
+            global_dash_validator->status = 0;
+        }
         uint8_t* buf = pes->payload;
         int len = pes->payload_len;
-        if(validate_emsg_msg(buf, len, global_segment_duration) != 0) {
+        if (validate_emsg_msg(buf, len, global_segment_duration) != 0) {
             g_critical("DASH Conformance: validation of EMSG failed");
             global_dash_validator->status = 0;
         }
