@@ -133,27 +133,6 @@ typedef enum {
     BOX_TYPE_STYP = 0x73747970
 } box_type_t;
 
-void print_styp(data_styp_t*);
-void print_sidx(data_sidx_t*);
-void print_pcrb(data_pcrb_t*);
-void print_ssix(data_ssix_t*);
-void print_emsg(data_emsg_t*);
-
-void print_sidx_reference(data_sidx_reference_t*);
-void print_ssix_subsegment(data_ssix_subsegment_t*);
-
-void free_styp(data_styp_t*);
-void free_sidx(data_sidx_t*);
-void free_pcrb(data_pcrb_t*);
-void free_ssix(data_ssix_t*);
-void free_emsg(data_emsg_t*);
-
-void uint_to_string(char*, unsigned);
-
-void print_boxes(box_t** boxes, size_t num_boxes);
-void free_boxes(box_t** boxes, size_t num_boxes);
-int read_boxes_from_file(char* file_name, box_t*** boxes_out, size_t* num_boxes_out);
-
 int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
         data_segment_iframes_t* iframes,
         int presentation_time_offset, int video_pid, bool is_simple_profile);

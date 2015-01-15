@@ -25,6 +25,7 @@
 
 G_DEFINE_QUARK(ISOBMFF_ERROR, isobmff_error);
 
+int read_boxes_from_file(char* file_name, box_t*** boxes_out, size_t* num_boxes_out);
 int read_boxes_from_stream(GDataInputStream*, box_t*** boxes_out, size_t* num_boxes_out);
 
 box_t* parse_box(GDataInputStream*, GError**);
@@ -35,7 +36,33 @@ box_t* parse_pcrb(GDataInputStream*, uint64_t box_size, GError**);
 box_t* parse_ssix(GDataInputStream*, uint64_t box_size, GError**);
 box_t* parse_emsg(GDataInputStream*, uint64_t box_size, GError**);
 
-static void uint32_to_string(char* str, uint32_t num);
+void print_boxes(box_t** boxes, size_t num_boxes);
+void print_box(box_t*);
+
+void print_fullbox(fullbox_t*);
+void print_styp(data_styp_t*);
+void print_sidx(data_sidx_t*);
+void print_pcrb(data_pcrb_t*);
+void print_ssix(data_ssix_t*);
+void print_emsg(data_emsg_t*);
+
+void print_sidx_reference(data_sidx_reference_t*);
+void print_ssix_subsegment(data_ssix_subsegment_t*);
+
+void free_boxes(box_t** boxes, size_t num_boxes);
+void free_styp(data_styp_t*);
+void free_sidx(data_sidx_t*);
+void free_pcrb(data_pcrb_t*);
+void free_ssix(data_ssix_t*);
+void free_emsg(data_emsg_t*);
+
+static void uint32_to_string(char* str, uint32_t num)
+{
+    str[0] = (num >> 24) & 0xff;
+    str[1] = (num >> 16) & 0xff;
+    str[2] = (num >>  8) & 0xff;
+    str[3] = (num >>  0) & 0xff;
+}
 
 static uint32_t read_uint24(GDataInputStream* input, GError** error)
 {
@@ -578,35 +605,6 @@ sidx boxes have either media references or sidx references, but not both.");
     }
 
     return 0;
-}
-
-void print_boxes(box_t** boxes, size_t num_boxes)
-{
-    for (size_t i = 0; i < num_boxes; i++) {
-        box_t* box = boxes[i];
-        switch (box->type) {
-        case BOX_TYPE_STYP: {
-            print_styp((data_styp_t*)box);
-            break;
-        }
-        case BOX_TYPE_SIDX: {
-            print_sidx((data_sidx_t*)box);
-            break;
-        }
-        case BOX_TYPE_PCRB: {
-            print_pcrb((data_pcrb_t*)box);
-            break;
-        }
-        case BOX_TYPE_SSIX: {
-            print_ssix((data_ssix_t*)box);
-            break;
-        }
-        case BOX_TYPE_EMSG: {
-            print_emsg((data_emsg_t*)box);
-            break;
-        }
-        }
-    }
 }
 
 int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
@@ -1154,9 +1152,54 @@ fail:
     return NULL;
 }
 
+void print_boxes(box_t** boxes, size_t num_boxes)
+{
+    for (size_t i = 0; i < num_boxes; i++) {
+        print_box(boxes[i]);
+    }
+}
+
+void print_box(box_t* box)
+{
+    char tmp[5] = {0};
+    uint32_to_string(tmp, box->type);
+    g_debug("####### %s ######", tmp);
+    g_debug("size = %"PRIu64, box->size);
+
+    switch (box->type) {
+    case BOX_TYPE_STYP: {
+        print_styp((data_styp_t*)box);
+        break;
+    }
+    case BOX_TYPE_SIDX: {
+        print_sidx((data_sidx_t*)box);
+        break;
+    }
+    case BOX_TYPE_PCRB: {
+        print_pcrb((data_pcrb_t*)box);
+        break;
+    }
+    case BOX_TYPE_SSIX: {
+        print_ssix((data_ssix_t*)box);
+        break;
+    }
+    case BOX_TYPE_EMSG: {
+        print_emsg((data_emsg_t*)box);
+        break;
+    }
+    }
+    g_debug("###################\n");
+}
+
+void print_fullbox(fullbox_t* box)
+{
+    g_debug("version = %u", box->version);
+    g_debug("flags = 0x%04x", box->flags);
+}
+
 void print_emsg(data_emsg_t* emsg)
 {
-    g_debug("####### EMSG ######");
+    print_fullbox((fullbox_t*)emsg);
 
     g_debug("scheme_id_uri = %s", emsg->scheme_id_uri);
     g_debug("value = %s", emsg->value);
@@ -1179,34 +1222,27 @@ void print_emsg(data_emsg_t* emsg)
         g_debug("%s", line->str);
     }
     g_string_free(line, true);
-
-    g_debug("###################\n");
 }
 
 void print_styp(data_styp_t* styp)
 {
-    char str_tmp[] = {0, 0, 0, 0, 0};
-    g_debug("####### STYP ######");
-
+    char str_tmp[5] = {0};
     uint32_to_string(str_tmp, styp->major_brand);
     g_debug("major_brand = %s", str_tmp);
     g_debug("minor_version = %u", styp->minor_version);
     g_debug("num_compatible_brands = %zu", styp->num_compatible_brands);
+    g_debug("compatible_brands:");
     for (size_t i = 0; i < styp->num_compatible_brands; i++) {
         uint32_to_string(str_tmp, styp->compatible_brands[i]);
         g_debug("    %zu: %s", i, str_tmp);
     }
-    g_debug("###################\n");
 }
 
 void print_sidx(data_sidx_t* sidx)
 {
-    g_debug("####### SIDX ######");
+    print_fullbox((fullbox_t*)sidx);
 
-    g_debug("size = %"PRIu64, sidx->size);
-    g_debug("version = %u", sidx->version);
-    g_debug("flags = %u", sidx->flags);
-    g_debug("reference_id = %u", sidx->reference_id);
+    g_debug("reference_id = 0x%04x", sidx->reference_id);
     g_debug("timescale = %u", sidx->timescale);
 
     g_debug("earliest_presentation_time = %"PRId64, sidx->earliest_presentation_time);
@@ -1218,8 +1254,6 @@ void print_sidx(data_sidx_t* sidx)
     for(size_t i = 0; i < sidx->reference_count; i++) {
         print_sidx_reference(&(sidx->references[i]));
     }
-
-    g_debug("###################\n");
 }
 
 void print_sidx_reference(data_sidx_reference_t* reference)
@@ -1234,7 +1268,7 @@ void print_sidx_reference(data_sidx_reference_t* reference)
     g_debug("        sap_delta_time = %u", reference->sap_delta_time);
 }
 
-void print_ssixSubsegment(data_ssix_subsegment_t* subsegment)
+void print_ssix_subsegment(data_ssix_subsegment_t* subsegment)
 {
     g_debug("    SsixSubsegment:");
 
@@ -1247,36 +1281,21 @@ void print_ssixSubsegment(data_ssix_subsegment_t* subsegment)
 
 void print_pcrb(data_pcrb_t* pcrb)
 {
-    g_debug("####### MPEG-2 TS PCR information box (pcrb) ######");
-
     g_debug("subsegment_count = %"PRIu32, pcrb->subsegment_count);
     for (size_t i = 0; i < pcrb->subsegment_count; ++i) {
         g_debug("    pcr = %"PRIu64, pcrb->pcr[i]);
     }
-    g_debug("###################\n");
 }
 
 void print_ssix(data_ssix_t* ssix)
 {
-    g_debug("####### SSIX ######");
+    print_fullbox((fullbox_t*)ssix);
 
-    g_debug("version = %u", ssix->version);
-    g_debug("flags = %u", ssix->flags);
     g_debug("subsegment_count = %u", ssix->subsegment_count);
 
     for(int i = 0; i < ssix->subsegment_count; i++) {
-        print_ssixSubsegment(&(ssix->subsegments[i]));
+        print_ssix_subsegment(&(ssix->subsegments[i]));
     }
-
-    g_debug("###################\n");
-}
-
-void uint32_to_string(char* str, uint32_t num)
-{
-    str[0] = (num >> 24) & 0xff;
-    str[1] = (num >> 16) & 0xff;
-    str[2] = (num >>  8) & 0xff;
-    str[3] = (num >>  0) & 0xff;
 }
 
 int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)

@@ -174,6 +174,7 @@ void representation_dump(const representation_t* representation, unsigned indent
     ++indent;
     DUMP_PROPERTY(indent, "id: %s", PRINT_STR(representation->id));
     DUMP_PROPERTY(indent, "index_file_name: %s", PRINT_STR(representation->index_file_name));
+    DUMP_PROPERTY(indent, "initialization_file_name: %s", PRINT_STR(representation->initialization_file_name));
     DUMP_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
     DUMP_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
     for (size_t i = 0; i < representation->segments->len; ++i) {
