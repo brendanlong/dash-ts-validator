@@ -146,14 +146,23 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
     }
 
     // read byte 0
-
     pas->section_syntax_indicator = bs_read_u1(b);
     if(!pas->section_syntax_indicator) {
         g_critical("section_syntax_indicator not set in PAT");
         SAFE_REPORT_TS_ERR(-31);
         return 0;
     }
-    bs_skip_u(b, 3); // TODO read the zero bit, check it to be zero
+
+    uint8_t zero = bs_read_u(b, 1);
+    if (zero != 0) {
+        g_critical("PAT zero section is 0x%x, but should be 0.", zero);
+        SAFE_REPORT_TS_ERR(-34);
+        return 0;
+    }
+
+    // These two bits are reserved
+    bs_skip_u(b, 2);
+
     pas->section_length = bs_read_u(b, 12);
     if(pas->section_length > MAX_SECTION_LEN) {
         g_critical("PAT section length is 0x%02X, larger than maximum allowed 0x%02X",
@@ -490,14 +499,23 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     }
 
     // read byte 0
-
     cas->section_syntax_indicator = bs_read_u1(b);
     if (!cas->section_syntax_indicator) {
         g_critical("section_syntax_indicator not set in CAT");
         SAFE_REPORT_TS_ERR(-31);
         return 0;
     }
-    bs_skip_u(b, 3); // TODO read the zero bit, check it to be zero
+
+    uint8_t zero = bs_read_u(b, 1);
+    if (zero != 0) {
+        g_critical("CAT zero section is 0x%x, but should be 0.", zero);
+        SAFE_REPORT_TS_ERR(-34);
+        return 0;
+    }
+
+    // The next 2 bits are reserved
+    bs_skip_u(b, 2);
+
     cas->section_length = bs_read_u(b, 12);
     if (cas->section_length > 1021) {  // max CAT length
         g_critical("CAT section length is 0x%02X, larger than maximum allowed 0x%02X",
@@ -507,6 +525,7 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     }
 
     // read bytes 1-2
+    // 18-bits of reserved value
     bs_read_u16(b);
 
     // read bytes 3,4
