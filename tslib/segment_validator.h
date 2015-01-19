@@ -89,4 +89,19 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
         data_segment_iframes_t* pIFrameData, uint64_t segmentDuration);
 void validate_dash_events(uint8_t* buf, int len);
 
+int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
+        data_segment_iframes_t* iframes,
+        int presentation_time_offset, int video_pid, bool is_simple_profile);
+int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
+        uint64_t* segment_durations, data_segment_iframes_t* iframes, int presentation_time_offset,
+        int video_pid, bool is_simple_profile);
+int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
+        uint64_t segment_duration, data_segment_iframes_t* iframes,
+        int presentation_time_offset, int video_pid, bool is_simple_profile);
+
+int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
+
+int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
+        bool is_simple_profile);
+
 #endif

@@ -17,6 +17,7 @@
 #define ISOBMFF_CONFORMANCE_H
 
 #include <glib.h>
+#include <gio/gio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -133,20 +134,15 @@ typedef enum {
     BOX_TYPE_STYP = 0x73747970
 } box_type_t;
 
-int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
-        data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, bool is_simple_profile);
-int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
-        uint64_t* segment_durations, data_segment_iframes_t* iframes, int presentation_time_offset,
-        int video_pid, bool is_simple_profile);
-int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
-        uint64_t segment_duration, data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, bool is_simple_profile);
+int read_boxes_from_file(char* file_name, box_t*** boxes_out, size_t* num_boxes);
+int read_boxes_from_stream(GDataInputStream* input, box_t*** boxes_out, size_t* num_boxes);
 
-int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
+box_t* parse_box(GDataInputStream*, GError**);
+void print_box(box_t*);
+void free_box(box_t* box);
 
-int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
-        bool is_simple_profile);
+void print_boxes(box_t** boxes, size_t num_boxes);
+void free_boxes(box_t** boxes, size_t num_boxes);
 
 void free_segment_iframes(data_segment_iframes_t*, size_t num_segments);
 
