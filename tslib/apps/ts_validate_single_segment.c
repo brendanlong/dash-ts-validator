@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
     extern int optind;
 
     dash_validator_t dash_validator;
-    memset(&dash_validator, 0, sizeof(dash_validator_t));
+    dash_validator_init(&dash_validator, MEDIA_SEGMENT, 0);
 
     if(argc < 2) {
         usage(argv[0]);
@@ -116,7 +116,6 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    ///////////////////////////////////
     data_segment_iframes_t* iframe_data = data_segment_iframes_new(1);
     int return_code = validate_segment(&dash_validator, fname, NULL, iframe_data,
                                          0 /* GORP: segment duration */);
