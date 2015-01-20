@@ -120,7 +120,7 @@ int main(int argc, char* argv[])
                 /* At some point we should replace these gigantic arrays with more reasonable data structures */
                 dash_validator_t* validator_init_segment = NULL;
 
-                data_segment_iframes_t* iframe_data = calloc(representation->segments->len, sizeof(data_segment_iframes_t));
+                data_segment_iframes_t* iframe_data = data_segment_iframes_new(representation->segments->len);
 
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
@@ -236,7 +236,7 @@ int main(int argc, char* argv[])
                 overall_status &= check_segment_timing(representation->segments, VIDEO_CONTENT_COMPONENT);
 
                 dash_validator_free(validator_init_segment);
-                free_segment_iframes(iframe_data, representation->segments->len);
+                data_segment_iframes_free(iframe_data, representation->segments->len);
             }
 
             // segment cross checking: check that the gap between all adjacent segments is acceptably small

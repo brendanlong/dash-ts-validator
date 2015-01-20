@@ -758,17 +758,23 @@ void print_ssix(data_ssix_t* ssix)
     }
 }
 
-void free_segment_iframes(data_segment_iframes_t* iframes, size_t num_segments)
+data_segment_iframes_t* data_segment_iframes_new(size_t num_segments)
 {
-    if (iframes == NULL) {
+    data_segment_iframes_t* obj = g_new0(data_segment_iframes_t, num_segments);
+    return obj;
+}
+
+void data_segment_iframes_free(data_segment_iframes_t* obj, size_t num_segments)
+{
+    if (obj == NULL) {
         return;
     }
 
-    for(size_t i = 0; i < num_segments; i++) {
-        free(iframes[i].iframe_locations_time);
-        free(iframes[i].iframe_locations_byte);
-        free(iframes[i].starts_with_sap);
-        free(iframes[i].sap_type);
+    for (size_t i = 0; i < num_segments; ++i) {
+        g_free(obj[i].iframe_locations_time);
+        g_free(obj[i].iframe_locations_byte);
+        g_free(obj[i].starts_with_sap);
+        g_free(obj[i].sap_type);
     }
-    free(iframes);
+    g_free(obj);
 }

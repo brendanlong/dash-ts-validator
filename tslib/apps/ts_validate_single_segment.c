@@ -117,11 +117,11 @@ int main(int argc, char* argv[])
     }
 
     ///////////////////////////////////
-    data_segment_iframes_t iframe_data = {0};
-    int return_code = validate_segment(&dash_validator, fname, NULL, &iframe_data,
+    data_segment_iframes_t* iframe_data = data_segment_iframes_new(1);
+    int return_code = validate_segment(&dash_validator, fname, NULL, iframe_data,
                                          0 /* GORP: segment duration */);
     if (return_code != 0) {
-        return return_code;
+        goto cleanup;
     }
 
     fprintf(stdout, "RESULT: %s\n", dash_validator.status ? "PASS" : "FAIL");
@@ -139,6 +139,8 @@ int main(int argc, char* argv[])
                       pv->latest_playout_time - pv->earliest_playout_time);
 
     }
+cleanup:
     g_ptr_array_free(dash_validator.pids, true);
-    return 0;
+    data_segment_iframes_free(iframe_data, 1);
+    return return_code;
 }

@@ -120,10 +120,10 @@ typedef struct {
 typedef struct {
     bool do_iframe_validation;
     int num_iframes;
-    unsigned int* iframe_locations_time;
+    unsigned* iframe_locations_time;
     uint64_t* iframe_locations_byte;
-    unsigned char* starts_with_sap;
-    unsigned char* sap_type;
+    uint8_t* starts_with_sap;
+    uint8_t* sap_type;
 } data_segment_iframes_t;
 
 typedef enum {
@@ -144,6 +144,7 @@ void free_box(box_t* box);
 void print_boxes(box_t** boxes, size_t num_boxes);
 void free_boxes(box_t** boxes, size_t num_boxes);
 
-void free_segment_iframes(data_segment_iframes_t*, size_t num_segments);
+data_segment_iframes_t* data_segment_iframes_new(size_t num_segments);
+void data_segment_iframes_free(data_segment_iframes_t*, size_t num_segments);
 
 #endif
