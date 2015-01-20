@@ -75,25 +75,27 @@ void dash_validator_free(dash_validator_t* obj)
 
 int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
-    if (global_dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
+    dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    if (dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
         g_critical("DASH Conformance: 6.4.4.2  media segments shall contain exactly one program (%u found)",
                        m2s->programs->len);
-        global_dash_validator->status = 0;
+        dash_validator->status = 0;
         return 0;
     }
 
-    if (global_dash_validator->use_initialization_segment) {
+    if (dash_validator->use_initialization_segment) {
         g_critical("DASH Conformance: No PAT allowed if initialization segment is used");
-        global_dash_validator->status = 0;
+        dash_validator->status = 0;
         return 0;
     }
 
     for (gsize i = 0; i < m2s->programs->len; i++) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, i);
-        m2p->pmt_processor =  pmt_processor;
+        m2p->pmt_processor = pmt_processor;
+        m2p->arg = dash_validator;
     }
 
-    global_dash_validator->psi_tables_seen |= 1 << m2s->pat->table_id;
+    dash_validator->psi_tables_seen |= 1 << m2s->pat->table_id;
     return 1;
 }
 
@@ -106,10 +108,10 @@ int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
     return 1;
 }
 
-pid_validator_t* dash_validator_find_pid(int pid)
+pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_validator)
 {
-    for (gsize i = 0; i < global_dash_validator->pids->len; ++i) {
-        pid_validator_t* pv = g_ptr_array_index(global_dash_validator->pids, i);
+    for (gsize i = 0; i < dash_validator->pids->len; ++i) {
+        pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);
         if (pv->pid == pid) {
             return pv;
         }
@@ -120,20 +122,21 @@ pid_validator_t* dash_validator_find_pid(int pid)
 // TODO: fix tpes to try creating last PES packet
 int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 {
+    dash_validator_t* dash_validator = (dash_validator_t*)arg;
     if (m2p->pmt == NULL) {  // if we don't have any PSI, there's nothing we can do
         return 0;
     }
 
-    if (global_dash_validator->use_initialization_segment) {
+    if (dash_validator->use_initialization_segment) {
         g_critical("DASH Conformance: No PMT allowed if initialization segment is used");
-        global_dash_validator->status = 0;
+        dash_validator->status = 0;
         return 0;
     }
 
-    global_dash_validator->pcr_pid = m2p->pmt->pcr_pid;
-    global_dash_validator->psi_tables_seen |= 1 << m2p->pmt->table_id;
-    global_dash_validator->pmt_program_number = m2p->pmt->program_number;
-    global_dash_validator->pmt_version_number = m2p->pmt->version_number;
+    dash_validator->pcr_pid = m2p->pmt->pcr_pid;
+    dash_validator->psi_tables_seen |= 1 << m2p->pmt->table_id;
+    dash_validator->pmt_program_number = m2p->pmt->program_number;
+    dash_validator->pmt_version_number = m2p->pmt->version_number;
 
     GHashTableIter i;
     g_hash_table_iter_init(&i, m2p->pids);
@@ -143,7 +146,7 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         int content_component = 0;
         int pid = pi->es_info->elementary_pid;
 
-        pid_validator_t* pid_validator = dash_validator_find_pid(pid);
+        pid_validator_t* pid_validator = dash_validator_find_pid(pid, dash_validator);
 
 // TODO: we need to figure out what we do when section versions change
 // Do we need to fix something? Profile something out?
@@ -162,7 +165,7 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         case  STREAM_TYPE_S3D_SC_AVC:
             process_pid = 1;
             content_component = VIDEO_CONTENT_COMPONENT;
-            global_dash_validator->video_pid = pid;
+            dash_validator->video_pid = pid;
             break;
         case  STREAM_TYPE_MPEG1_AUDIO:
         case  STREAM_TYPE_MPEG2_AUDIO:
@@ -171,7 +174,7 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         case  STREAM_TYPE_MPEG4_AAC:
             process_pid = 1;
             content_component = AUDIO_CONTENT_COMPONENT;
-            global_dash_validator->audio_pid = pid;
+            dash_validator->audio_pid = pid;
             break;
         default:
             process_pid = 0;
@@ -180,28 +183,23 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         if (process_pid) {
             // hook PES validation to PES demuxer
             pes_demux_t* pd = pes_demux_new(validate_pes_packet);
-            pd->pes_arg = NULL;
-            pd->pes_arg_destructor = NULL;
-            pd->process_pes_packet = validate_pes_packet;
+            pd->pes_arg = dash_validator;
 
             // hook PES demuxer to the PID processor
-            demux_pid_handler_t* demux_handler = calloc(1, sizeof(*demux_handler));
-            demux_handler->process_ts_packet = pes_demux_process_ts_packet;
+            demux_pid_handler_t* demux_handler = demux_pid_handler_new(pes_demux_process_ts_packet);
             demux_handler->arg = pd;
             demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
 
             // hook PES demuxer to the PID processor
-            demux_pid_handler_t* demux_validator = calloc(1, sizeof(*demux_validator));
-            demux_validator->process_ts_packet = validate_ts_packet;
-            demux_validator->arg = NULL;
-            demux_validator->arg_destructor = NULL;
+            demux_pid_handler_t* demux_validator = demux_pid_handler_new(validate_ts_packet);
+            demux_validator->arg = dash_validator;
 
             // hook PID processor to PID
             mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_pid,
                     demux_handler, demux_validator);
 
             pid_validator = pid_validator_new(pid, content_component);
-            g_ptr_array_add(global_dash_validator->pids, pid_validator);
+            g_ptr_array_add(dash_validator->pids, pid_validator);
             // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
         }
     }
@@ -226,21 +224,16 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
 
         // hook PES validation to PES demuxer
         pes_demux_t* pd = pes_demux_new(validate_pes_packet);
-        pd->pes_arg = NULL;
-        pd->pes_arg_destructor = NULL;
-        pd->process_pes_packet = validate_pes_packet;
+        pd->pes_arg = dash_validator_source;
 
         // hook PES demuxer to the PID processor
-        demux_pid_handler_t* demux_handler = calloc(1, sizeof(*demux_handler));
-        demux_handler->process_ts_packet = pes_demux_process_ts_packet;
+        demux_pid_handler_t* demux_handler = demux_pid_handler_new(pes_demux_process_ts_packet);
         demux_handler->arg = pd;
         demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
 
         // hook PES demuxer to the PID processor
-        demux_pid_handler_t* demux_validator = calloc(1, sizeof(*demux_validator));
-        demux_validator->process_ts_packet = validate_ts_packet;
-        demux_validator->arg = NULL;
-        demux_validator->arg_destructor = NULL;
+        demux_pid_handler_t* demux_validator = demux_pid_handler_new(validate_ts_packet);
+        demux_validator->arg = dash_validator_source;
 
         // hook PID processor to PID
         mpeg2ts_program_register_pid_processor(m2p, pid, demux_handler, demux_validator);
@@ -258,17 +251,18 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
 
 int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg)
 {
+    dash_validator_t* dash_validator = (dash_validator_t*)arg;
     if (ts == NULL || es_info == NULL) {
         return 0;
     }
 
-    pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.pid);
+    pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.pid, dash_validator);
     assert(pid_validator != NULL);
 
-    if (global_dash_validator->pcr_pid == ts->header.pid) {
+    if (dash_validator->pcr_pid == ts->header.pid) {
         int64_t pcr = ts_read_pcr(ts);
         if (PCR_IS_VALID(pcr)) {
-            global_dash_validator->last_pcr = pcr;
+            dash_validator->last_pcr = pcr;
         }
     }
 
@@ -280,17 +274,17 @@ int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void*
         if ((ts->header.adaptation_field_control & TS_PAYLOAD)
                 && (pid_validator->content_component != UNKNOWN_CONTENT_COMPONENT)) {
             // if we only have complete PES packets, we must start with PUSI=1 followed by PES header in the first payload-bearing packet
-            if ((global_dash_validator->conformance_level & TS_TEST_MAIN)
+            if ((dash_validator->conformance_level & TS_TEST_MAIN)
                     && (ts->header.payload_unit_start_indicator == 0)) {
                 g_critical("DASH Conformance: media segments shall contain only complete PES packets");
-                global_dash_validator->status = 0;
+                dash_validator->status = 0;
             }
 
             // by the time we get to the start of the first PES, we need to have seen at least one PCR.
-            if (global_dash_validator->conformance_level & TS_TEST_SIMPLE) {
-                if(!PCR_IS_VALID(global_dash_validator->last_pcr)) {
+            if (dash_validator->conformance_level & TS_TEST_SIMPLE) {
+                if (!PCR_IS_VALID(dash_validator->last_pcr)) {
                     g_critical("DASH Conformance: PCR must be present before first bytes of media data");
-                    global_dash_validator->status = 0;
+                    dash_validator->status = 0;
                 }
             }
         }
@@ -305,34 +299,34 @@ int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void*
     return 1;
 }
 
-int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
-                        void* arg)
+int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
+    dash_validator_t* dash_validator = (dash_validator_t*)arg;
     if (esi == NULL) {
         return 0;
     }
 
     if (pes == NULL) {
         // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start from PUSI=1)
-        if (global_dash_validator->conformance_level & TS_TEST_MAIN) {
+        if (dash_validator->conformance_level & TS_TEST_MAIN) {
             g_critical("DASH Conformance: media segments shall contain only complete PES packets");
-            global_dash_validator->status = 0;
+            dash_validator->status = 0;
             return 0;
         }
 
         g_critical("NULL PES packet!");
-        global_dash_validator->status = 0;
+        dash_validator->status = 0;
         return 0;
     }
 
-    if (global_dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         g_critical("DASH Conformance: initialization segment cannot contain program stream");
-        global_dash_validator->status = 0;
+        dash_validator->status = 0;
         return 0;
     }
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
-    pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid);
+    pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
 
     if (first_ts->header.pid == PID_EMSG) {
         g_print("EMSG\n");
@@ -341,21 +335,21 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                     "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
                     "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
                     first_ts->header.transport_scrambling_control);
-            global_dash_validator->status = 0;
+            dash_validator->status = 0;
         }
         uint8_t* buf = pes->payload;
         int len = pes->payload_len;
         if (validate_emsg_msg(buf, len, global_segment_duration) != 0) {
             g_critical("DASH Conformance: validation of EMSG failed");
-            global_dash_validator->status = 0;
+            dash_validator->status = 0;
         }
     }
 
     assert(pid_validator != NULL);
     if (pes->status > 0) {
-        if (global_dash_validator->conformance_level & TS_TEST_MAIN) {
+        if (dash_validator->conformance_level & TS_TEST_MAIN) {
             g_critical("DASH Conformance: media segments shall contain only complete PES packets");
-            global_dash_validator->status = 0;
+            dash_validator->status = 0;
         }
         pes_free(pes);
         return 0;
@@ -367,9 +361,9 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             pid_validator->earliest_playout_time = pes->header.pts;
             pid_validator->latest_playout_time = pes->header.pts;
         } else {
-            if(global_dash_validator->conformance_level & TS_TEST_MAIN) {
+            if(dash_validator->conformance_level & TS_TEST_MAIN) {
                 g_critical("DASH Conformance: first PES packet must have PTS");
-                global_dash_validator->status = 0;
+                dash_validator->status = 0;
             }
         }
 
@@ -408,8 +402,8 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
         // TODO: account for rollovers and discontinuities
         // frames can come in out of PTS order
-        pid_validator->earliest_playout_time = (pid_validator->earliest_playout_time < pes->header.pts) ? pid_validator->earliest_playout_time : pes->header.pts;
-        pid_validator->latest_playout_time = (pid_validator->latest_playout_time > pes->header.pts) ? pid_validator->latest_playout_time : pes->header.pts;
+        pid_validator->earliest_playout_time = MIN(pid_validator->earliest_playout_time, pes->header.pts);
+        pid_validator->latest_playout_time = MAX(pid_validator->latest_playout_time, pes->header.pts);
     }
 
     if (pid_validator->content_component == VIDEO_CONTENT_COMPONENT) {
@@ -426,7 +420,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 if (expectedIFramePTS != actualIFramePTS) {
                     g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actual: %d",
                                    expectedIFramePTS, actualIFramePTS);
-                    global_dash_validator->status = 0;
+                    dash_validator->status = 0;
                 }
 
                 // check frame byte location
@@ -437,7 +431,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 if (expectedFrameByteLocation != actualFrameByteLocation) {
                     g_critical("DASH Conformance: expected IFrame Byte Locaton does not match actual.  Expected: %"PRId64", Actual: %"PRId64"",
                                    expectedFrameByteLocation, actualFrameByteLocation);
-                    global_dash_validator->status = 0;
+                    dash_validator->status = 0;
                 }
 
                 // check SAP type
@@ -449,13 +443,13 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 if (expectedStartsWithSAP == 1 && expectedSAPType != 0 && expectedSAPType != actualSAPType) {
                     g_critical("DASH Conformance: expected IFrame SAP Type does not match actual: expectedStartsWithSAP = %d, \
 expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPType, actualSAPType);
-                    global_dash_validator->status = 0;
+                    dash_validator->status = 0;
                 }
 
                 global_iframe_counter++;
             } else {
                 g_critical("DASH Conformance: Stream has more IFrames than index file");
-                global_dash_validator->status = 0;
+                dash_validator->status = 0;
             }
         }
     }
@@ -482,7 +476,7 @@ cleanup:
     pes_free(pes);
     return 1;
 fail:
-    global_dash_validator->status = 0;
+    dash_validator->status = 0;
     goto cleanup;
 }
 
@@ -506,31 +500,28 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
     FILE* infile = fopen(fname, "rb");
     if (infile == NULL) {
         g_critical("Cannot open file %s - %s", fname, strerror(errno));
-        global_dash_validator->status = 0;
-        return 1;
+        goto fail;
     }
 
-    if (global_dash_validator->segment_start > 0) {
-        if (!fseek(infile, global_dash_validator->segment_start, SEEK_SET)) {
-            g_critical("Error seeking to offset %ld - %s", global_dash_validator->segment_start,
+    if (dash_validator->segment_start > 0) {
+        if (!fseek(infile, dash_validator->segment_start, SEEK_SET)) {
+            g_critical("Error seeking to offset %ld - %s", dash_validator->segment_start,
                            strerror(errno));
-            global_dash_validator->status = 0;
-            return 1;
+            goto fail;
         }
     }
 
     mpeg2ts_stream_t* m2s = mpeg2ts_stream_new();
     if (m2s == NULL) {
         g_critical("Error creating MPEG-2 STREAM object");
-        global_dash_validator->status = 0;
-        return 1;
+        goto fail;
     }
 
-    global_dash_validator->last_pcr = PCR_INVALID;
-    global_dash_validator->status = 1;
-    if (global_dash_validator->pids->len != 0) {
+    dash_validator->last_pcr = PCR_INVALID;
+    dash_validator->status = 1;
+    if (dash_validator->pids->len != 0) {
         g_error("Re-using DASH validator pids!");
-        return 1;
+        goto fail;
     }
 
     // if had intialization segment, then copy program info and setup PES callbacks
@@ -543,15 +534,15 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
         g_debug("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
         g_ptr_array_add(m2s->programs, prog);
 
-        int return_code = copy_pmt_info(prog, dash_validator_init, global_dash_validator);
+        int return_code = copy_pmt_info(prog, dash_validator_init, dash_validator);
         if (return_code != 0) {
             g_critical("Error copying PMT info");
-            global_dash_validator->status = 0;
-            return 1;
+            goto fail;
         }
     }
 
     m2s->pat_processor = pat_processor;
+    m2s->arg = dash_validator;
 
     long packet_buf_size = 4096;
     uint64_t packets_read = 0;
@@ -559,8 +550,8 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
     uint64_t packets_to_read =  UINT64_MAX;
     uint8_t* ts_buf = malloc(TS_SIZE * packet_buf_size);
 
-    if (global_dash_validator->segment_end > 0) {
-        packets_to_read = (global_dash_validator->segment_end - global_dash_validator->segment_start) / (uint64_t)TS_SIZE;
+    if (dash_validator->segment_end > 0) {
+        packets_to_read = (dash_validator->segment_end - dash_validator->segment_start) / (uint64_t)TS_SIZE;
     }
 
     while ((num_packets = fread(ts_buf, TS_SIZE, packet_buf_size, infile)) > 0) {
@@ -569,8 +560,7 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
             int res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read);
             if (res < TS_SIZE) {
                 g_critical("Error parsing TS packet %"PRIo64" (%d)", packets_read, res);
-                global_dash_validator->status = 0;
-                break;
+                goto fail;
             }
 
             mpeg2ts_stream_read_ts_packet(m2s, ts);
@@ -588,15 +578,20 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
 
     g_debug("%"PRIo64" TS packets read", packets_read);
 
-    if (global_dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, 0);  // should be only one program
         printf("m2p = %"PRIxPTR"\n", (uintptr_t)m2p);
-        global_dash_validator->initializaion_segment_pmt = m2p->pmt;
+        dash_validator->initializaion_segment_pmt = m2p->pmt;
     }
 
+cleanup:
     mpeg2ts_stream_free(m2s);
     fclose(infile);
     return tslib_errno;
+fail:
+    dash_validator->status = 0;
+    tslib_errno = 1;
+    goto cleanup;
 }
 
 void validate_dash_events(uint8_t* buf, int len)

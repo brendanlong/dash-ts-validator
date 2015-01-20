@@ -36,7 +36,7 @@
 
 pes_demux_t* pes_demux_new(pes_processor_t pes_processor)
 {
-    pes_demux_t* pdm = malloc(sizeof(*pdm));
+    pes_demux_t* pdm = g_new0(pes_demux_t, 1);
     pdm->ts_queue = g_queue_new();
     pdm->process_pes_packet = pes_processor;
     return pdm;
@@ -49,10 +49,10 @@ void pes_demux_free(pes_demux_t* pdm)
     }
 
     g_queue_free_full(pdm->ts_queue, (GDestroyNotify)ts_free);
-    if (pdm->pes_arg && pdm->pes_arg_destructor) {
+    if (pdm->pes_arg_destructor && pdm->pes_arg) {
         pdm->pes_arg_destructor(pdm->pes_arg);
     }
-    free(pdm);
+    g_free(pdm);
 }
 
 int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg)

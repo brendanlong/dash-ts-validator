@@ -34,40 +34,47 @@
 #include "segment_validator.h"
 
 
+demux_pid_handler_t* demux_pid_handler_new(ts_pid_processor_t process_ts_packet)
+{
+    demux_pid_handler_t* obj = g_new0(demux_pid_handler_t, 1);
+    obj->process_ts_packet = process_ts_packet;
+    return obj;
+}
+
+void demux_pid_handler_free(demux_pid_handler_t* obj)
+{
+    if (obj == NULL) {
+        return;
+    }
+    if (obj->arg_destructor && obj->arg) {
+        obj->arg_destructor(obj->arg);
+    }
+    g_free(obj);
+}
+
 pid_info_t* pid_info_new()
 {
-    pid_info_t* pi = calloc(1, sizeof(*pi));
-    return pi;
+    pid_info_t* obj = g_new0(pid_info_t, 1);
+    return obj;
 }
 
-void demux_pid_handler_free(demux_pid_handler_t* dph)
+void pid_info_free(pid_info_t* obj)
 {
-    if (dph == NULL) {
+    if (obj == NULL) {
         return;
     }
-    if (dph->arg && dph->arg_destructor) {
-        dph->arg_destructor(dph->arg);
-    }
-    free(dph);
-}
-
-void pid_info_free(pid_info_t* pi)
-{
-    if (pi == NULL) {
-        return;
-    }
-    demux_pid_handler_free(pi->demux_handler);
-    demux_pid_handler_free(pi->demux_validator);
+    demux_pid_handler_free(obj->demux_handler);
+    demux_pid_handler_free(obj->demux_validator);
 
     // note: es_info is a reference, don't free it!
     //       the real thing is in pmt
 
-    free(pi);
+    g_free(obj);
 }
 
 mpeg2ts_program_t* mpeg2ts_program_new(int program_number, int pid)
 {
-    mpeg2ts_program_t* m2p = calloc(1, sizeof(*m2p));
+    mpeg2ts_program_t* m2p = g_new0(mpeg2ts_program_t, 1);
     m2p->pids = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify)pid_info_free);
     m2p->pid = pid;
     m2p->program_number = program_number;
@@ -93,7 +100,7 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
     if (m2p->arg_destructor && m2p->arg) {
         m2p->arg_destructor(m2p->arg);
     }
-    free(m2p);
+    g_free(m2p);
 }
 
 int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
@@ -151,7 +158,7 @@ pid_info_t* mpeg2ts_program_get_pid_info(mpeg2ts_program_t* m2p, uint32_t pid)
 
 mpeg2ts_stream_t* mpeg2ts_stream_new()
 {
-    mpeg2ts_stream_t* m2s = calloc(1, sizeof(*m2s));
+    mpeg2ts_stream_t* m2s = g_new0(mpeg2ts_stream_t, 1);
     m2s->programs = g_ptr_array_new_with_free_func((GDestroyNotify)mpeg2ts_program_free);
     return m2s;
 }
@@ -168,7 +175,7 @@ void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
     if (m2s->arg_destructor && m2s->arg) {
         m2s->arg_destructor(m2s->arg);
     }
-    free(m2s);
+    g_free(m2s);
 }
 
 int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
@@ -376,7 +383,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         // this is an *extremely unlikely* case
         if (pi->demux_validator != NULL && pi->demux_validator->process_ts_packet != NULL) {
             // TODO: check return value and do something intelligent
-            pi->demux_validator->process_ts_packet(ts, pi->es_info, pi->demux_handler->arg);
+            pi->demux_validator->process_ts_packet(ts, pi->es_info, pi->demux_validator->arg);
         }
 
         if(pi->demux_handler != NULL && pi->demux_handler->process_ts_packet != NULL) {

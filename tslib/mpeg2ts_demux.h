@@ -46,7 +46,7 @@ typedef int (*pat_processor_t)(struct _mpeg2ts_stream_*, void*);
 typedef int (*cat_processor_t)(struct _mpeg2ts_stream_*, void*);
 typedef int (*pmt_processor_t)(struct _mpeg2ts_program_*, void*);
 
-typedef int (*arg_destructor_t)(void*);
+typedef void (*arg_destructor_t)(void*);
 
 struct _mpeg2ts_program_ {
     uint32_t pid; // PMT PID
@@ -86,8 +86,7 @@ typedef struct _mpeg2ts_program_ mpeg2ts_program_t;
 typedef struct {
     void* arg;                            // argument for ts packet processor
     arg_destructor_t arg_destructor;      // destructor for arg
-    ts_pid_processor_t
-    process_ts_packet; // ts packet processor, needs to be registered with mpeg2ts_program
+    ts_pid_processor_t process_ts_packet; // ts packet processor, needs to be registered with mpeg2ts_program
 } demux_pid_handler_t;
 
 typedef struct {
@@ -186,5 +185,7 @@ int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
 int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid);
 int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* piNew);
 int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s);
+
+demux_pid_handler_t* demux_pid_handler_new(ts_pid_processor_t);
 
 #endif
