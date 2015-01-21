@@ -581,7 +581,7 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
 
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, 0);  // should be only one program
-        printf("m2p = %"PRIxPTR"\n", (uintptr_t)m2p);
+        g_debug("m2p = %"PRIxPTR"\n", (uintptr_t)m2p);
         dash_validator->initializaion_segment_pmt = m2p->pmt;
     }
 

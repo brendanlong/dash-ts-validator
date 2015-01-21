@@ -247,7 +247,6 @@ mpd_t* read_mpd(char* file_name)
     /* Ignore BaseURL here because we want a local path */
     //char* base_url = find_base_url(root, NULL);
     base_url = g_path_get_dirname(file_name);
-    puts(base_url);
 
     for (xmlNode* cur_node = root->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
