@@ -69,7 +69,7 @@ typedef struct {
     uint32_t psi_tables_seen;
     segment_type_t segment_type;
     bool use_initialization_segment;
-    program_map_section_t* initializaion_segment_pmt;      /// parsed PMT
+    program_map_section_t* initialization_segment_pmt;      /// parsed PMT
 } dash_validator_t;
 
 const char* content_component_to_string(content_component_t);

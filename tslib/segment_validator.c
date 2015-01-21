@@ -530,7 +530,7 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
         mpeg2ts_program_t* prog = mpeg2ts_program_new(
                                       200 /* GORP */,  // can I just use dummy values here?
                                       201 /* GORP */);
-        prog->pmt = dash_validator_init->initializaion_segment_pmt;
+        prog->pmt = dash_validator_init->initialization_segment_pmt;
 
         g_debug("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
         g_ptr_array_add(m2s->programs, prog);
@@ -582,7 +582,7 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, 0);  // should be only one program
         g_debug("m2p = %"PRIxPTR"\n", (uintptr_t)m2p);
-        dash_validator->initializaion_segment_pmt = m2p->pmt;
+        dash_validator->initialization_segment_pmt = m2p->pmt;
     }
 
 cleanup:
