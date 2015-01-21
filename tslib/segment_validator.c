@@ -490,6 +490,7 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
     global_segment_duration = segmentDuration;
 
     g_debug("doSegmentValidation : %s", fname);
+    mpeg2ts_stream_t* m2s = NULL;
 
 // GORP:    initialization segment shall not contain any media data with an assigned presentation time
 // GORP:    initialization segment shall contain PAT and PMT and PCR
@@ -511,7 +512,7 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
         }
     }
 
-    mpeg2ts_stream_t* m2s = mpeg2ts_stream_new();
+    m2s = mpeg2ts_stream_new();
     if (m2s == NULL) {
         g_critical("Error creating MPEG-2 STREAM object");
         goto fail;
