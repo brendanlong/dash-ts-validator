@@ -41,7 +41,18 @@
 // until done, we can read or write, not both.
 // idea: have an "expand" flag, if off -- everything is in place, on -- everything is nicely copied and allocated
 
+int ts_read_header(ts_header_t* tsh, bs_t* b);
+int ts_read_adaptation_field(ts_adaptation_field_t* af, bs_t* b);
+
+int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b);
+int ts_write_header(ts_header_t* tsh, bs_t* b);
+
+void ts_print_adaptation_field(const ts_adaptation_field_t* const af);
+void ts_print_header(const ts_header_t* const tsh);
+
+
 volatile int tslib_errno = 0;
+
 
 ts_packet_t* ts_new()
 {
@@ -52,24 +63,16 @@ ts_packet_t* ts_new()
 
 void ts_free(ts_packet_t* ts)
 {
-    if(ts == NULL) {
+    if (ts == NULL) {
         return;
     }
-    if(ts->payload.bytes != NULL) {
-        free(ts->payload.bytes);
-    }
-    if(ts->adaptation_field.private_data_bytes.bytes != NULL) {
-        free(ts->adaptation_field.private_data_bytes.bytes);
-    }
+    free(ts->payload.bytes);
+    free(ts->adaptation_field.private_data_bytes.bytes);
     free(ts);
 }
 
 int ts_read_header(ts_header_t* tsh, bs_t* b)
 {
-    if (tsh == NULL) {
-        return 0;
-    }
-
     int start_pos = bs_pos(b);
 
     uint8_t sync_byte = bs_read_u8(b);
@@ -103,19 +106,19 @@ int ts_read_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
         af->discontinuity_indicator = bs_read_u1(b);
         af->random_access_indicator = bs_read_u1(b);
         af->elementary_stream_priority_indicator = bs_read_u1(b);
-        af->PCR_flag = bs_read_u1(b);
-        af->OPCR_flag = bs_read_u1(b);
+        af->pcr_flag = bs_read_u1(b);
+        af->opcr_flag = bs_read_u1(b);
         af->splicing_point_flag = bs_read_u1(b);
         af->transport_private_data_flag = bs_read_u1(b);
         af->adaptation_field_extension_flag = bs_read_u1(b);
 
         if (af->adaptation_field_length > 1) {
-            if(af->PCR_flag) {
+            if(af->pcr_flag) {
                 af->program_clock_reference_base = bs_read_ull(b, 33);
                 bs_skip_u(b, 6);
                 af->program_clock_reference_extension = bs_read_u(b, 9);
             }
-            if (af->OPCR_flag) {
+            if (af->opcr_flag) {
                 af->original_program_clock_reference_base = bs_read_ull(b, 33);
                 bs_skip_u(b, 6);
                 af->original_program_clock_reference_extension = bs_read_u(b, 9);
@@ -174,7 +177,7 @@ int ts_read_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
 
 int ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num)
 {
-    if(buf == NULL || buf_size < TS_SIZE || ts == NULL) {
+    if (buf_size < TS_SIZE) {
         SAFE_REPORT_TS_ERR(-1);
         return TS_ERROR_NOT_ENOUGH_DATA;
     }
@@ -233,11 +236,11 @@ int ts_adaptation_field_min_length(ts_adaptation_field_t* af)
 {
     int len = 0;
 
-    if (af->PCR_flag) {
+    if (af->pcr_flag) {
         len += 6;
     }
 
-    if (af->PCR_flag) {
+    if (af->opcr_flag) {
         len += 6;
     }
 
@@ -263,7 +266,6 @@ int ts_adaptation_field_min_length(ts_adaptation_field_t* af)
 
 int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
 {
-
     int af_min_len = ts_adaptation_field_min_length(af);
 
     if (af->adaptation_field_length < af_min_len) {
@@ -276,18 +278,18 @@ int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
         bs_write_u1(b, af->discontinuity_indicator);
         bs_write_u1(b, af->random_access_indicator);
         bs_write_u1(b, af->elementary_stream_priority_indicator);
-        bs_write_u1(b, af->PCR_flag);
-        bs_write_u1(b, af->OPCR_flag);
+        bs_write_u1(b, af->pcr_flag);
+        bs_write_u1(b, af->opcr_flag);
         bs_write_u1(b, af->splicing_point_flag);
         bs_write_u1(b, af->transport_private_data_flag);
         bs_write_u1(b, af->adaptation_field_extension_flag);
 
-        if (af->PCR_flag) {
+        if (af->pcr_flag) {
             bs_write_ull(b, 33, af->program_clock_reference_base);
             bs_write_u(b, 6, 0xFF);
             bs_write_u(b, 9, af->program_clock_reference_extension);
         }
-        if (af->OPCR_flag) {
+        if (af->opcr_flag) {
             bs_write_ull(b, 33, af->original_program_clock_reference_base);
             bs_write_u(b, 6, 0xFF);
             bs_write_u(b, 9, af->original_program_clock_reference_extension);
@@ -326,7 +328,6 @@ int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
         }
 
         bs_write_stuffing_bytes(b, 0xFF, af->adaptation_field_length - (bs_pos(b) - start_pos));
-
     }
 
     return bs_pos(b) - start_pos + 1;
@@ -348,7 +349,7 @@ int ts_write_header(ts_header_t* tsh, bs_t* b)
 
 int ts_write(ts_packet_t* ts, uint8_t* buf, size_t buf_size)
 {
-    if (buf == NULL || buf_size < TS_SIZE || ts == NULL) {
+    if (buf_size < TS_SIZE) {
         return 0;
     }
 
@@ -370,9 +371,6 @@ int ts_write(ts_packet_t* ts, uint8_t* buf, size_t buf_size)
 
 void ts_print_header(const ts_header_t* const tsh)
 {
-    if (tsh == NULL ) {
-        return;
-    }
     SKIT_LOG_UINT_DBG(0, tsh->transport_error_indicator);
     SKIT_LOG_UINT_DBG(0, tsh->payload_unit_start_indicator);
     SKIT_LOG_UINT_DBG(0, tsh->transport_priority);
@@ -385,28 +383,24 @@ void ts_print_header(const ts_header_t* const tsh)
 
 void ts_print_adaptation_field(const ts_adaptation_field_t* const af)
 {
-    if (af == NULL) {
-        return;
-    }
-
     SKIT_LOG_UINT_DBG(1, af->adaptation_field_length);
 
     if (af->adaptation_field_length > 0) {
         SKIT_LOG_UINT_DBG(1, af->discontinuity_indicator);
         SKIT_LOG_UINT_DBG(1, af->random_access_indicator);
         SKIT_LOG_UINT_DBG(1, af->elementary_stream_priority_indicator);
-        SKIT_LOG_UINT_DBG(1, af->PCR_flag);
-        SKIT_LOG_UINT_DBG(1, af->OPCR_flag);
+        SKIT_LOG_UINT_DBG(1, af->pcr_flag);
+        SKIT_LOG_UINT_DBG(1, af->opcr_flag);
         SKIT_LOG_UINT_DBG(1, af->splicing_point_flag);
         SKIT_LOG_UINT_DBG(1, af->transport_private_data_flag);
         SKIT_LOG_UINT_DBG(1, af->adaptation_field_extension_flag);
 
         if (af->adaptation_field_length > 1) {
-            if (af->PCR_flag) {
+            if (af->pcr_flag) {
                 SKIT_LOG_UINT_DBG(2, af->program_clock_reference_base);
                 SKIT_LOG_UINT_DBG(2, af->program_clock_reference_extension);
             }
-            if (af->OPCR_flag) {
+            if (af->opcr_flag) {
                 SKIT_LOG_UINT_DBG(2, af->original_program_clock_reference_base);
                 SKIT_LOG_UINT_DBG(2, af->original_program_clock_reference_extension);
             }
@@ -444,7 +438,7 @@ void ts_print_adaptation_field(const ts_adaptation_field_t* const af)
 
 void ts_print(const ts_packet_t* const ts)
 {
-    if (ts == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
+    if (tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
         return;
     }
 
@@ -459,12 +453,8 @@ void ts_print(const ts_packet_t* const ts)
 int64_t ts_read_pcr(const ts_packet_t* const ts)
 {
     int64_t pcr = INT64_MAX;
-    if (ts == NULL) {
-        return pcr;
-    }
-
     if (ts->header.adaptation_field_control & TS_ADAPTATION_FIELD) {
-        if (ts->adaptation_field.PCR_flag) {
+        if (ts->adaptation_field.pcr_flag) {
             pcr = 300 * ts->adaptation_field.program_clock_reference_base;
             pcr += ts->adaptation_field.program_clock_reference_extension;
         }
