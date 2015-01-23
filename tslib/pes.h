@@ -156,42 +156,15 @@ typedef struct {
 } pes_packet_t;
 
 pes_packet_t* pes_new();
-void pes_free(pes_packet_t* pes);
+void pes_free(pes_packet_t*);
 
-int pes_read_header(pes_header_t* ph, bs_t* b);
+int pes_read_header(pes_header_t*, bs_t*);
+int pes_read(pes_packet_t*, const uint8_t* buf, size_t len);
 
-// parse a PES packet from a continuous buffer
-/**
- *
- *
- * @author agiladi (3/21/2014)
- *
- * @param pes PES packet to parse
- * @param buf buffers containing PES packet bytes
- * @param len buffer length
- *
- * @return int
- */
-int pes_read_buf(pes_packet_t* pes, const uint8_t* buf, size_t len);
+int pes_write_header(pes_header_t* , bs_t*);
+int pes_write(pes_packet_t*, uint8_t* buf, size_t len);
 
-/**
- * scatter-gather version of pes_read_buf
- * removes an extra malloc/copy/free set necessary to build a continuous buffer
- *
- * @author agiladi (3/21/2014)
- *
- * @param pes PES packet to construct / parse
- * @param vec list of buffers containing parts of a PES packet
- * @param buf_count number of buffers
- *
- * @return int
- */
-int pes_read_vec(pes_packet_t* pes, const buf_t* vec, int buf_count, uint64_t pes_pos_in_stream);
-
-int pes_write_header(pes_header_t* ph, bs_t* b);
-int pes_write(pes_packet_t* pes, uint8_t* buf, size_t len);
-
-void pes_print_header(pes_header_t* pes_header);
-void pes_print(pes_packet_t* pes);
+void pes_print_header(pes_header_t*);
+void pes_print(pes_packet_t*);
 
 #endif

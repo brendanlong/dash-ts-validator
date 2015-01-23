@@ -54,48 +54,8 @@ void pes_free(pes_packet_t* pes)
     free(pes);
 }
 
-int pes_read_vec(pes_packet_t* pes, const buf_t* vec, int buf_count, uint64_t pes_pos_in_stream)
+int pes_read(pes_packet_t* pes, const uint8_t* buf, size_t len)
 {
-    if (pes == NULL || vec == NULL || buf_count == 0) {
-        return 0;
-    }
-
-    GArray* buffer = g_array_new(false, false, 1);
-    for (size_t i = 0; i < buf_count; ++i) {
-        g_array_append_vals(buffer, vec[i].bytes, vec[i].len);
-    }
-    free(pes->buf);
-    pes->buf_len = buffer->len;
-    pes->buf = (uint8_t*)g_array_free(buffer, false);
-
-    bs_t b;
-    bs_init(&b, pes->buf, pes->buf_len);
-    int header_bytes = pes_read_header(&pes->header, &b);
-
-    // PES header broken -- bail out.
-    if (header_bytes < 3) {
-        return 0;
-    }
-
-    pes->payload_pos_in_stream = pes_pos_in_stream;
-    pes->payload = pes->buf + header_bytes;
-    pes->payload_len =  pes->buf_len - header_bytes;
-
-    if(pes->header.pes_packet_length > 0 && pes->header.pes_packet_length + 6 > pes->buf_len) {
-        pes->status = PES_ERROR_NOT_ENOUGH_DATA;
-        g_critical("PES packet header promises %u bytes, only %ld found in buffer",
-                       pes->header.pes_packet_length + 6, pes->buf_len);
-    }
-
-    return bs_pos(&b);
-}
-
-int pes_read_buf(pes_packet_t* pes, const uint8_t* buf, size_t len)
-{
-    if(pes == NULL || buf == NULL) {
-        return 0;
-    }
-
     free(pes->buf);
     pes->buf = g_memdup(buf, len);
     pes->buf_len = len;

@@ -49,7 +49,7 @@ void pes_demux_free(pes_demux_t* pdm)
     }
 
     g_queue_free_full(pdm->ts_queue, (GDestroyNotify)ts_free);
-    if (pdm->pes_arg_destructor && pdm->pes_arg) {
+    if (pdm->pes_arg_destructor) {
         pdm->pes_arg_destructor(pdm->pes_arg);
     }
     g_free(pdm);
@@ -58,11 +58,8 @@ void pes_demux_free(pes_demux_t* pdm)
 int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg)
 {
     pes_demux_t* pdm = arg;
-    if (es_info == NULL || pdm == NULL) {
-        return 0;
-    }
 
-    if(ts == NULL || ts->header.payload_unit_start_indicator) {
+    if (ts == NULL || ts->header.payload_unit_start_indicator) {
         int packets_in_queue = pdm->ts_queue->length;
         if (packets_in_queue > 0) {
             // we have something in the queue
@@ -72,32 +69,33 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
                 // the queue doesn't start with a complete TS packet
                 g_critical("PES queue does not start from PUSI=1");
                 // we'll do nothing and just clear the queue
-                if(pdm->process_pes_packet != NULL) {
+                if (pdm->process_pes_packet != NULL) {
                     // at this point we don't own the PES packet memory
                     pdm->process_pes_packet(NULL, es_info, pdm->ts_queue, pdm->pes_arg);
                 }
             } else {
-                buf_t* vec = malloc(packets_in_queue * sizeof(buf_t)); // can be optimized...
+                GList* current;
+                size_t buf_size = 0;
+                for (current = pdm->ts_queue->head; current; current = current->next) {
+                    tsp = current->data;
+                    buf_size += tsp->payload.len;
+                }
+                GArray* buf = g_array_sized_new(false, false, 1, buf_size);
 
-                uint64_t pes_pos_in_stream;
-                for (int i = 0; i < packets_in_queue; i++) {
-                    // Since this is a linked list, there's probably a more efficient way to iterate over it
-                    tsp = g_queue_peek_nth(pdm->ts_queue, i);
-                    if (i == 0) {
-                        // first packet in queue
-                        pes_pos_in_stream = tsp->pos_in_stream;
+                pes_packet_t* pes = pes_new();
+                bool first = true;
+                for (current = pdm->ts_queue->head; current; current = current->next) {
+                    tsp = current->data;
+                    if (first) {
+                        pes->payload_pos_in_stream = tsp->pos_in_stream;
+                        first = false;
                     }
 
                     if (tsp != NULL && (tsp->header.adaptation_field_control & TS_PAYLOAD)) {
-                        vec[i].len = tsp->payload.len;
-                        vec[i].bytes = tsp->payload.bytes;
-                    } else {
-                        vec[i].len = 0;
-                        vec[i].bytes = NULL;
+                        g_array_append_vals(buf, tsp->payload.bytes, tsp->payload.len);
                     }
                 }
-                pes_packet_t* pes = pes_new();
-                pes_read_vec(pes, vec, packets_in_queue, pes_pos_in_stream);
+                pes_read(pes, (uint8_t*)buf->data, buf->len);
 
                 if (pdm->process_pes_packet != NULL) {
                     // at this point we don't own the PES packet memory
@@ -105,7 +103,7 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
                 } else {
                     pes_free(pes);
                 }
-                free(vec);
+                g_array_free(buf, true);
             }
 
             // clean up

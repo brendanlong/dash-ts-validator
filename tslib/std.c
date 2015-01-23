@@ -54,14 +54,10 @@ void stc_free(stc_t* stc)
 
 int stc_put_ts_packet(stc_t* stc, ts_packet_t* ts)
 {
-    if (ts == NULL) {
-        return 0;
-    }
-
     uint64_t real_pcr = ts_read_pcr(ts);
 
     if (real_pcr < PCR_MAX) {
-        // we have a vald PCR
+        // we have a valid PCR
         if (stc->prev_pcr < PCR_MAX) {
             // this is the first PCR we're seeing in this stream
             stc->prev_pcr = real_pcr;
@@ -71,8 +67,8 @@ int stc_put_ts_packet(stc_t* stc, ts_packet_t* ts)
             uint64_t adj_pcr = (real_pcr > stc->prev_pcr) ? real_pcr : real_pcr + PCR_MAX;
             stc->pcr_rate = ((double)stc->num_bytes) / (adj_pcr - stc->prev_pcr);
 
-            for (int i = 1; ; i++) {
-                ts_packet_t* qtsp = g_queue_pop_head(stc->ts_in);
+            ts_packet_t* qtsp;
+            for (int i = 1; (qtsp = g_queue_pop_head(stc->ts_in)); i++) {
                 qtsp->pcr_int = stc->prev_pcr + llrint(i * TS_SIZE * stc->pcr_rate);
                 if (qtsp->pcr_int >= PCR_MAX) {
                     qtsp->pcr_int -= PCR_MAX;
