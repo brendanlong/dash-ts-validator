@@ -33,7 +33,6 @@
 #include "libts_common.h"
 #include "ts.h"
 #include "descriptors.h"
-#include "section.h"
 #include "log.h"
 #include "crc32m.h"
 
