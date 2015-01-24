@@ -304,7 +304,7 @@ int check_representation_gaps(GPtrArray* representations, content_component_t co
             segment_t* segment = g_ptr_array_index(representation->segments, s_i);
             g_string_append_printf(line, "%s\t", segment->file_name);
         }
-        g_log(G_LOG_DOMAIN, flags, line->str);
+        g_log(G_LOG_DOMAIN, flags, "%s", line->str);
 
         for (gsize r_i = 0; r_i < representations->len; ++r_i) {
             representation_t* representation = g_ptr_array_index(representations, r_i);
@@ -318,7 +318,7 @@ int check_representation_gaps(GPtrArray* representations, content_component_t co
                 int64_t pts_delta = segment2->actual_start[content_component] - segment1->actual_end[content_component];
                 g_string_append_printf(line, "%"PRId64"\t", pts_delta);
             }
-            g_log(G_LOG_DOMAIN, flags, line->str);
+            g_log(G_LOG_DOMAIN, flags, "%s", line->str);
         }
         g_log(G_LOG_DOMAIN, flags, " ");
         g_string_free(line, true);
