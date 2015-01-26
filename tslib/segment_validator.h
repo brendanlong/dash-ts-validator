@@ -1,3 +1,7 @@
+
+#ifndef TSLIB_SEGMENT_VALIDATOR_H
+#define TSLIB_SEGMENT_VALIDATOR_H
+
 #include <glib.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -10,10 +14,6 @@
 #include "psi.h"
 #include "tpes.h"
 #include "ts.h"
-
-
-#ifndef TSLIB_SEGMENT_VALIDATOR_H
-#define TSLIB_SEGMENT_VALIDATOR_H
 
 #define TS_STATE_PAT   0x01
 #define TS_STATE_PMT   0x02
