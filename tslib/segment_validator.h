@@ -79,29 +79,14 @@ void dash_validator_init(dash_validator_t*, segment_type_t, uint32_t conformance
 void dash_validator_destroy(dash_validator_t*);
 void dash_validator_free(dash_validator_t*);
 
-int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
-int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
-int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
-int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
-        void* arg);
 int validate_segment(dash_validator_t* dash_validator, char* fname,
         dash_validator_t* dash_validator_init,
         data_segment_iframes_t* pIFrameData, uint64_t segmentDuration);
-void validate_dash_events(uint8_t* buf, int len);
 
 int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
         data_segment_iframes_t* iframes,
         int presentation_time_offset, int video_pid, bool is_simple_profile);
-int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
-        uint64_t* segment_durations, data_segment_iframes_t* iframes, int presentation_time_offset,
-        int video_pid, bool is_simple_profile);
-int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
-        uint64_t segment_duration, data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, bool is_simple_profile);
 
-int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
-
-int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
-        bool is_simple_profile);
+void validate_dash_events(uint8_t* buf, int len);
 
 #endif

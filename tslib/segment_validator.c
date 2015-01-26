@@ -11,6 +11,22 @@ int global_iframe_counter;
 data_segment_iframes_t* global_iframe_data;
 unsigned int global_segment_duration;
 
+int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
+int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
+int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
+int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
+        void* arg);
+int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
+        uint64_t* segment_durations, data_segment_iframes_t* iframes, int presentation_time_offset,
+        int video_pid, bool is_simple_profile);
+int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
+        uint64_t segment_duration, data_segment_iframes_t* iframes,
+        int presentation_time_offset, int video_pid, bool is_simple_profile);
+
+int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
+int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
+        bool is_simple_profile);
+
 const char* content_component_to_string(content_component_t content_component)
 {
     switch(content_component) {
