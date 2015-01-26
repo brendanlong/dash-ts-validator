@@ -102,7 +102,7 @@ int main(int argc, char* argv[])
     if (mpd == NULL) {
         goto cleanup;
     }
-    mpd_dump(mpd);
+    mpd_print(mpd);
 
     // if there is an initialization segment, process it first in order to get the PAT and PMT tables
     for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {

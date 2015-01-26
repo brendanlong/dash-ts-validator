@@ -12,7 +12,7 @@
 /* Ignore warnings for implicitly casting const char* to const xmlChar* (i.e. const unsigned char*) */
 #pragma GCC diagnostic ignored "-Wpointer-sign"
 
-#define DUMP_PROPERTY(indent, printf_str, ...) \
+#define PRINT_PROPERTY(indent, printf_str, ...) \
 g_debug("%.*s"printf_str, \
         indent < sizeof(INDENT_BUFFER) ? indent : (int)sizeof(INDENT_BUFFER), \
         INDENT_BUFFER, __VA_ARGS__)
@@ -59,7 +59,7 @@ void mpd_free(mpd_t* obj)
     free(obj);
 }
 
-void mpd_dump(const mpd_t* mpd)
+void mpd_print(const mpd_t* mpd)
 {
     g_debug("MPD:");
     unsigned indent = 1;
@@ -77,14 +77,14 @@ void mpd_dump(const mpd_t* mpd)
         break;
     }
     if (mpd_type != NULL) {
-        DUMP_PROPERTY(indent, "presentation_type: %s", PRINT_STR(mpd_type));
+        PRINT_PROPERTY(indent, "presentation_type: %s", PRINT_STR(mpd_type));
     } else {
-        DUMP_PROPERTY(indent, "presentation_type: %d", mpd->presentation_type);
+        PRINT_PROPERTY(indent, "presentation_type: %d", mpd->presentation_type);
     }
 
     for (size_t i = 0; i < mpd->periods->len; ++i) {
-        DUMP_PROPERTY(indent, "periods[%zu]:", i);
-        period_dump(g_ptr_array_index(mpd->periods, i), indent);
+        PRINT_PROPERTY(indent, "periods[%zu]:", i);
+        period_print(g_ptr_array_index(mpd->periods, i), indent);
     }
 }
 
@@ -106,12 +106,12 @@ void period_free(period_t* obj)
     free(obj);
 }
 
-void period_dump(const period_t* period, unsigned indent)
+void period_print(const period_t* period, unsigned indent)
 {
     ++indent;
     for (size_t i = 0; i < period->adaptation_sets->len; ++i) {
-        DUMP_PROPERTY(indent, "adaptation_sets[%zu]:", i);
-        adaptation_set_dump(g_ptr_array_index(period->adaptation_sets, i), indent);
+        PRINT_PROPERTY(indent, "adaptation_sets[%zu]:", i);
+        adaptation_set_print(g_ptr_array_index(period->adaptation_sets, i), indent);
     }
 }
 
@@ -133,17 +133,17 @@ void adaptation_set_free(adaptation_set_t* obj)
     free(obj);
 }
 
-void adaptation_set_dump(const adaptation_set_t* adaptation_set, unsigned indent)
+void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned indent)
 {
     ++indent;
-    DUMP_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
-    DUMP_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
-    DUMP_PROPERTY(indent, "segment_alignment: %"PRIu32, adaptation_set->segment_alignment);
-    DUMP_PROPERTY(indent, "subsegment_alignment: %"PRIu32, adaptation_set->subsegment_alignment);
-    DUMP_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(adaptation_set->bitstream_switching));
+    PRINT_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
+    PRINT_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
+    PRINT_PROPERTY(indent, "segment_alignment: %"PRIu32, adaptation_set->segment_alignment);
+    PRINT_PROPERTY(indent, "subsegment_alignment: %"PRIu32, adaptation_set->subsegment_alignment);
+    PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(adaptation_set->bitstream_switching));
     for (size_t i = 0; i < adaptation_set->representations->len; ++i) {
-        DUMP_PROPERTY(indent, "representations[%zu]:", i);
-        representation_dump(g_ptr_array_index(adaptation_set->representations, i), indent);
+        PRINT_PROPERTY(indent, "representations[%zu]:", i);
+        representation_print(g_ptr_array_index(adaptation_set->representations, i), indent);
     }
 }
 
@@ -167,17 +167,17 @@ void representation_free(representation_t* obj)
     free(obj);
 }
 
-void representation_dump(const representation_t* representation, unsigned indent)
+void representation_print(const representation_t* representation, unsigned indent)
 {
     ++indent;
-    DUMP_PROPERTY(indent, "id: %s", PRINT_STR(representation->id));
-    DUMP_PROPERTY(indent, "index_file_name: %s", PRINT_STR(representation->index_file_name));
-    DUMP_PROPERTY(indent, "initialization_file_name: %s", PRINT_STR(representation->initialization_file_name));
-    DUMP_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
-    DUMP_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
+    PRINT_PROPERTY(indent, "id: %s", PRINT_STR(representation->id));
+    PRINT_PROPERTY(indent, "index_file_name: %s", PRINT_STR(representation->index_file_name));
+    PRINT_PROPERTY(indent, "initialization_file_name: %s", PRINT_STR(representation->initialization_file_name));
+    PRINT_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
+    PRINT_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
     for (size_t i = 0; i < representation->segments->len; ++i) {
-        DUMP_PROPERTY(indent, "segments[%zu]:", i);
-        segment_dump(g_ptr_array_index(representation->segments, i), indent + 1);
+        PRINT_PROPERTY(indent, "segments[%zu]:", i);
+        segment_print(g_ptr_array_index(representation->segments, i), indent + 1);
     }
 }
 
@@ -203,14 +203,14 @@ void segment_free(segment_t* obj)
     free(obj);
 }
 
-void segment_dump(const segment_t* segment, unsigned indent)
+void segment_print(const segment_t* segment, unsigned indent)
 {
-    DUMP_PROPERTY(indent, "file_name: %s", PRINT_STR(segment->file_name));
-    DUMP_PROPERTY(indent, "media_range: %s", PRINT_STR(segment->media_range));
-    DUMP_PROPERTY(indent, "start: %"PRIu64, segment->start);
-    DUMP_PROPERTY(indent, "duration: %"PRIu64, segment->duration);
-    DUMP_PROPERTY(indent, "index_file_name: %s", PRINT_STR(segment->index_file_name));
-    DUMP_PROPERTY(indent, "index_range: %s", PRINT_STR(segment->index_range));
+    PRINT_PROPERTY(indent, "file_name: %s", PRINT_STR(segment->file_name));
+    PRINT_PROPERTY(indent, "media_range: %s", PRINT_STR(segment->media_range));
+    PRINT_PROPERTY(indent, "start: %"PRIu64, segment->start);
+    PRINT_PROPERTY(indent, "duration: %"PRIu64, segment->duration);
+    PRINT_PROPERTY(indent, "index_file_name: %s", PRINT_STR(segment->index_file_name));
+    PRINT_PROPERTY(indent, "index_range: %s", PRINT_STR(segment->index_range));
 }
 
 mpd_t* read_mpd(char* file_name)

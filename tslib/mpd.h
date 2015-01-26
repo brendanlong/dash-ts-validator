@@ -62,31 +62,22 @@ typedef struct {
 mpd_t* mpd_new(void);
 void mpd_free(mpd_t*);
 mpd_t* read_mpd(char* file_name);
-void mpd_dump(const mpd_t*);
+void mpd_print(const mpd_t*);
 
 period_t* period_new(void);
 void period_free(period_t*);
-void period_dump(const period_t*, unsigned indent);
+void period_print(const period_t*, unsigned indent);
 
 adaptation_set_t* adaptation_set_new(void);
 void adaptation_set_free(adaptation_set_t*);
-void adaptation_set_dump(const adaptation_set_t*, unsigned indent);
+void adaptation_set_print(const adaptation_set_t*, unsigned indent);
 
 representation_t* representation_new(void);
 void representation_free(representation_t*);
-void representation_dump(const representation_t*, unsigned indent);
+void representation_print(const representation_t*, unsigned indent);
 
 segment_t* segment_new(void);
 void segment_free(segment_t*);
-void segment_dump(const segment_t*, unsigned indent);
+void segment_print(const segment_t*, unsigned indent);
 
-/*
-int getNumRepresentations(char* fname, int* numRepresentations, int* numSegments);
-void parseSegInfoFileLine(char* line, char* segFileNames, int segNum, int numSegments);
-void parseRepresentationIndexFileLine(char* line, char* representationIndexFileNames,
-                                      int numRepresentations);
-int readIntFromSegInfoFile(FILE* segInfoFile, char* paramName, int* paramValue);
-int readStringFromSegInfoFile(FILE* segInfoFile, char* paramName, char* paramValue);
-char* trimWhitespace(char* string);
-*/
 #endif
