@@ -125,7 +125,6 @@ typedef enum {
 ts_packet_t* ts_new();
 void ts_free(ts_packet_t* ts);
 int ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num);
-int ts_write(ts_packet_t* ts, uint8_t* buf, size_t buf_size);
 void ts_print(const ts_packet_t* const ts);
 
 int64_t ts_read_pcr(const ts_packet_t* const ts);

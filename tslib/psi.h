@@ -52,97 +52,6 @@ typedef enum {
 #define MAX_PROGRAM_INFO_LEN 0x03FF
 #define MAX_ES_INFO_LEN 0x03FF
 
-
-typedef struct {
-    uint8_t table_id;
-    bool section_syntax_indicator;
-    bool private_indicator;
-    uint16_t section_length;
-} mpeg2ts_section_t;
-
-typedef struct {
-    uint16_t program_number;
-    uint16_t program_map_pid; // a.k.a. network pid for prog 0
-} program_info_t;
-
-typedef struct {
-    uint8_t table_id;
-    bool section_syntax_indicator;
-    bool private_indicator;
-    uint16_t section_length;
-
-    uint16_t transport_stream_id;
-    uint8_t version_number;
-    bool current_next_indicator;
-    uint8_t section_number;
-    uint8_t last_section_number;
-
-    program_info_t* programs;
-    size_t num_programs;
-    uint32_t crc_32;
-} program_association_section_t;
-
-program_association_section_t* program_association_section_new();
-void program_association_section_free(program_association_section_t* pas);
-int program_association_section_read(program_association_section_t* pas, uint8_t* buf,
-                                     size_t buf_len);
-void program_association_section_print(const program_association_section_t* pas);
-
-typedef struct {
-    uint8_t table_id;
-    bool section_syntax_indicator;
-    bool private_indicator;
-    uint16_t section_length;
-
-    uint8_t version_number;
-    bool current_next_indicator;
-    uint8_t section_number;
-    uint8_t last_section_number;
-
-    GPtrArray* descriptors;
-
-    uint32_t crc_32;
-} conditional_access_section_t;
-
-conditional_access_section_t* conditional_access_section_new();
-void conditional_access_section_free(conditional_access_section_t* cas);
-int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* buf,
-                                    size_t buf_len);
-void conditional_access_section_print(const conditional_access_section_t* cas);
-
-// PMT
-typedef struct {
-    uint8_t stream_type;
-    uint16_t elementary_pid;
-    uint16_t es_info_length;
-    GPtrArray* descriptors;
-} elementary_stream_info_t;
-
-typedef struct {
-    uint8_t table_id;
-    bool section_syntax_indicator;
-    bool private_indicator;
-    uint16_t section_length;
-
-    uint16_t program_number;
-    uint8_t version_number;
-    bool current_next_indicator;
-    uint8_t section_number;
-    uint8_t last_section_number;
-    uint16_t pcr_pid;
-    uint16_t program_info_length;
-    GPtrArray* descriptors;
-    GPtrArray* es_info;
-    uint32_t crc_32;
-} program_map_section_t;
-
-program_map_section_t* program_map_section_new();
-void program_map_section_free(program_map_section_t* pms);
-
-int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t buf_size);
-int program_map_section_write(program_map_section_t* pms, uint8_t* buf, size_t buf_size);
-void program_map_section_print(program_map_section_t* pms);
-
 enum {
     STREAM_TYPE_MPEG1_VIDEO = 0x01,
     STREAM_TYPE_MPEG2_VIDEO = 0x02,
@@ -196,6 +105,93 @@ enum {
 
 #define GENERAL_PURPOSE_PID_MIN		0x0010
 #define GENERAL_PURPOSE_PID_MAX		0x1FFE
+
+
+typedef struct {
+    uint8_t table_id;
+    bool section_syntax_indicator;
+    bool private_indicator;
+    uint16_t section_length;
+} mpeg2ts_section_t;
+
+typedef struct {
+    uint16_t program_number;
+    uint16_t program_map_pid; // a.k.a. network pid for prog 0
+} program_info_t;
+
+typedef struct {
+    uint8_t table_id;
+    bool section_syntax_indicator;
+    bool private_indicator;
+    uint16_t section_length;
+
+    uint16_t transport_stream_id;
+    uint8_t version_number;
+    bool current_next_indicator;
+    uint8_t section_number;
+    uint8_t last_section_number;
+
+    program_info_t* programs;
+    size_t num_programs;
+    uint32_t crc_32;
+} program_association_section_t;
+
+typedef struct {
+    uint8_t table_id;
+    bool section_syntax_indicator;
+    bool private_indicator;
+    uint16_t section_length;
+
+    uint8_t version_number;
+    bool current_next_indicator;
+    uint8_t section_number;
+    uint8_t last_section_number;
+
+    GPtrArray* descriptors;
+
+    uint32_t crc_32;
+} conditional_access_section_t;
+
+// PMT
+typedef struct {
+    uint8_t stream_type;
+    uint16_t elementary_pid;
+    uint16_t es_info_length;
+    GPtrArray* descriptors;
+} elementary_stream_info_t;
+
+typedef struct {
+    uint8_t table_id;
+    bool section_syntax_indicator;
+    bool private_indicator;
+    uint16_t section_length;
+
+    uint16_t program_number;
+    uint8_t version_number;
+    bool current_next_indicator;
+    uint8_t section_number;
+    uint8_t last_section_number;
+    uint16_t pcr_pid;
+    uint16_t program_info_length;
+    GPtrArray* descriptors;
+    GPtrArray* es_info;
+    uint32_t crc_32;
+} program_map_section_t;
+
+program_association_section_t* program_association_section_new();
+void program_association_section_free(program_association_section_t* pas);
+int program_association_section_read(program_association_section_t* pas, uint8_t* buf, size_t buf_len);
+void program_association_section_print(const program_association_section_t* pas);
+
+conditional_access_section_t* conditional_access_section_new();
+void conditional_access_section_free(conditional_access_section_t* cas);
+int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* buf, size_t buf_len);
+void conditional_access_section_print(const conditional_access_section_t* cas);
+
+program_map_section_t* program_map_section_new();
+void program_map_section_free(program_map_section_t* pms);
+int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t buf_size);
+void program_map_section_print(program_map_section_t* pms);
 
 char* stream_desc(uint8_t stream_id);
 

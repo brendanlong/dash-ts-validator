@@ -333,42 +333,6 @@ int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
     return bs_pos(b) - start_pos + 1;
 }
 
-int ts_write_header(ts_header_t* tsh, bs_t* b)
-{
-    int start_pos = bs_pos(b);
-    bs_write_u8(b, TS_SYNC_BYTE);
-    bs_write_u1(b, tsh->transport_error_indicator);
-    bs_write_u1(b, tsh->payload_unit_start_indicator);
-    bs_write_u1(b, tsh->transport_priority);
-    bs_write_u(b, 13, tsh->pid);
-    bs_write_u(b, 2, tsh->transport_scrambling_control);
-    bs_write_u(b, 2, tsh->adaptation_field_control);
-    bs_write_u(b, 4, tsh->continuity_counter);
-    return bs_pos(b) - start_pos;
-}
-
-int ts_write(ts_packet_t* ts, uint8_t* buf, size_t buf_size)
-{
-    if (buf_size < TS_SIZE) {
-        return 0;
-    }
-
-    bs_t b;
-    bs_init(&b, buf, TS_SIZE);
-
-    ts_write_header(&ts->header, &b);
-
-    if (ts->header.adaptation_field_control & TS_ADAPTATION_FIELD) {
-        ts_write_adaptation_field(&ts->adaptation_field, &b);
-    }
-
-    if (ts->header.adaptation_field_control & TS_PAYLOAD) {
-        bs_write_bytes(&b, ts->payload.bytes, TS_SIZE - bs_pos(&b));
-    }
-
-    return bs_pos(&b);
-}
-
 void ts_print_header(const ts_header_t* const tsh)
 {
     SKIT_LOG_UINT_DBG(0, tsh->transport_error_indicator);

@@ -158,13 +158,7 @@ typedef struct {
 pes_packet_t* pes_new();
 void pes_free(pes_packet_t*);
 
-int pes_read_header(pes_header_t*, bs_t*);
 int pes_read(pes_packet_t*, const uint8_t* buf, size_t len);
-
-int pes_write_header(pes_header_t* , bs_t*);
-int pes_write(pes_packet_t*, uint8_t* buf, size_t len);
-
-void pes_print_header(pes_header_t*);
 void pes_print(pes_packet_t*);
 
 #endif

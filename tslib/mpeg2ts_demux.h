@@ -103,85 +103,14 @@ typedef struct {
     uint64_t num_packets;
 } pid_info_t;
 
-/**
- * Initialize mpeg2ts_stream_t object
- *
- * @author agiladi (3/21/2014)
- * @return initialized but empty object
- */
 mpeg2ts_stream_t* mpeg2ts_stream_new();
-
-/**
- * Free mpeg2ts_stream_t object
- *
- * @author agiladi (3/21/2014)
- */
 void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s);
-
-/**
- * Read a parsed transport stream packet
- *
- * @author agiladi (3/21/2014)
- *
- * @param m2s MPEG-2 TS multiplex
- * @param ts  parsed TS packet
- * @note by calling this function the caller relinquishes the
- *       ownership of the TS packet, and the latter may or may
- *       not be freed by mpeg2ts_stream
- * @see ts_read
- *
- * @return int
- */
 int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts);
 
-/**
- * Initialize new program object
- *
- * @author agiladi (3/21/2014)
- *
- * @return mpeg2ts_program_t*
- */
 mpeg2ts_program_t* mpeg2ts_program_new();
-
-/**
- * Free a program object
- *
- * @author agiladi (3/21/2014)
- *
- * @param m2p
- */
 void mpeg2ts_program_free(mpeg2ts_program_t* m2p);
-
-/**
- * Register a PID processor callback for a given PID
- *
- * @author agiladi (3/20/2014)
- *
- * @param m2p program to which the PID belongs
- * @param PID PID for which the callback is registered
- * @param handler callback which will be called per each TS
- *                packet from this PID (note: this is one of the
- *                most frequently called functions!!!)
- * @param validator optional callback for each TS packet from
- *        this PID. The validator callback may not alter the
- *        state of the packet or own the memory.
- *
- * @return zero if registration succeeded.
- */
 int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
         demux_pid_handler_t* handler, demux_pid_handler_t* validator);
-
-/**
- * Unregister a PID processor callback for a given PID
- *
- * @author agiladi (3/20/2014)
- *
- * @param m2p program to which the PID belongs
- * @param PID PID for which the callback is registered
-
- *
- * @return zero if unregistration succeeded.
- */
 int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid);
 int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* piNew);
 int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s);

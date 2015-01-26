@@ -56,20 +56,7 @@ typedef struct {
 ca_system_t* ca_system_new(int ca_system_id);
 void ca_system_free(ca_system_t* cas);
 
-/**
- * Process a TS packet from an ECM PID
- *
- * @author agiladi (4/24/2014)
- *
- * @param ts ECM packet
- * @param es_info es_info for the ECM PID
- * @param arg vqarray of ca_system_t objects
- *
- * @return 1 if processed.
- */
 int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, GPtrArray* cas_list);
-
-int ca_system_process_ca_descriptor(GPtrArray* cas_list, elementary_stream_info_t* esi,
-                                    ca_descriptor_t* cad);
+int ca_system_process_ca_descriptor(GPtrArray* cas_list, elementary_stream_info_t* esi, ca_descriptor_t* cad);
 
 #endif
