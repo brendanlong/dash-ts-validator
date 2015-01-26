@@ -29,44 +29,53 @@
 #define PSI_H
 
 #include <glib.h>
+#include <stdbool.h>
 
 #include "bs.h"
 
 
 typedef enum {
-    program_association_section = 0,
-    conditional_access_section,			// CA section
-    TS_program_map_section,
-    TS_description_section,
-    ISO_IEC_14496_scene_description_section,
-    ISO_IEC_14496_object_descriptor_section,
-    Metadata_section,
-    IPMP_Control_Information_section,	// (defined in ISO/IEC 13818-11)
-//0x08-0x3F ISO/IEC 13818-1 reserved
-//0x40-0xFE User private
-    Forbidden = 0xFF
+    TABLE_ID_PROGRAM_ASSOCIATION_SECTION = 0,
+    TABLE_ID_CONDITIONAL_ACCESS_SECTION, // CA section
+    TABLE_ID_PROGRAM_MAP_SECTION,
+    TABLE_ID_DESCRIPTION_SECTION,
+    TABLE_ID_SCENE_DESCRIPTION_SECTION,
+    TABLE_ID_OBJECT_DESCRIPTOR_SECTION,
+    TABLE_ID_METADATA_SECTION,
+    TABLE_ID_IPMP_CONTROL_INFORMATION_SECTION, // (defined in ISO/IEC 13818-11)
+    // 0x08-0x3F ISO/IEC 13818-1 reserved
+    // 0x40-0xFE User private
+    TABLE_ID_FORBIDDEN = 0xFF
 } table_id_t;
 
-#define	MAX_SECTION_LEN			0x03FD
-#define MAX_PROGRAM_INFO_LEN	        0x03FF
-#define MAX_ES_INFO_LEN			0x03FF
+#define	MAX_SECTION_LEN 0x03FD
+#define MAX_PROGRAM_INFO_LEN 0x03FF
+#define MAX_ES_INFO_LEN 0x03FF
 
 
-// PAT
+typedef struct {
+    uint8_t table_id;
+    bool section_syntax_indicator;
+    bool private_indicator;
+    uint16_t section_length;
+} mpeg2ts_section_t;
+
 typedef struct {
     uint16_t program_number;
     uint16_t program_map_pid; // a.k.a. network pid for prog 0
 } program_info_t;
 
 typedef struct {
-    uint32_t table_id;
-    uint32_t section_syntax_indicator;
-    uint32_t section_length;
-    uint32_t transport_stream_id;
-    uint32_t version_number;
-    uint32_t current_next_indicator;
-    uint32_t section_number;
-    uint32_t last_section_number;
+    uint8_t table_id;
+    bool section_syntax_indicator;
+    bool private_indicator;
+    uint16_t section_length;
+
+    uint16_t transport_stream_id;
+    uint8_t version_number;
+    bool current_next_indicator;
+    uint8_t section_number;
+    uint8_t last_section_number;
 
     program_info_t* programs;
     size_t num_programs;
@@ -80,14 +89,15 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
 void program_association_section_print(const program_association_section_t* pas);
 
 typedef struct {
-    uint32_t table_id;
-    uint32_t section_syntax_indicator;
-    uint32_t section_length;
+    uint8_t table_id;
+    bool section_syntax_indicator;
+    bool private_indicator;
+    uint16_t section_length;
 
-    uint32_t version_number;
-    uint32_t current_next_indicator;
-    uint32_t section_number;
-    uint32_t last_section_number;
+    uint8_t version_number;
+    bool current_next_indicator;
+    uint8_t section_number;
+    uint8_t last_section_number;
 
     GPtrArray* descriptors;
 
@@ -102,23 +112,25 @@ void conditional_access_section_print(const conditional_access_section_t* cas);
 
 // PMT
 typedef struct {
-    uint32_t stream_type;
-    uint32_t elementary_pid;
-    uint32_t es_info_length;
+    uint8_t stream_type;
+    uint16_t elementary_pid;
+    uint16_t es_info_length;
     GPtrArray* descriptors;
 } elementary_stream_info_t;
 
 typedef struct {
-    uint32_t table_id;
-    uint32_t section_syntax_indicator;
-    uint32_t section_length;
-    uint32_t program_number;
-    uint32_t version_number;
-    uint32_t current_next_indicator;
-    uint32_t section_number;
-    uint32_t last_section_number;
-    uint32_t pcr_pid;
-    uint32_t program_info_length;
+    uint8_t table_id;
+    bool section_syntax_indicator;
+    bool private_indicator;
+    uint16_t section_length;
+
+    uint16_t program_number;
+    uint8_t version_number;
+    bool current_next_indicator;
+    uint8_t section_number;
+    uint8_t last_section_number;
+    uint16_t pcr_pid;
+    uint16_t program_info_length;
     GPtrArray* descriptors;
     GPtrArray* es_info;
     uint32_t crc_32;
@@ -131,68 +143,60 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
 int program_map_section_write(program_map_section_t* pms, uint8_t* buf, size_t buf_size);
 void program_map_section_print(program_map_section_t* pms);
 
-// stream types
-#define STREAM_TYPE_MPEG1_VIDEO             0x01
-#define STREAM_TYPE_MPEG2_VIDEO             0x02
-#define STREAM_TYPE_MPEG1_AUDIO             0x03
-#define STREAM_TYPE_MPEG2_AUDIO             0x04
-#define STREAM_TYPE_MPEG2_PRIVATE_SECTIONS  0x05
-#define STREAM_TYPE_MPEG2_PRIVATE_PES       0x06
-#define STREAM_TYPE_MHEG                    0x07
-#define STREAM_TYPE_MPEG2_DSMCC             0x08
-#define STREAM_TYPE_ATM_MUX                 0x09
-#define STREAM_TYPE_DSMCC_A                 0x0A
-#define STREAM_TYPE_DSMCC_B                 0x0B
-#define STREAM_TYPE_DSMCC_C                 0x0C
-#define STREAM_TYPE_DSMCC_D                 0x0D
-#define STREAM_TYPE_MPEG2_AUX               0x0E
-#define STREAM_TYPE_MPEG2_AAC               0x0F // ADTS
-#define STREAM_TYPE_MPEG4_VIDEO             0x10
-#define STREAM_TYPE_MPEG4_AAC               0x11 // LATM
-#define STREAM_TYPE MPEG4_SYS_PES           0x12
-#define STREAM_TYPE_MPEG2_SYS_SECTION       0x13
-#define STREAM_TYPE_DSMCC_SDP               0x14
-#define STREAM_TYPE_METADATA_PES            0x15
-#define STREAM_TYPE_METADATA_SECTIONS       0x16
-#define STREAM_TYPE_METADATA_DSMCC_DATA     0x17
-#define STREAM_TYPE_METADATA_DSMCC_OBJ      0x18
-#define STREAM_TYPE_METADATA_DSMCC_SDP      0x19
-#define STREAM_TYPE_MPEG2_IPMP              0x1A
-#define STREAM_TYPE_AVC                     0x1B
-#define STREAM_TYPE_MPEG4_AAC_RAW           0x1C
-#define STREAM_TYPE_MPEG4_TIMED_TEXT        0x1D
-#define STREAM_TYPE_AVSI                    0x1E
-#define STREAM_TYPE_SVC                     0x1F
-#define STREAM_TYPE_MVC                     0x20
-#define STREAM_TYPE_JPEG2000                0x21
-#define STREAM_TYPE_S3D_SC_MPEG2            0x22
-#define STREAM_TYPE_S3D_SC_AVC              0x23
-#define STREAM_TYPE_HEVC                    0x24
-#define STREAM_TYPE_IPMP		    0x7F
+enum {
+    STREAM_TYPE_MPEG1_VIDEO = 0x01,
+    STREAM_TYPE_MPEG2_VIDEO = 0x02,
+    STREAM_TYPE_MPEG1_AUDIO = 0x03,
+    STREAM_TYPE_MPEG2_AUDIO = 0x04,
+    STREAM_TYPE_MPEG2_PRIVATE_SECTIONS = 0x05,
+    STREAM_TYPE_MPEG2_PRIVATE_PES = 0x06,
+    STREAM_TYPE_MHEG = 0x07,
+    STREAM_TYPE_MPEG2_DSMCC = 0x08,
+    STREAM_TYPE_ATM_MUX = 0x09,
+    STREAM_TYPE_DSMCC_A = 0x0A,
+    STREAM_TYPE_DSMCC_B = 0x0B,
+    STREAM_TYPE_DSMCC_C = 0x0C,
+    STREAM_TYPE_DSMCC_D = 0x0D,
+    STREAM_TYPE_MPEG2_AUX = 0x0E,
+    STREAM_TYPE_MPEG2_AAC = 0x0F, // ADTS
+    STREAM_TYPE_MPEG4_VIDEO = 0x10,
+    STREAM_TYPE_MPEG4_AAC = 0x11, // LATM
+    STREAM_TYPE_MPEG4_SYS_PES = 0x12,
+    STREAM_TYPE_MPEG2_SYS_SECTION = 0x13,
+    STREAM_TYPE_DSMCC_SDP = 0x14,
+    STREAM_TYPE_METADATA_PES = 0x15,
+    STREAM_TYPE_METADATA_SECTIONS = 0x16,
+    STREAM_TYPE_METADATA_DSMCC_DATA = 0x17,
+    STREAM_TYPE_METADATA_DSMCC_OBJ = 0x18,
+    STREAM_TYPE_METADATA_DSMCC_SDP = 0x19,
+    STREAM_TYPE_MPEG2_IPMP = 0x1A,
+    STREAM_TYPE_AVC = 0x1B,
+    STREAM_TYPE_MPEG4_AAC_RAW = 0x1C,
+    STREAM_TYPE_MPEG4_TIMED_TEXT = 0x1D,
+    STREAM_TYPE_AVSI = 0x1E,
+    STREAM_TYPE_SVC = 0x1F,
+    STREAM_TYPE_MVC = 0x20,
+    STREAM_TYPE_JPEG2000 = 0x21,
+    STREAM_TYPE_S3D_SC_MPEG2 = 0x22,
+    STREAM_TYPE_S3D_SC_AVC = 0x23,
+    STREAM_TYPE_HEVC = 0x24,
+    STREAM_TYPE_IPMP = 0x7F,
 //TODO: handle registration descriptor
-#define STREAM_TYPE_AC3_AUDIO       0x81 // ATSC A/52B, A3.1 AC3 Stream Type
+    STREAM_TYPE_AC3_AUDIO = 0x81 // ATSC A/52B, A3.1 AC3 Stream Type
+} ts_stream_type_t;
 
-#define PAT_PID			0
-#define CAT_PID			1
-#define TSDT_PID		2
-#define IPMP_CIT_PID	        3
-#define DASH_PID		4
-#define NULL_PID		0x1FFF
+enum {
+    PID_PAT = 0,
+    PID_CAT = 1,
+    PID_TSDT = 2,
+    PID_IPMP_CIT = 3,
+    PID_DASH = 4,
+    PID_NULL = 0x1FFF
+} ts_pid_t;
 
 #define GENERAL_PURPOSE_PID_MIN		0x0010
 #define GENERAL_PURPOSE_PID_MAX		0x1FFE
 
 char* stream_desc(uint8_t stream_id);
-
-// Multi-section tables are not supported
-// if there is a need to support them,
-// patches are welcome
-
-typedef struct {
-    uint32_t table_id;
-    uint32_t section_syntax_indicator;
-    uint32_t private_indicator;
-    uint32_t section_length;
-} section_header_t;
 
 #endif

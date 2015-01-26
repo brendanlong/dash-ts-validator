@@ -216,7 +216,7 @@ int main(int argc, char* argv[])
                         }
                     }
                 }
-                g_critical(" ");
+                g_print("\n");
 
                 for(gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
@@ -228,7 +228,7 @@ int main(int argc, char* argv[])
                         overall_status = 0;
                     }
                 }
-                g_critical(" ");
+                g_print("\n");
 
                 // print out results
                 overall_status &= check_segment_timing(representation->segments, AUDIO_CONTENT_COMPONENT);

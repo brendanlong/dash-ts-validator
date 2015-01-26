@@ -342,16 +342,16 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         return 0;
     }
 
-    if (ts->header.pid == PAT_PID) {
+    if (ts->header.pid == PID_PAT) {
         return mpeg2ts_stream_read_pat(m2s, ts);
     }
-    if (ts->header.pid == CAT_PID) {
+    if (ts->header.pid == PID_CAT) {
         return mpeg2ts_stream_read_cat(m2s, ts);
     }
-    if (ts->header.pid == DASH_PID) {
+    if (ts->header.pid == PID_DASH) {
         return mpeg2ts_stream_read_dash_event_msg(m2s, ts);
     }
-    if (ts->header.pid == NULL_PID) {
+    if (ts->header.pid == PID_NULL) {
         ts_free(ts);
         return 0;
     }
