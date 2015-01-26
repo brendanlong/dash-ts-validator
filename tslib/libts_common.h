@@ -32,7 +32,6 @@
 
 #include "bs.h"
 
-#define ARRAYSIZE(x)   ((sizeof(x))/(sizeof((x)[0])))
 
 typedef struct {
     uint8_t* bytes;

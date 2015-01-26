@@ -36,6 +36,10 @@
 #include "log.h"
 #include "crc32m.h"
 
+
+#define ARRAYSIZE(x)   ((sizeof(x))/(sizeof((x)[0])))
+
+
 typedef struct {
     int type;
     char name[0x100];
@@ -83,6 +87,7 @@ static char* first_stream_types[] = { // 0x00 - 0x23
 static char* STREAM_DESC_RESERVED 		= "ISO/IEC 13818-1 Reserved";   // 0x24-0x7E
 static char* STREAM_DESC_IPMP			= "IPMP Stream";                // 0x7F
 static char* STREAM_DESC_USER_PRIVATE	= "User Private";               // 0x80-0xFF
+
 
 char* stream_desc(uint8_t stream_id)
 {
