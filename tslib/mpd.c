@@ -1,10 +1,8 @@
 
 #include "mpd.h"
 
-#include <glib.h>
 #include <inttypes.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
 #include <libxml/tree.h>
 #include <pcre.h>

@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <assert.h>
-#include "ISOBMFF.h"
+#include "isobmff.h"
 #include "libts_common.h"
 #include "log.h"
 #include "mpeg2ts_demux.h"

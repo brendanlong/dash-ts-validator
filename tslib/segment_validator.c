@@ -1,12 +1,10 @@
 
 #include "segment_validator.h"
 
-#include <glib.h>
 #include <inttypes.h>
 #include <errno.h>
 #include "mpeg2ts_demux.h"
 #include "h264_stream.h"
-#include "ISOBMFF.h"
 
 static dash_validator_t* global_dash_validator;
 int global_iframe_counter;
