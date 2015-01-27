@@ -485,14 +485,20 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
 
-    if (pes == NULL || pes->status > 0) {
+    if (pes == NULL) {
+        g_critical("DASH Conformance: Saw TS packet for PID 0x0004 ('emsg'), but it doesn't have "
+                "payload_unit_start_inidicator = 1, and we haven't seen a previous 'emsg' TS packet. 5.10.3.3.5"
+                "says, \"The transport stream packet carrying the start of the `emsg` box shall have the "
+                "payload_unit_start_indicator field set to `1`.\"");
+        dash_validator->status = 0;
+        goto cleanup;
+    }
+
+    if (pes->status > 0) {
         g_critical("DASH Conformance: 5.10.3.3.5 \"A segment shall contain only complete [emsg] boxes. If "
                 "@bitstreamSwitching is set, and subsegments are used, a subsegment shall contain only complete "
                 "`emsg` boxes.\"");
         dash_validator->status = 0;
-        if (pes == NULL) {
-            goto cleanup;
-        }
     }
 
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->header.pts_dts_flags != 0) {
