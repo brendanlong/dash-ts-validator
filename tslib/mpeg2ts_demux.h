@@ -113,7 +113,7 @@ int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
         demux_pid_handler_t* handler, demux_pid_handler_t* validator);
 int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid);
 int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* piNew);
-int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s);
+void mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s);
 
 demux_pid_handler_t* demux_pid_handler_new(ts_pid_processor_t);
 

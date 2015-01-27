@@ -313,9 +313,8 @@ cleanup:
     return ret;
 }
 
-int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s)
+void mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s)
 {
-    int pid_cnt = 0;
     for (gsize i = 0; i < m2s->programs->len; ++i) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, i);
 
@@ -323,7 +322,6 @@ int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s)
         g_hash_table_iter_init(&j, m2p->pids);
         pid_info_t* pi;
         while (g_hash_table_iter_next (&j, NULL, (void**)&pi)) {
-            ++pid_cnt;
             if (pi->demux_validator && pi->demux_validator->process_ts_packet) {
                 pi->demux_validator->process_ts_packet(NULL, pi->es_info, pi->demux_handler->arg);
             }
@@ -332,7 +330,6 @@ int mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s)
             }
         }
     }
-    return pid_cnt;
 }
 
 int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
