@@ -94,15 +94,6 @@ enum {
     STREAM_TYPE_AC3_AUDIO = 0x81 // ATSC A/52B, A3.1 AC3 Stream Type
 } ts_stream_type_t;
 
-enum {
-    PID_PAT = 0,
-    PID_CAT = 1,
-    PID_TSDT = 2,
-    PID_IPMP_CIT = 3,
-    PID_DASH = 4,
-    PID_NULL = 0x1FFF
-} ts_pid_t;
-
 #define GENERAL_PURPOSE_PID_MIN		0x0010
 #define GENERAL_PURPOSE_PID_MAX		0x1FFE
 

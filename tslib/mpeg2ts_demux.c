@@ -94,7 +94,7 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
 
     g_hash_table_destroy(m2p->pids);
 
-    // GORP: if this is a test with an initialization segment, then dont want to free the pmt
+    // TODO: if this is a test with an initialization segment, then dont want to free the pmt
     program_map_section_free(m2p->pmt);
 
     if (m2p->arg_destructor && m2p->arg) {
@@ -169,9 +169,8 @@ void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
         return;
     }
     g_ptr_array_free(m2s->programs, true);
-    if (m2s->pat != NULL) {
-        program_association_section_free(m2s->pat);
-    }
+    program_association_section_free(m2s->pat);
+    demux_pid_handler_free(m2s->emsg_processor);
     if (m2s->arg_destructor && m2s->arg) {
         m2s->arg_destructor(m2s->arg);
     }
@@ -263,9 +262,9 @@ cleanup:
 
 int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
-    validate_dash_events(ts->payload.bytes, ts->payload.len);
-
-    // GORP: allow >1 packet event
+    if (m2s->emsg_processor && m2s->emsg_processor->process_ts_packet) {
+        m2s->emsg_processor->process_ts_packet(ts, NULL, m2s->emsg_processor->arg);
+    }
     ts_free(ts);
     return 0;
 }
@@ -345,7 +344,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     if (ts->header.pid == PID_CAT) {
         return mpeg2ts_stream_read_cat(m2s, ts);
     }
-    if (ts->header.pid == PID_DASH) {
+    if (ts->header.pid == PID_DASH_EMSG) {
         return mpeg2ts_stream_read_dash_event_msg(m2s, ts);
     }
     if (ts->header.pid == PID_NULL) {

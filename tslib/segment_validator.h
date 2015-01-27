@@ -24,8 +24,6 @@
 #define TS_TEST_MAIN   0x02
 #define TS_TEST_SIMPLE 0x04
 
-#define PID_EMSG    0x04
-
 
 typedef enum {
     UNKNOWN_CONTENT_COMPONENT = 0x00,
@@ -86,7 +84,5 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
 int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
         data_segment_iframes_t* iframes,
         int presentation_time_offset, int video_pid, bool is_simple_profile);
-
-void validate_dash_events(uint8_t* buf, int len);
 
 #endif

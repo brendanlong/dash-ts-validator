@@ -48,6 +48,12 @@ typedef int (*pmt_processor_t)(struct _mpeg2ts_program_*, void*);
 
 typedef void (*arg_destructor_t)(void*);
 
+typedef struct {
+    void* arg;                            // argument for ts packet processor
+    arg_destructor_t arg_destructor;      // destructor for arg
+    ts_pid_processor_t process_ts_packet; // ts packet processor, needs to be registered with mpeg2ts_program
+} demux_pid_handler_t;
+
 struct _mpeg2ts_program_ {
     uint32_t pid; // PMT PID
     uint32_t program_number;
@@ -74,6 +80,7 @@ struct _mpeg2ts_stream_ {
     conditional_access_section_t* cat;  // CAT
     pat_processor_t pat_processor;      // callback called after PAT was processed
     cat_processor_t cat_processor;      // callback called after CAT was processed
+    demux_pid_handler_t* emsg_processor; // handler for 'emsg' packets
     GPtrArray* programs;                // list of programs in this multiplex
     GPtrArray* ca_systems;              // list of conditional access systems in this multiplex
     void* arg;                          // argument for PAT/CAT callbacks
@@ -82,17 +89,6 @@ struct _mpeg2ts_stream_ {
 
 typedef struct _mpeg2ts_stream_  mpeg2ts_stream_t;
 typedef struct _mpeg2ts_program_ mpeg2ts_program_t;
-
-typedef struct {
-    void* arg;                            // argument for ts packet processor
-    arg_destructor_t arg_destructor;      // destructor for arg
-    ts_pid_processor_t process_ts_packet; // ts packet processor, needs to be registered with mpeg2ts_program
-} demux_pid_handler_t;
-
-typedef struct {
-    void* arg;
-    // TODO impl
-} mux_pid_handler_t;
 
 typedef struct {
     demux_pid_handler_t* demux_handler;   /// demux handler

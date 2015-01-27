@@ -6,7 +6,6 @@
 #include "mpeg2ts_demux.h"
 #include "h264_stream.h"
 
-static dash_validator_t* global_dash_validator;
 int global_iframe_counter;
 data_segment_iframes_t* global_iframe_data;
 unsigned int global_segment_duration;
@@ -23,6 +22,8 @@ int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
         uint64_t segment_duration, data_segment_iframes_t* iframes,
         int presentation_time_offset, int video_pid, bool is_simple_profile);
 
+
+void validate_dash_events(uint8_t* buf, int len);
 int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
 int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
         bool is_simple_profile);
@@ -263,10 +264,10 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
     return 0;
 }
 
-int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg)
+int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
-    if (ts == NULL || es_info == NULL) {
+    if (ts == NULL) {
         return 0;
     }
 
@@ -316,9 +317,6 @@ int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void*
 int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
-    if (esi == NULL) {
-        return 0;
-    }
 
     if (pes == NULL) {
         // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start from PUSI=1)
@@ -342,7 +340,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
 
-    if (first_ts->header.pid == PID_EMSG) {
+    if (first_ts->header.pid == PID_DASH_EMSG) {
         if (first_ts->header.transport_scrambling_control != 0) {
             g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
                     "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
@@ -493,11 +491,68 @@ fail:
     goto cleanup;
 }
 
+int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
+{
+    int ret = 1;
+    dash_validator_t* dash_validator = (dash_validator_t*)arg;
+
+    if (pes == NULL) {
+        // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start from PUSI=1)
+        if (dash_validator->conformance_level & TS_TEST_MAIN) {
+            g_critical("DASH Conformance: media segments shall contain only complete PES packets");
+            goto fail;
+        }
+
+        g_info("NULL PES packet!");
+        goto cleanup;
+    }
+
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->header.pts_dts_flags != 0) {
+        /* TODO: 6.4.3.1 says that, "Any additional information that does not alter the Media Presentation timeline is
+         *       allowed." So, is this next warning true? */
+        g_critical("DASH Conformance: 'emsg' PES packet in initialization segment has PTS_DTS_flags set to 0x%x. "
+                "Initialization segment packets should not contain timing information.", pes->header.pts_dts_flags);
+        goto fail;
+    }
+
+    ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
+    if (first_ts->header.transport_scrambling_control != 0) {
+        g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
+                "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
+                "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
+                first_ts->header.transport_scrambling_control);
+        dash_validator->status = 0;
+    }
+    uint8_t* buf = pes->payload;
+    int len = pes->payload_len;
+    if (validate_emsg_msg(buf, len, global_segment_duration) != 0) {
+        g_critical("DASH Conformance: validation of EMSG failed");
+        dash_validator->status = 0;
+    }
+
+    if (pes->status > 0) {
+        if (dash_validator->conformance_level & TS_TEST_MAIN) {
+            /* TODO: This is a 'should'. Is there somewhere else that upgrades it to 'shall'? */
+            /* TODO: 7.4.3.2 says that this is a 'shall' if we're dealing with @segmentAlignment = true  and 7.4.3.2
+             *       says the same for @subsegmentAlignment. */
+            g_critical("DASH Conformance: 6.4.4.2 Media Segments should contain only complete PES packets and sections.");
+            dash_validator->status = 0;
+        }
+    }
+
+cleanup:
+    pes_free(pes);
+    return ret;
+fail:
+    dash_validator->status = 0;
+    ret = 0;
+    goto cleanup;
+}
+
 int validate_segment(dash_validator_t* dash_validator, char* fname,
         dash_validator_t* dash_validator_init,
         data_segment_iframes_t* pIFrameData, uint64_t segmentDuration)
 {
-    global_dash_validator = dash_validator;
     global_iframe_counter = 0;
     global_iframe_data = pIFrameData;
     global_segment_duration = segmentDuration;
@@ -526,10 +581,6 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
     }
 
     m2s = mpeg2ts_stream_new();
-    if (m2s == NULL) {
-        g_critical("Error creating MPEG-2 STREAM object");
-        goto fail;
-    }
 
     dash_validator->last_pcr = PCR_INVALID;
     dash_validator->status = 1;
@@ -557,6 +608,14 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
 
     m2s->pat_processor = pat_processor;
     m2s->arg = dash_validator;
+
+    // Connect handler for DASH EMSG streams
+    pes_demux_t* emsg_pd = pes_demux_new(validate_emsg_pes_packet);
+    emsg_pd->pes_arg = dash_validator;
+    demux_pid_handler_t* emsg_handler = demux_pid_handler_new(pes_demux_process_ts_packet);
+    emsg_handler->arg = emsg_pd;
+    emsg_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
+    m2s->emsg_processor = emsg_handler;
 
     long packet_buf_size = 4096;
     uint64_t packets_read = 0;
@@ -606,14 +665,6 @@ fail:
     dash_validator->status = 0;
     tslib_errno = 1;
     goto cleanup;
-}
-
-void validate_dash_events(uint8_t* buf, int len)
-{
-    if (validate_emsg_msg(buf, len, global_segment_duration) != 0) {
-        g_critical("DASH Conformance: validation of EMSG failed");
-        global_dash_validator->status = 0;
-    }
 }
 
 int validate_representation_index_segment_boxes(size_t num_segments,

@@ -121,6 +121,15 @@ typedef enum {
     TS_ERROR_NO_SYNC_BYTE    = -2,
 } ts_error_t;
 
+enum {
+    PID_PAT = 0,
+    PID_CAT = 1,
+    PID_TSDT = 2,
+    PID_IPMP_CIT = 3,
+    PID_DASH_EMSG = 4,
+    PID_NULL = 0x1FFF
+} ts_pid_t;
+
 
 ts_packet_t* ts_new();
 void ts_free(ts_packet_t* ts);
