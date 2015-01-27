@@ -59,6 +59,7 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
 {
     pes_demux_t* pdm = arg;
 
+    // If we have a new payload, handle the existing PES data in the queue first
     if (ts == NULL || ts->header.payload_unit_start_indicator) {
         int packets_in_queue = pdm->ts_queue->length;
         if (packets_in_queue > 0) {
@@ -106,12 +107,14 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
                 g_array_free(buf, true);
             }
 
-            // clean up
+            // Clear the queue
             while (pdm->ts_queue->length) {
                 ts_free(g_queue_pop_head(pdm->ts_queue));
             }
         }
     }
+
+    // Push new packet on the queue
     if (ts != NULL) {
         g_queue_push_tail(pdm->ts_queue, ts);
     }

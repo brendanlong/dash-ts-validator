@@ -328,7 +328,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             return 0;
         }
 
-        g_critical("NULL PES packet!");
+        g_info("NULL PES packet!");
         dash_validator->status = 0;
         return 0;
     }
@@ -343,7 +343,6 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
 
     if (first_ts->header.pid == PID_EMSG) {
-        g_print("EMSG\n");
         if (first_ts->header.transport_scrambling_control != 0) {
             g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
                     "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "

@@ -376,7 +376,8 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
             continue;
         }
 
-        // check for discontinuity
+        // TODO: check for discontinuity
+
         pi->num_packets++;
 
         // TODO: this can misfire if we have an MPTS and same PID is "owned" by more than one program
