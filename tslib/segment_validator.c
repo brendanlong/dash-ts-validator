@@ -328,47 +328,30 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         if (dash_validator->conformance_level & TS_TEST_MAIN) {
             g_critical("DASH Conformance: media segments shall contain only complete PES packets");
             dash_validator->status = 0;
-            return 0;
         }
-
-        g_info("NULL PES packet!");
-        dash_validator->status = 0;
-        return 0;
+        goto cleanup;
     }
 
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+        /* TODO: 6.4.3.1 says that, "Any additional information that does not alter the Media Presentation timeline is
+         *       allowed." So, is this next warning true? */
         g_critical("DASH Conformance: initialization segment cannot contain program stream");
         dash_validator->status = 0;
-        return 0;
     }
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
 
-    if (first_ts->header.pid == PID_DASH_EMSG) {
-        if (first_ts->header.transport_scrambling_control != 0) {
-            g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
-                    "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
-                    "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
-                    first_ts->header.transport_scrambling_control);
-            dash_validator->status = 0;
-        }
-        uint8_t* buf = pes->payload;
-        int len = pes->payload_len;
-        if (validate_emsg_msg(buf, len, global_segment_duration) != 0) {
-            g_critical("DASH Conformance: validation of EMSG failed");
-            dash_validator->status = 0;
-        }
-    }
-
     assert(pid_validator != NULL);
     if (pes->status > 0) {
         if (dash_validator->conformance_level & TS_TEST_MAIN) {
-            g_critical("DASH Conformance: media segments shall contain only complete PES packets");
+            /* TODO: This is a 'should'. Is there somewhere else that upgrades it to 'shall'? */
+            /* TODO: 7.4.3.2 says that this is a 'shall' if we're dealing with @segmentAlignment = true  and 7.4.3.2
+             *       says the same for @subsegmentAlignment. */
+            g_critical("DASH Conformance: 6.4.4.2 Media Segments should contain only complete PES packets and sections.");
             dash_validator->status = 0;
         }
-        pes_free(pes);
-        return 0;
+        goto cleanup;
     }
 
     // we are in the first PES packet of a PID
@@ -376,11 +359,13 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
             pid_validator->earliest_playout_time = pes->header.pts;
             pid_validator->latest_playout_time = pes->header.pts;
-        } else {
-            if(dash_validator->conformance_level & TS_TEST_MAIN) {
-                g_critical("DASH Conformance: first PES packet must have PTS");
-                dash_validator->status = 0;
-            }
+        } else if (dash_validator->conformance_level & TS_TEST_MAIN) {
+            /* TODO: This is probably only if @segmentAlignment is not 'false'
+             * 7.4.3.2 Segment alignment
+             * If the @segmentAlignment attribute is not set to ‘false’, [...] the first PES packet shall contain a
+             * PTS timestamp. */
+            g_critical("DASH Conformance: first PES packet must have PTS");
+            dash_validator->status = 0;
         }
 
         if (first_ts->adaptation_field.random_access_indicator) {
