@@ -147,4 +147,6 @@ void free_boxes(box_t** boxes, size_t num_boxes);
 data_segment_iframes_t* data_segment_iframes_new(size_t num_segments);
 void data_segment_iframes_free(data_segment_iframes_t*, size_t num_segments);
 
+void uint32_to_string(char* str_out, uint32_t num);
+
 #endif

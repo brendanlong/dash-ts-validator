@@ -277,6 +277,11 @@ int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg
     if (dash_validator->pcr_pid == ts->header.pid) {
         int64_t pcr = ts_read_pcr(ts);
         if (PCR_IS_VALID(pcr)) {
+            if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+                g_critical("DASH Conformance: 6.4.3.2: \"PCR-bearing packets shall not be present in the "
+                        "Initialization Segment;\"");
+                dash_validator->status = 0;
+            }
             dash_validator->last_pcr = pcr;
         }
     }
@@ -493,26 +498,22 @@ fail:
 
 int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
-    int ret = 1;
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
 
-    if (pes == NULL) {
-        // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start from PUSI=1)
-        if (dash_validator->conformance_level & TS_TEST_MAIN) {
-            g_critical("DASH Conformance: media segments shall contain only complete PES packets");
-            goto fail;
+    if (pes == NULL || pes->status > 0) {
+        g_critical("DASH Conformance: 5.10.3.3.5 \"A segment shall contain only complete [emsg] boxes. If "
+                "@bitstreamSwitching is set, and subsegments are used, a subsegment shall contain only complete "
+                "`emsg` boxes.\"");
+        dash_validator->status = 0;
+        if (pes == NULL) {
+            goto cleanup;
         }
-
-        g_info("NULL PES packet!");
-        goto cleanup;
     }
 
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->header.pts_dts_flags != 0) {
-        /* TODO: 6.4.3.1 says that, "Any additional information that does not alter the Media Presentation timeline is
-         *       allowed." So, is this next warning true? */
         g_critical("DASH Conformance: 'emsg' PES packet in initialization segment has PTS_DTS_flags set to 0x%x. "
                 "Initialization segment packets should not contain timing information.", pes->header.pts_dts_flags);
-        goto fail;
+        dash_validator->status = 0;
     }
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
@@ -523,6 +524,7 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
                 first_ts->header.transport_scrambling_control);
         dash_validator->status = 0;
     }
+
     uint8_t* buf = pes->payload;
     int len = pes->payload_len;
     if (validate_emsg_msg(buf, len, global_segment_duration) != 0) {
@@ -530,23 +532,9 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
         dash_validator->status = 0;
     }
 
-    if (pes->status > 0) {
-        if (dash_validator->conformance_level & TS_TEST_MAIN) {
-            /* TODO: This is a 'should'. Is there somewhere else that upgrades it to 'shall'? */
-            /* TODO: 7.4.3.2 says that this is a 'shall' if we're dealing with @segmentAlignment = true  and 7.4.3.2
-             *       says the same for @subsegmentAlignment. */
-            g_critical("DASH Conformance: 6.4.4.2 Media Segments should contain only complete PES packets and sections.");
-            dash_validator->status = 0;
-        }
-    }
-
 cleanup:
     pes_free(pes);
-    return ret;
-fail:
-    dash_validator->status = 0;
-    ret = 0;
-    goto cleanup;
+    return 1; // return code doesn't matter
 }
 
 int validate_segment(dash_validator_t* dash_validator, char* fname,
@@ -1200,8 +1188,6 @@ fail:
 
 int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)
 {
-    g_debug("validate_emsg_msg");
-
     box_t** boxes = NULL;
     size_t num_boxes;
 
@@ -1216,8 +1202,12 @@ int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)
     for (size_t i = 0; i < num_boxes; i++) {
         data_emsg_t* box = (data_emsg_t*)boxes[i];
         if (box->type != BOX_TYPE_EMSG) {
-            g_critical("ERROR validating EMSG: Invalid box type found.");
-            goto fail;
+            char tmp[5] = {0};
+            uint32_to_string(tmp, box->type);
+            g_critical("DASH Conformance: Saw a box with type %s in a PES packet for PID 0x0004, which is reserved "
+                    "for 'emsg' boxes. 5.10.3.3.5: \"[...] the packet payload will start with the `emsg` box [...].\"",
+                    tmp);
+            return_code = -1;
         }
 
         // GORP: anything else to verify here??

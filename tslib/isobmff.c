@@ -47,7 +47,7 @@ void free_pcrb(data_pcrb_t*);
 void free_ssix(data_ssix_t*);
 void free_emsg(data_emsg_t*);
 
-static void uint32_to_string(char* str, uint32_t num)
+void uint32_to_string(char* str, uint32_t num)
 {
     str[0] = (num >> 24) & 0xff;
     str[1] = (num >> 16) & 0xff;
