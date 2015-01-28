@@ -340,6 +340,17 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         dash_validator->status = 0;
     }
 
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+        for (GList* current = ts_queue->head; current; current = current->next) {
+            ts_packet_t* tsp = current->data;
+            if (tsp->adaptation_field.pcr_flag) {
+                g_critical("DASH Conformance: EMSG TS packet in initialization segment has pcr_flag = 1. 6.4.3.2 says, "
+                        "\"PCR-bearing packets shall not be present in the Initialization Segment;\".");
+                dash_validator->status = 0;
+            }
+        }
+    }
+
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
 
@@ -406,6 +417,12 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         // frames can come in out of PTS order
         pid_validator->earliest_playout_time = MIN(pid_validator->earliest_playout_time, pes->header.pts);
         pid_validator->latest_playout_time = MAX(pid_validator->latest_playout_time, pes->header.pts);
+        if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+            g_critical("DASH Conformance: 'PES packet in initialization segment has PTS_DTS_flags set to 0x%x. "
+                    "Initialization segment packets should not contain timing information.",
+                    pes->header.pts_dts_flags);
+            dash_validator->status = 0;
+        }
     }
 
     if (pid_validator->content_component == VIDEO_CONTENT_COMPONENT) {
@@ -511,6 +528,11 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
                     "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
                     "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
                     first_ts->header.transport_scrambling_control);
+            dash_validator->status = 0;
+        }
+        if (dash_validator->segment_type == INITIALIZATION_SEGMENT && tsp->adaptation_field.pcr_flag) {
+            g_critical("DASH Conformance: EMSG TS packet in initialization segment has pcr_flag = 1. 6.4.3.2 says, "
+                    "\"PCR-bearing packets shall not be present in the Initialization Segment;\".");
             dash_validator->status = 0;
         }
     }
