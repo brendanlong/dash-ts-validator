@@ -3,8 +3,10 @@
 
 #include <inttypes.h>
 #include <errno.h>
-#include "mpeg2ts_demux.h"
+
 #include "h264_stream.h"
+#include "mpeg2ts_demux.h"
+#include "pes_demux.h"
 
 int global_iframe_counter;
 data_segment_iframes_t* global_iframe_data;
