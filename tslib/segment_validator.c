@@ -92,7 +92,7 @@ int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
     if (dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
-        g_critical("DASH Conformance: 6.4.4.2  media segments shall contain exactly one program (%u found)",
+        g_critical("DASH Conformance: 6.4.4.2  Media segments shall contain exactly one program (%u found)",
                        m2s->programs->len);
         dash_validator->status = 0;
         return 0;
@@ -325,11 +325,9 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
 
     if (pes == NULL) {
         // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start with payload_unit_start_indicator = 1)
+        // TODO: Where did this requirement come from?
         if (dash_validator->conformance_level & TS_TEST_MAIN) {
-            g_critical("DASH Conformance: Saw TS packet for PID 0x0004 ('emsg'), but it doesn't have "
-                    "payload_unit_start_inidicator = 1, and we haven't seen a previous 'emsg' TS packet. 5.10.3.3.5"
-                    "says, \"The transport stream packet carrying the start of the `emsg` box shall have the "
-                    "payload_unit_start_indicator field set to `1`.\"");
+            g_critical("DASH Conformance: media segments shall contain only complete PES packets");
             dash_validator->status = 0;
         }
         goto cleanup;
