@@ -169,7 +169,15 @@ int ts_read_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
         }
 
         int stuffing_bytes_len = af->adaptation_field_length - (bs_pos(b) - start_pos);
-        bs_skip_bytes(b, stuffing_bytes_len);
+        while (stuffing_bytes_len > 0) {
+            uint8_t stuffing_byte = bs_read_u8(b);
+            if (stuffing_byte != 0xFF) {
+                g_critical("In adaptation field, read stuffing byte with value 0x%02x, but stuffing bytes should "
+                        "have the value 0xFF.", stuffing_byte);
+                return -1;
+            }
+            --stuffing_bytes_len;
+        }
     }
 
     return 1 + bs_pos(b) - start_pos;
