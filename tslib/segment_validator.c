@@ -506,13 +506,15 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
         dash_validator->status = 0;
     }
 
-    // TODO: Applies to all packets
-    if (first_ts->header.transport_scrambling_control != 0) {
-        g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
-                "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
-                "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
-                first_ts->header.transport_scrambling_control);
-        dash_validator->status = 0;
+    for (GList* current = ts_queue->head; current; current = current->next) {
+        ts_packet_t* tsp = current->data;
+        if (tsp->header.transport_scrambling_control != 0) {
+            g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
+                    "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
+                    "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
+                    first_ts->header.transport_scrambling_control);
+            dash_validator->status = 0;
+        }
     }
 
     if (pes->status > 0) {
