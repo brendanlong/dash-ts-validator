@@ -324,9 +324,12 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
 
     if (pes == NULL) {
-        // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start from PUSI=1)
+        // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start with payload_unit_start_indicator = 1)
         if (dash_validator->conformance_level & TS_TEST_MAIN) {
-            g_critical("DASH Conformance: media segments shall contain only complete PES packets");
+            g_critical("DASH Conformance: Saw TS packet for PID 0x0004 ('emsg'), but it doesn't have "
+                    "payload_unit_start_inidicator = 1, and we haven't seen a previous 'emsg' TS packet. 5.10.3.3.5"
+                    "says, \"The transport stream packet carrying the start of the `emsg` box shall have the "
+                    "payload_unit_start_indicator field set to `1`.\"");
             dash_validator->status = 0;
         }
         goto cleanup;
@@ -485,13 +488,31 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
 
-    if (pes == NULL) {
-        g_critical("DASH Conformance: Saw TS packet for PID 0x0004 ('emsg'), but it doesn't have "
-                "payload_unit_start_inidicator = 1, and we haven't seen a previous 'emsg' TS packet. 5.10.3.3.5"
-                "says, \"The transport stream packet carrying the start of the `emsg` box shall have the "
-                "payload_unit_start_indicator field set to `1`.\"");
+    ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
+    if (!first_ts->header.payload_unit_start_indicator) {
+        g_critical("DASH Conformance: First 'emsg' packet (PID = 0x0004) does not have "
+                "payload_unit_start_indicator = 1. 5.10.3.3.5 says, \"the transport stream packet carrying the start "
+                "of the `emsg` box shall have the payload_unit_start_indicator field set to `1`\".");
         dash_validator->status = 0;
-        goto cleanup;
+    }
+
+    if (first_ts->payload.len < 8) {
+        /* Note: The first 8 bytes of a Box are the "size" and "type" fields, so if the payload size is >= 8 bytes,
+         *       we can guarantee that the Box.type is in it. We check that the type (and size) are correct in
+         *       validate_emsg_msg(). */
+        g_critical("DASH Conformance: The first TS packet with 'emsg' data has payload size of %zu bytes, but should "
+                "be at least 8 bytes. 5.10.3.3.5 says, \"The complete Box.type field shall be present in this first "
+                "packet, and the payload size shall be at least 8 bytes.\".", first_ts->payload.len);
+        dash_validator->status = 0;
+    }
+
+    // TODO: Applies to all packets
+    if (first_ts->header.transport_scrambling_control != 0) {
+        g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
+                "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
+                "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
+                first_ts->header.transport_scrambling_control);
+        dash_validator->status = 0;
     }
 
     if (pes->status > 0) {
@@ -501,18 +522,13 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
         dash_validator->status = 0;
     }
 
+    if (pes == NULL) {
+        goto cleanup;
+    }
+
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->header.pts_dts_flags != 0) {
         g_critical("DASH Conformance: 'emsg' PES packet in initialization segment has PTS_DTS_flags set to 0x%x. "
                 "Initialization segment packets should not contain timing information.", pes->header.pts_dts_flags);
-        dash_validator->status = 0;
-    }
-
-    ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
-    if (first_ts->header.transport_scrambling_control != 0) {
-        g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
-                "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
-                "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
-                first_ts->header.transport_scrambling_control);
         dash_validator->status = 0;
     }
 
