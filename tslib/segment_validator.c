@@ -319,12 +319,39 @@ int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg
     return 1;
 }
 
+void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_validator_t* dash_validator)
+{
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+        for (GList* current = ts_queue->head; current; current = current->next) {
+            ts_packet_t* tsp = current->data;
+            if (tsp->adaptation_field.pcr_flag) {
+                g_critical("DASH Conformance: TS packet in initialization segment has pcr_flag = 1. 6.4.3.2 says, "
+                        "\"PCR-bearing packets shall not be present in the Initialization Segment;\".");
+                dash_validator->status = 0;
+            }
+        }
+    }
+
+    if (pes == NULL) {
+        return;
+    }
+
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->header.pts_dts_flags != 0) {
+        g_critical("DASH Conformance: PES packet in initialization segment has PTS_DTS_flags set to 0x%x. "
+                "6.4.3.2 says, \"Time-varying initialization information shall not be present in the Initialization "
+                "Segment.\"", pes->header.pts_dts_flags);
+        dash_validator->status = 0;
+    }
+}
+
 int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    validate_pes_packet_common(pes, ts_queue, dash_validator);
 
     if (pes == NULL) {
-        // we have a queue that didn't appear to be a valid TS packet (e.g., because it didn't start with payload_unit_start_indicator = 1)
+        // we have a queue that didn't appear to be a valid PES packet (e.g., because it didn't start with
+        // payload_unit_start_indicator = 1)
         // TODO: Where did this requirement come from?
         if (dash_validator->conformance_level & TS_TEST_MAIN) {
             g_critical("DASH Conformance: media segments shall contain only complete PES packets");
@@ -333,28 +360,10 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         goto cleanup;
     }
 
-    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-        /* TODO: 6.4.3.1 says that, "Any additional information that does not alter the Media Presentation timeline is
-         *       allowed." So, is this next warning true? */
-        g_critical("DASH Conformance: initialization segment cannot contain program stream");
-        dash_validator->status = 0;
-    }
-
-    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-        for (GList* current = ts_queue->head; current; current = current->next) {
-            ts_packet_t* tsp = current->data;
-            if (tsp->adaptation_field.pcr_flag) {
-                g_critical("DASH Conformance: EMSG TS packet in initialization segment has pcr_flag = 1. 6.4.3.2 says, "
-                        "\"PCR-bearing packets shall not be present in the Initialization Segment;\".");
-                dash_validator->status = 0;
-            }
-        }
-    }
-
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
-
     assert(pid_validator != NULL);
+
     if (pes->status > 0) {
         if (dash_validator->conformance_level & TS_TEST_MAIN) {
             /* TODO: This is a 'should'. Is there somewhere else that upgrades it to 'shall'? */
@@ -502,6 +511,7 @@ fail:
 int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    validate_pes_packet_common(pes, ts_queue, dash_validator);
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     if (!first_ts->header.payload_unit_start_indicator) {
@@ -530,11 +540,6 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
                     first_ts->header.transport_scrambling_control);
             dash_validator->status = 0;
         }
-        if (dash_validator->segment_type == INITIALIZATION_SEGMENT && tsp->adaptation_field.pcr_flag) {
-            g_critical("DASH Conformance: EMSG TS packet in initialization segment has pcr_flag = 1. 6.4.3.2 says, "
-                    "\"PCR-bearing packets shall not be present in the Initialization Segment;\".");
-            dash_validator->status = 0;
-        }
     }
 
     if (pes->status > 0) {
@@ -546,12 +551,6 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
 
     if (pes == NULL) {
         goto cleanup;
-    }
-
-    if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->header.pts_dts_flags != 0) {
-        g_critical("DASH Conformance: 'emsg' PES packet in initialization segment has PTS_DTS_flags set to 0x%x. "
-                "Initialization segment packets should not contain timing information.", pes->header.pts_dts_flags);
-        dash_validator->status = 0;
     }
 
     uint8_t* buf = pes->payload;
