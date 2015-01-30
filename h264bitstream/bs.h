@@ -41,11 +41,11 @@ static int bs_eof(const bs_t* const b);
 static int bs_overrun(const bs_t* const b);
 static int bs_pos(const bs_t* const b);
 
-static uint32_t bs_peek_u1(bs_t* b);
-static uint32_t bs_read_u1(bs_t* b);
+static uint8_t bs_peek_u1(bs_t* b);
+static uint8_t bs_read_u1(bs_t* b);
 static uint32_t bs_read_u(bs_t* b, int n);
 static uint32_t bs_read_f(bs_t* b, int n);
-static uint32_t bs_read_u8(bs_t* b);
+static uint8_t bs_read_u8(bs_t* b);
 static uint32_t bs_read_ue(bs_t* b);
 static int32_t bs_read_se(bs_t* b);
 
@@ -66,7 +66,7 @@ static void bs_skip_u1(bs_t* b);
 static void bs_skip_u(bs_t* b, int n);
 static int bs_bytes_left(const bs_t* const b);
 
-static uint32_t bs_read_u16(bs_t* b);
+static uint16_t bs_read_u16(bs_t* b);
 static uint32_t bs_read_u24(bs_t* b);
 static uint32_t bs_read_u32(bs_t* b);
 static uint64_t bs_read_u64(bs_t* b);
@@ -143,7 +143,7 @@ static inline int bs_pos(const bs_t* const b)
     return (b ? (b->p > b->end ? b->end - b->start : b->p - b->start) : 0);
 }
 
-static inline uint32_t bs_peek_u1(bs_t* b)
+static inline uint8_t bs_peek_u1(bs_t* b)
 {
     if(!b || bs_eof(b)) {
         return 0;
@@ -151,13 +151,13 @@ static inline uint32_t bs_peek_u1(bs_t* b)
     return ((b->p)[0] >> (b->bits_left - 1)) & 0x01;
 }
 
-static inline uint32_t bs_read_u1(bs_t* b)
+static inline uint8_t bs_read_u1(bs_t* b)
 {
     if(!b || bs_eof(b)) {
         return 0;
     }
 
-    uint32_t result = ((b->p)[0] >> --(b->bits_left)) & 0x01;
+    uint8_t result = ((b->p)[0] >> --(b->bits_left)) & 0x01;
     if(!b->bits_left) {
         b->p++;
         b->bits_left = 8;
@@ -216,13 +216,13 @@ static inline void bs_write_f(bs_t* b, int n, uint32_t v)
     bs_write_u(b, n, v);
 }
 
-static inline uint32_t bs_read_u8(bs_t* b)
+static inline uint8_t bs_read_u8(bs_t* b)
 {
     if(!b || bs_eof(b)) {
         return 0;
     }
 
-    uint32_t result = 0;
+    uint8_t result = 0;
     if(b->bits_left == 8) {  // we're in luck, we're aligned
         result = (b->p)[0];
         b->p++;
@@ -434,9 +434,9 @@ static inline void bs_write_uN(bs_t* b, int n, uint64_t v)
     }
 }
 
-static inline uint32_t bs_read_u16(bs_t* b)
+static inline uint16_t bs_read_u16(bs_t* b)
 {
-    return (uint32_t)bs_read_uN(b, 2);
+    return (uint16_t)bs_read_uN(b, 2);
 }
 
 static inline uint32_t bs_read_u24(bs_t* b)

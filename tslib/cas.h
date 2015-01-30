@@ -41,19 +41,19 @@
 
 
 typedef struct {
-    int pid;
+    uint16_t pid;
     ts_packet_t* ecm;
     GPtrArray* elementary_pids;
 } ecm_pid_t;
 
 typedef struct {
-    int id;
-    int emm_pid;
+    uint16_t id;
+    uint16_t emm_pid;
     GPtrArray* ecm_pids;
     buf_t emm;
 } ca_system_t;
 
-ca_system_t* ca_system_new(int ca_system_id);
+ca_system_t* ca_system_new(uint16_t ca_system_id);
 void ca_system_free(ca_system_t* cas);
 
 int ca_system_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, GPtrArray* cas_list);

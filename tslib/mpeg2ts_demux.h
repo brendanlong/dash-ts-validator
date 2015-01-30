@@ -55,8 +55,8 @@ typedef struct {
 } demux_pid_handler_t;
 
 struct _mpeg2ts_program_ {
-    uint32_t pid; // PMT PID
-    uint32_t program_number;
+    uint16_t pid; // PMT PID
+    uint16_t program_number;
 
     GHashTable* pids; // PIDs belonging to this program
     // each element is of type pid_info_t
@@ -99,15 +99,15 @@ typedef struct {
     uint64_t num_packets;
 } pid_info_t;
 
-mpeg2ts_stream_t* mpeg2ts_stream_new();
+mpeg2ts_stream_t* mpeg2ts_stream_new(void);
 void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s);
 int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts);
 
-mpeg2ts_program_t* mpeg2ts_program_new();
+mpeg2ts_program_t* mpeg2ts_program_new(uint16_t program_number, uint16_t pid);
 void mpeg2ts_program_free(mpeg2ts_program_t* m2p);
-int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
+int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint16_t pid,
         demux_pid_handler_t* handler, demux_pid_handler_t* validator);
-int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid);
+int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint16_t pid);
 int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* piNew);
 void mpeg2ts_stream_reset(mpeg2ts_stream_t* m2s);
 

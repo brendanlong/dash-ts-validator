@@ -38,9 +38,9 @@ typedef enum {
 } segment_type_t;
 
 typedef struct {
-    int pid;
-    int sap;
-    int sap_type;
+    uint16_t pid;
+    uint8_t sap;
+    uint8_t sap_type;
     int64_t earliest_playout_time;
     int64_t latest_playout_time;
     int64_t duration; // duration of latest pes packet
@@ -57,9 +57,9 @@ typedef struct {
     long segment_start;
     long segment_end;
     GPtrArray* pids;
-    int pcr_pid;
-    int video_pid;
-    int audio_pid;
+    uint16_t pcr_pid;
+    uint16_t video_pid;
+    uint16_t audio_pid;
     uint32_t pmt_program_number;
     uint32_t pmt_version_number;
     int status; // 0 == fail

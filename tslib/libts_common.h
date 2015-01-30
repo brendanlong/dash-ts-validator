@@ -57,35 +57,6 @@ static inline uint64_t bs_read_90khz_timestamp(bs_t* b)
     return v;
 }
 
-/**
- * Write a 90KHz timestamp in MPEG syntax (e.g. PTS/DTS)
- *
- * @author agiladi (3/20/2014)
- * @param b bit shifter
- * @param v 90KHz value as a 64-bit integer
- */
-static inline void bs_write_90khz_timestamp(bs_t* b, uint64_t v)
-{
-    bs_write_u(b, 3, v >> 30);
-    bs_write_u1(b, 1);
-    bs_write_u(b, 15, v >> 15);
-    bs_write_u1(b, 1);
-    bs_write_u(b, 15, v);
-    bs_write_u1(b, 1);
-}
-
-#define bs_write_reserved(b,n) bs_write_ones(b, (n))
-
-static inline void bs_write_ones(bs_t* b, int n)
-{
-    bs_write_u(b, n, 0x7FFFFFFF);
-}
-
-static inline void bs_write_marker_bit(bs_t* b)
-{
-    bs_write_u1(b, 1);
-}
-
 // Dirty hack: our own errno, error reporting via a global var. Initialized to zero on start.
 extern volatile int tslib_errno;
 // This macro is NOT thread-safe

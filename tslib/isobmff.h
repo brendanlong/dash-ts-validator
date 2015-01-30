@@ -120,7 +120,7 @@ typedef struct {
 typedef struct {
     bool do_iframe_validation;
     int num_iframes;
-    unsigned* iframe_locations_time;
+    uint64_t* iframe_locations_time;
     uint64_t* iframe_locations_byte;
     uint8_t* starts_with_sap;
     uint8_t* sap_type;

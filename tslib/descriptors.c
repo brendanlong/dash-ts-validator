@@ -27,6 +27,7 @@
  */
 #include "descriptors.h"
 
+#include <assert.h>
 #include "libts_common.h"
 #include "log.h"
 #include "ts.h"
@@ -46,12 +47,6 @@ int read_descriptor_loop(GPtrArray* desc_list, bs_t* b, int length)
     return bs_pos(b) - desc_start;
 }
 
-int write_descriptor_loop(GPtrArray* desc_list, bs_t* b)
-{
-    // TODO actually implement descriptor loop writing
-    return 0;
-}
-
 void print_descriptor_loop(GPtrArray* desc_list, int level)
 {
     for (gsize i = 0; i < desc_list->len; ++i) {
@@ -60,7 +55,7 @@ void print_descriptor_loop(GPtrArray* desc_list, int level)
     }
 }
 
-descriptor_t* descriptor_new()
+descriptor_t* descriptor_new(void)
 {
     descriptor_t* desc = malloc(sizeof(*desc));
     return desc;
@@ -102,7 +97,8 @@ descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b)
 
 void descriptor_print(const descriptor_t* desc, int level)
 {
-    if (desc == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+    assert(desc);
+    if (tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
     switch (desc->tag) {
@@ -120,7 +116,7 @@ void descriptor_print(const descriptor_t* desc, int level)
 
 descriptor_t* language_descriptor_new(descriptor_t* desc)
 {
-    language_descriptor_t* ld = NULL;
+    language_descriptor_t* ld;
     if (desc == NULL) {
         ld = calloc(1, sizeof(*ld));
         ld->descriptor.tag = ISO_639_LANGUAGE_DESCRIPTOR;
@@ -132,35 +128,22 @@ descriptor_t* language_descriptor_new(descriptor_t* desc)
     return (descriptor_t*)ld;
 }
 
-int language_descriptor_free(descriptor_t* desc)
+void language_descriptor_free(descriptor_t* desc)
 {
     if (desc == NULL) {
-        return 0;
+        return;
     }
-    if (desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
-        return 0;
-    }
+    assert(desc->tag == ISO_639_LANGUAGE_DESCRIPTOR);
 
     language_descriptor_t* ld = (language_descriptor_t*)desc;
-    if (ld->languages != NULL) {
-        free(ld->languages);
-    }
+    free(ld->languages);
     free(ld);
-    return 1;
 }
 
 descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b)
 {
-    if(desc == NULL || b == NULL) {
-        SAFE_REPORT_TS_ERR(-1);
-        return NULL;
-    }
-    if(desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
-        g_critical("Language descriptor has tag 0x%02X instead of expected 0x%02X",
-                       desc->tag, ISO_639_LANGUAGE_DESCRIPTOR);
-        SAFE_REPORT_TS_ERR(-50);
-        return NULL;
-    }
+    assert(desc && b);
+    assert(desc->tag == ISO_639_LANGUAGE_DESCRIPTOR);
 
     language_descriptor_t* ld = calloc(1, sizeof(*ld));
 
@@ -171,7 +154,7 @@ descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b)
 
     if (ld->num_languages > 0) {
         ld->languages = malloc(ld->num_languages * sizeof(language_descriptor_t));
-        for (int i = 0; i < ld->num_languages; i++) {
+        for (size_t i = 0; i < ld->num_languages; i++) {
             ld->languages[i].iso_639_language_code[0] = bs_read_u8(b);
             ld->languages[i].iso_639_language_code[1] = bs_read_u8(b);
             ld->languages[i].iso_639_language_code[2] = bs_read_u8(b);
@@ -186,21 +169,16 @@ descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b)
 
 void language_descriptor_print(const descriptor_t* desc, int level)
 {
-    if (desc == NULL) {
-        return;
-    }
-    if (desc->tag != ISO_639_LANGUAGE_DESCRIPTOR) {
-        return;
-    }
+    assert(desc->tag == ISO_639_LANGUAGE_DESCRIPTOR);
 
-    language_descriptor_t* ld = (language_descriptor_t*)desc;
+    const language_descriptor_t* ld = (const language_descriptor_t*)desc;
 
     SKIT_LOG_UINT_VERBOSE(level, desc->tag, "ISO_639_language_descriptor");
     SKIT_LOG_UINT(level, desc->length);
 
     if (ld->num_languages > 0) {
-        for (int i = 0; i < ld->num_languages; i++) {
-            SKIT_LOG_STR(level, strtol(ld->languages[i].iso_639_language_code, NULL, 10));
+        for (size_t i = 0; i < ld->num_languages; i++) {
+            SKIT_LOG_STR(level, ld->languages[i].iso_639_language_code);
             SKIT_LOG_UINT(level, ld->languages[i].audio_type);
         }
     }
@@ -217,52 +195,40 @@ descriptor_t* ca_descriptor_new(descriptor_t* desc)
     return (descriptor_t*)cad;
 }
 
-int ca_descriptor_free(descriptor_t* desc)
+void ca_descriptor_free(descriptor_t* desc)
 {
     if (desc == NULL) {
-        return 0;
+        return;
     }
-    if (desc->tag != CA_DESCRIPTOR) {
-        return 0;
-    }
+    assert(desc->tag == CA_DESCRIPTOR);
 
     ca_descriptor_t* cad = (ca_descriptor_t*)desc;
-    if (cad->private_data_bytes != NULL) {
-        free(cad->private_data_bytes);
-    }
-
+    free(cad->private_data);
     free(cad);
-    return 1;
 }
 
 descriptor_t* ca_descriptor_read(descriptor_t* desc, bs_t* b)
 {
-    if (desc == NULL || b == NULL) {
-        return NULL;
-    }
+    assert(desc);
+    assert(b);
 
     ca_descriptor_t* cad = (ca_descriptor_t*)ca_descriptor_new(desc);
 
     cad->ca_system_id = bs_read_u16(b);
     bs_skip_u(b, 3);
     cad->ca_pid = bs_read_u(b, 13);
-    cad->private_data_bytes_buf_len = cad->descriptor.length - 4; // we just read 4 bytes
-    cad->private_data_bytes = malloc(cad->private_data_bytes_buf_len);
-    bs_read_bytes(b, cad->private_data_bytes, cad->private_data_bytes_buf_len);
+    cad->private_data_len = cad->descriptor.length - 4; // we just read 4 bytes
+    cad->private_data = malloc(cad->private_data_len);
+    bs_read_bytes(b, cad->private_data, cad->private_data_len);
 
     return (descriptor_t*)cad;
 }
 
 void ca_descriptor_print(const descriptor_t* desc, int level)
 {
-    if (desc == NULL) {
-        return;
-    }
-    if (desc->tag != CA_DESCRIPTOR) {
-        return;
-    }
+    assert(desc->tag == CA_DESCRIPTOR);
 
-    ca_descriptor_t* cad = (ca_descriptor_t*)desc;
+    const ca_descriptor_t* cad = (const ca_descriptor_t*)desc;
 
     SKIT_LOG_UINT_VERBOSE(level, desc->tag, "CA_descriptor");
     SKIT_LOG_UINT(level, desc->length);

@@ -22,30 +22,32 @@
 #include <sys/stat.h>
 
 
+GQuark isobmff_error_quark(void); // Silence -Wmissing-prototypes warning
 G_DEFINE_QUARK(ISOBMFF_ERROR, isobmff_error);
 
-void parse_full_box(GDataInputStream*, fullbox_t*, uint64_t box_size, GError**);
-box_t* parse_styp(GDataInputStream*, uint64_t box_size, GError**);
-box_t* parse_sidx(GDataInputStream*, uint64_t box_size, GError**);
-box_t* parse_pcrb(GDataInputStream*, uint64_t box_size, GError**);
-box_t* parse_ssix(GDataInputStream*, uint64_t box_size, GError**);
-box_t* parse_emsg(GDataInputStream*, uint64_t box_size, GError**);
+static void parse_full_box(GDataInputStream*, fullbox_t*, uint64_t box_size, GError**);
+static box_t* parse_styp(GDataInputStream*, uint64_t box_size, GError**);
+static box_t* parse_sidx(GDataInputStream*, uint64_t box_size, GError**);
+static box_t* parse_pcrb(GDataInputStream*, uint64_t box_size, GError**);
+static box_t* parse_ssix(GDataInputStream*, uint64_t box_size, GError**);
+static box_t* parse_emsg(GDataInputStream*, uint64_t box_size, GError**);
 
-void print_fullbox(fullbox_t*);
-void print_styp(data_styp_t*);
-void print_sidx(data_sidx_t*);
-void print_pcrb(data_pcrb_t*);
-void print_ssix(data_ssix_t*);
-void print_emsg(data_emsg_t*);
+static void print_fullbox(fullbox_t*);
+static void print_styp(data_styp_t*);
+static void print_sidx(data_sidx_t*);
+static void print_pcrb(data_pcrb_t*);
+static void print_ssix(data_ssix_t*);
+static void print_emsg(data_emsg_t*);
 
-void print_sidx_reference(data_sidx_reference_t*);
-void print_ssix_subsegment(data_ssix_subsegment_t*);
+static void print_sidx_reference(data_sidx_reference_t*);
+static void print_ssix_subsegment(data_ssix_subsegment_t*);
 
-void free_styp(data_styp_t*);
-void free_sidx(data_sidx_t*);
-void free_pcrb(data_pcrb_t*);
-void free_ssix(data_ssix_t*);
-void free_emsg(data_emsg_t*);
+static void free_styp(data_styp_t*);
+static void free_sidx(data_sidx_t*);
+static void free_pcrb(data_pcrb_t*);
+static void free_ssix(data_ssix_t*);
+static void free_emsg(data_emsg_t*);
+
 
 void uint32_to_string(char* str, uint32_t num)
 {
@@ -206,7 +208,7 @@ box_t* parse_box(GDataInputStream* input, GError** error)
     }
 
     /* Ignore size for Box itself */
-    uint32_t inner_size = size - 8;
+    uint64_t inner_size = size - 8;
 
     switch (type) {
     case BOX_TYPE_STYP:
@@ -753,7 +755,7 @@ void print_ssix(data_ssix_t* ssix)
 
     g_debug("subsegment_count = %u", ssix->subsegment_count);
 
-    for(int i = 0; i < ssix->subsegment_count; i++) {
+    for (size_t i = 0; i < ssix->subsegment_count; i++) {
         print_ssix_subsegment(&(ssix->subsegments[i]));
     }
 }

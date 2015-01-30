@@ -41,7 +41,7 @@ demux_pid_handler_t* demux_pid_handler_new(ts_pid_processor_t process_ts_packet)
     return obj;
 }
 
-void demux_pid_handler_free(demux_pid_handler_t* obj)
+static void demux_pid_handler_free(demux_pid_handler_t* obj)
 {
     if (obj == NULL) {
         return;
@@ -52,13 +52,13 @@ void demux_pid_handler_free(demux_pid_handler_t* obj)
     g_free(obj);
 }
 
-pid_info_t* pid_info_new()
+static pid_info_t* pid_info_new(void)
 {
     pid_info_t* obj = g_new0(pid_info_t, 1);
     return obj;
 }
 
-void pid_info_free(pid_info_t* obj)
+static void pid_info_free(pid_info_t* obj)
 {
     if (obj == NULL) {
         return;
@@ -72,7 +72,7 @@ void pid_info_free(pid_info_t* obj)
     g_free(obj);
 }
 
-mpeg2ts_program_t* mpeg2ts_program_new(int program_number, int pid)
+mpeg2ts_program_t* mpeg2ts_program_new(uint16_t program_number, uint16_t pid)
 {
     mpeg2ts_program_t* m2p = g_new0(mpeg2ts_program_t, 1);
     m2p->pids = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify)pid_info_free);
@@ -103,7 +103,7 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
     g_free(m2p);
 }
 
-int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
+int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint16_t pid,
         demux_pid_handler_t* handler, demux_pid_handler_t* validator)
 {
     if (m2p->pmt == NULL || handler == NULL) {
@@ -135,7 +135,7 @@ int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid,
     return 1;
 }
 
-int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint32_t pid)
+int mpeg2ts_program_unregister_pid_processor(mpeg2ts_program_t* m2p, uint16_t pid)
 {
     g_hash_table_remove(m2p->pids, GINT_TO_POINTER(pid));
     return 0;
@@ -151,12 +151,12 @@ int mpeg2ts_program_replace_pid_processor(mpeg2ts_program_t* m2p, pid_info_t* pi
     return 0;
 }
 
-pid_info_t* mpeg2ts_program_get_pid_info(mpeg2ts_program_t* m2p, uint32_t pid)
+static pid_info_t* mpeg2ts_program_get_pid_info(mpeg2ts_program_t* m2p, uint32_t pid)
 {
     return g_hash_table_lookup(m2p->pids, GINT_TO_POINTER(pid));
 }
 
-mpeg2ts_stream_t* mpeg2ts_stream_new()
+mpeg2ts_stream_t* mpeg2ts_stream_new(void)
 {
     mpeg2ts_stream_t* m2s = g_new0(mpeg2ts_stream_t, 1);
     m2s->programs = g_ptr_array_new_with_free_func((GDestroyNotify)mpeg2ts_program_free);
@@ -177,7 +177,7 @@ void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
     g_free(m2s);
 }
 
-int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
+static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
     int ret = 0;
     conditional_access_section_t* new_cas = conditional_access_section_new();
@@ -223,7 +223,7 @@ cleanup:
     return ret;
 }
 
-int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
+static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
     int ret = 0;
     program_association_section_t* new_pas = program_association_section_new();
@@ -260,7 +260,7 @@ cleanup:
     return ret;
 }
 
-int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
+static int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
     if (m2s->emsg_processor && m2s->emsg_processor->process_ts_packet) {
         m2s->emsg_processor->process_ts_packet(ts, NULL, m2s->emsg_processor->arg);
@@ -269,7 +269,7 @@ int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     return 0;
 }
 
-int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
+static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
 {
     int ret = 0;
     program_map_section_t* new_pms = program_map_section_new();
@@ -293,7 +293,7 @@ int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
 
         m2p->pmt = new_pms;
 
-        for (int es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
+        for (size_t es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
             elementary_stream_info_t* es = g_ptr_array_index(m2p->pmt->es_info, es_idx);
             pid_info_t* pi = pid_info_new();
             pi->es_info = es;

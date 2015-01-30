@@ -84,8 +84,8 @@ typedef enum {
 } mpeg_descriptor_t; // descriptors defined in ISO/IEC 13818-1:2012
 
 typedef struct {
-    uint32_t tag;
-    uint32_t length;
+    uint8_t tag;
+    uint8_t length;
 } descriptor_t;
 
 typedef descriptor_t* (*descriptor_reader_t)(void*, uint32_t, uint32_t, bs_t*);
@@ -93,7 +93,7 @@ typedef int (*descriptor_printer_t)(const descriptor_t*, int, char*, size_t);
 typedef void (*descriptor_destructor_t)(descriptor_t*);
 
 typedef struct {
-    uint32_t tag;
+    uint8_t tag;
     descriptor_reader_t read_descriptor;
     descriptor_printer_t print_descriptor;
     descriptor_destructor_t free_descriptor;
@@ -101,40 +101,39 @@ typedef struct {
 
 // "factory methods"
 int read_descriptor_loop(GPtrArray* desc_list, bs_t* b, int length);
-int write_descriptor_loop(GPtrArray* desc_list, bs_t* b);
 void print_descriptor_loop(GPtrArray* desc_list, int level);
 
-descriptor_t* descriptor_new();
+descriptor_t* descriptor_new(void);
 void descriptor_free(descriptor_t* desc);
 descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b);
 void descriptor_print(const descriptor_t* desc, int level);
 
 typedef struct {
     char iso_639_language_code[4];
-    uint32_t audio_type;
+    uint8_t audio_type;
 } iso639_lang_t;
 
 typedef struct {
     descriptor_t descriptor;
     iso639_lang_t* languages;
-    int num_languages;
+    size_t num_languages;
 } language_descriptor_t;
 
 descriptor_t* language_descriptor_new(descriptor_t* desc);
-int language_descriptor_free(descriptor_t* desc);
+void language_descriptor_free(descriptor_t* desc);
 descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b);
 void language_descriptor_print(const descriptor_t* desc, int level);
 
 typedef struct {
     descriptor_t descriptor;
-    uint32_t ca_system_id;
-    uint32_t ca_pid;
-    uint8_t* private_data_bytes;
-    size_t private_data_bytes_buf_len;
+    uint16_t ca_system_id;
+    uint16_t ca_pid;
+    uint8_t* private_data;
+    size_t private_data_len;
 } ca_descriptor_t;
 
 descriptor_t* ca_descriptor_new(descriptor_t* desc);
-int ca_descriptor_free(descriptor_t* desc);
+void ca_descriptor_free(descriptor_t* desc);
 descriptor_t* ca_descriptor_read(descriptor_t* desc, bs_t* b);
 void ca_descriptor_print(const descriptor_t* desc, int level);
 

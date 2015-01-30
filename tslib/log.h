@@ -34,32 +34,29 @@ extern "C" {
 
 #include <glib.h>
 
-// we need those for inttypes.h in C++
-#if defined __cplusplus && !defined __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS 1
-#endif
+typedef enum {
+    SKIT_LOG_TYPE_UINT,
+    SKIT_LOG_TYPE_UINT_HEX,
+    SKIT_LOG_TYPE_STR,
 
-#define SKIT_LOG_TYPE_UINT			0x01
-#define SKIT_LOG_TYPE_UINT_HEX		0x02
-#define SKIT_LOG_TYPE_STR			0x03
-
-#define SKIT_LOG_TYPE_UINT_DBG		0x04
-#define SKIT_LOG_TYPE_UINT_HEX_DBG	0x05
-#define SKIT_LOG_TYPE_STR_DBG		0x06
+    SKIT_LOG_TYPE_UINT_DBG,
+    SKIT_LOG_TYPE_UINT_HEX_DBG,
+    SKIT_LOG_TYPE_STR_DBG
+} skit_log_type_t;
 
 #define SKIT_LOG_UINT32_DBG(prefix, arg)  fprintf(stdout, "DEBUG: %s%s=%"PRIu32"\n", prefix, #arg, (arg));
 #define SKIT_LOG_UINT32_HEX_DBG(prefix, arg)  fprintf(stdout, "DEBUG: %s%s=%"PRIX32"\n", prefix, #arg, (arg));
 #define SKIT_LOG_UINT64_DBG(prefix, arg)  fprintf(stdout, "DEBUG: %s%s=%"PRIu64"\n", prefix, #arg, (arg));
 
-#define SKIT_LOG_UINT(level, arg) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT, NULL);
-#define SKIT_LOG_UINT_DBG(level, arg) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_DBG, NULL);
-#define SKIT_LOG_UINT_HEX(level, arg) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_HEX, NULL);
-#define SKIT_LOG_UINT_HEX_DBG(level, arg) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT_HEX_DBG, NULL);
-#define SKIT_LOG_UINT_VERBOSE(level, arg, explain) skit_log_struct((level), #arg,  (arg), SKIT_LOG_TYPE_UINT, explain);
-#define SKIT_LOG_STR(level, arg) skit_log_struct((level), #arg, arg, SKIT_LOG_TYPE_STR, NULL);
-#define SKIT_LOG_STR_DBG(level, arg) skit_log_struct((level), #arg, arg, SKIT_LOG_TYPE_STR_DBG, NULL);
+#define SKIT_LOG_UINT(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT, NULL);
+#define SKIT_LOG_UINT_DBG(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT_DBG, NULL);
+#define SKIT_LOG_UINT_HEX(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT_HEX, NULL);
+#define SKIT_LOG_UINT_HEX_DBG(level, arg) skit_log_struct(level, #arg,  &arg, SKIT_LOG_TYPE_UINT_HEX_DBG, NULL);
+#define SKIT_LOG_UINT_VERBOSE(level, arg, explain) skit_log_struct((level), #arg,  &arg, SKIT_LOG_TYPE_UINT, explain);
+#define SKIT_LOG_STR(level, arg) skit_log_struct(level, #arg, arg, SKIT_LOG_TYPE_STR, NULL);
+#define SKIT_LOG_STR_DBG(level, arg) skit_log_struct(level, #arg, arg, SKIT_LOG_TYPE_STR_DBG, NULL);
 
-void skit_log_struct(int level, char* name, uint64_t value, int type, char* str);
+void skit_log_struct(size_t level, char* name, const void* value, skit_log_type_t type, char* str);
 
 // More traditional debug logging
 // tslib-global loglevel: error > warn (default) > info > debug
@@ -69,6 +66,7 @@ typedef enum {
     TSLIB_LOG_LEVEL_INFO,
     TSLIB_LOG_LEVEL_DEBUG
 } tslib_log_level_t;
+
 
 #define TSLIB_LOG_LEVEL_DEFAULT TSLIB_LOG_LEVEL_WARN
 

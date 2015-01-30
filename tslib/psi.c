@@ -97,7 +97,7 @@ char* stream_desc(uint8_t stream_id)
     }
 }
 
-int section_header_read(mpeg2ts_section_t* section, bs_t* b)
+static int section_header_read(mpeg2ts_section_t* section, bs_t* b)
 {
     section->table_id = bs_read_u8(b);
     section->section_syntax_indicator = bs_read_u1(b);
@@ -133,7 +133,7 @@ int section_header_read(mpeg2ts_section_t* section, bs_t* b)
     return 1;
 }
 
-program_association_section_t* program_association_section_new()
+program_association_section_t* program_association_section_new(void)
 {
     program_association_section_t* pas = calloc(1, sizeof(*pas));
     return pas;
@@ -229,21 +229,21 @@ void program_association_section_print(const program_association_section_t* pas)
     SKIT_LOG_UINT(0, pas->section_number);
     SKIT_LOG_UINT(0, pas->last_section_number);
 
-    for (int i = 0; i < pas->num_programs; i++) {
+    for (size_t i = 0; i < pas->num_programs; i++) {
         SKIT_LOG_UINT(1, pas->programs[i].program_number);
         SKIT_LOG_UINT_HEX(1, pas->programs[i].program_map_pid);
     }
     SKIT_LOG_UINT_HEX(0, pas->crc_32);
 }
 
-elementary_stream_info_t* es_info_new()
+static elementary_stream_info_t* es_info_new(void)
 {
     elementary_stream_info_t* es = calloc(1, sizeof(*es));
     es->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
     return es;
 }
 
-void es_info_free(elementary_stream_info_t* es)
+static void es_info_free(elementary_stream_info_t* es)
 {
     if (es == NULL) {
         return;
@@ -253,7 +253,7 @@ void es_info_free(elementary_stream_info_t* es)
     free(es);
 }
 
-elementary_stream_info_t* es_info_read(bs_t* b)
+static elementary_stream_info_t* es_info_read(bs_t* b)
 {
     elementary_stream_info_t* es = es_info_new();
 
@@ -277,7 +277,7 @@ cleanup:
     return NULL;
 }
 
-void es_info_print(elementary_stream_info_t* es, int level)
+static void es_info_print(elementary_stream_info_t* es, int level)
 {
     if (tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
@@ -290,7 +290,7 @@ void es_info_print(elementary_stream_info_t* es, int level)
     print_descriptor_loop(es->descriptors, level + 1);
 }
 
-program_map_section_t* program_map_section_new()
+program_map_section_t* program_map_section_new(void)
 {
     program_map_section_t* pms = calloc(1, sizeof(*pms));
     pms->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
@@ -429,7 +429,7 @@ void program_map_section_print(program_map_section_t* pms)
     SKIT_LOG_UINT_HEX(1, pms->crc_32);
 }
 
-conditional_access_section_t* conditional_access_section_new()
+conditional_access_section_t* conditional_access_section_new(void)
 {
     conditional_access_section_t* cas = calloc(1, sizeof(*cas));
     cas->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);

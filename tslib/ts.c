@@ -36,25 +36,18 @@
 #include "libts_common.h"
 #include "log.h"
 
-// TODO: when reading, we read in place; when writing we write from allocated memory
-// figure out memory management -- either copy everything, or use flags
-// until done, we can read or write, not both.
-// idea: have an "expand" flag, if off -- everything is in place, on -- everything is nicely copied and allocated
 
-int ts_read_header(ts_header_t* tsh, bs_t* b);
-int ts_read_adaptation_field(ts_adaptation_field_t* af, bs_t* b);
+static int ts_read_header(ts_header_t* tsh, bs_t* b);
+static int ts_read_adaptation_field(ts_adaptation_field_t* af, bs_t* b);
 
-int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b);
-int ts_write_header(ts_header_t* tsh, bs_t* b);
-
-void ts_print_adaptation_field(const ts_adaptation_field_t* const af);
-void ts_print_header(const ts_header_t* const tsh);
+static void ts_print_adaptation_field(const ts_adaptation_field_t* const af);
+static void ts_print_header(const ts_header_t* const tsh);
 
 
 volatile int tslib_errno = 0;
 
 
-ts_packet_t* ts_new()
+ts_packet_t* ts_new(void)
 {
     ts_packet_t* ts = calloc(1, sizeof(ts_packet_t));
     ts->pcr_int = UINT64_MAX; // invalidate interpolated PCR
@@ -219,126 +212,6 @@ int ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num)
     // TODO read and interpret pointer field
 
     return bs_pos(&b);
-}
-
-int ts_adaptation_field_extension_min_length(ts_adaptation_field_t* af)
-{
-    if (!af->adaptation_field_extension_flag) {
-        return 0;
-    }
-
-    int len = 1;
-    if (af->ltw_flag) {
-        len += 2;
-    }
-    if (af->piecewise_rate_flag) {
-        len += 3;
-    }
-    if (af->seamless_splice_flag) {
-        len += 5;
-    }
-    return len;
-}
-
-int ts_adaptation_field_min_length(ts_adaptation_field_t* af)
-{
-    int len = 0;
-
-    if (af->pcr_flag) {
-        len += 6;
-    }
-
-    if (af->opcr_flag) {
-        len += 6;
-    }
-
-    if (af->splicing_point_flag) {
-        len++;
-    }
-
-    if (af->transport_private_data_flag) {
-        len += af->transport_private_data_length;
-    }
-
-    if (af->adaptation_field_extension_flag) {
-        len += ts_adaptation_field_extension_min_length(af) + 1;    // adaptation_field_extension_length
-    }
-
-    // if none of the bits in byte 1 are set, we don't need byte 1
-    if (len == 0) {
-        len = af->discontinuity_indicator || af->random_access_indicator
-                 || af->elementary_stream_priority_indicator;
-    }
-    return len;
-}
-
-int ts_write_adaptation_field(ts_adaptation_field_t* af, bs_t* b)
-{
-    int af_min_len = ts_adaptation_field_min_length(af);
-
-    if (af->adaptation_field_length < af_min_len) {
-        af->adaptation_field_length = af_min_len;
-    }
-
-    bs_write_u8(b, af->adaptation_field_length);
-    int start_pos = bs_pos(b);
-    if (af->adaptation_field_length > 0) {
-        bs_write_u1(b, af->discontinuity_indicator);
-        bs_write_u1(b, af->random_access_indicator);
-        bs_write_u1(b, af->elementary_stream_priority_indicator);
-        bs_write_u1(b, af->pcr_flag);
-        bs_write_u1(b, af->opcr_flag);
-        bs_write_u1(b, af->splicing_point_flag);
-        bs_write_u1(b, af->transport_private_data_flag);
-        bs_write_u1(b, af->adaptation_field_extension_flag);
-
-        if (af->pcr_flag) {
-            bs_write_ull(b, 33, af->program_clock_reference_base);
-            bs_write_u(b, 6, 0xFF);
-            bs_write_u(b, 9, af->program_clock_reference_extension);
-        }
-        if (af->opcr_flag) {
-            bs_write_ull(b, 33, af->original_program_clock_reference_base);
-            bs_write_u(b, 6, 0xFF);
-            bs_write_u(b, 9, af->original_program_clock_reference_extension);
-        }
-        if (af->splicing_point_flag) {
-            bs_write_u8(b, af->splice_countdown); // TODO: it's actually signed!
-        }
-        if (af->transport_private_data_flag) {
-            bs_write_u8(b, af->transport_private_data_length);
-            bs_write_bytes(b, af->private_data_bytes.bytes, af->transport_private_data_length);
-        }
-
-        if (af->adaptation_field_extension_flag) {
-            af->adaptation_field_extension_length = ts_adaptation_field_extension_min_length(af);
-
-            bs_write_u8(b, af->adaptation_field_extension_length);
-
-            bs_write_u1(b, af->ltw_flag);
-            bs_write_u1(b, af->piecewise_rate_flag);
-            bs_write_u1(b, af->seamless_splice_flag);
-            bs_write_u(b, 5, 0xFF);
-
-            if (af->ltw_flag) {
-                bs_write_u1(b, af->ltw_valid_flag);
-                bs_write_u(b, 15, af->ltw_offset);
-            }
-
-            if (af->piecewise_rate_flag) {
-                bs_write_u(b, 2, 0xFF);
-                bs_write_u(b, 22, af->piecewise_rate);
-            }
-
-            if (af->seamless_splice_flag) {
-                bs_write_90khz_timestamp(b, af->dts_next_au);
-            }
-        }
-
-        bs_write_stuffing_bytes(b, 0xFF, af->adaptation_field_length - (bs_pos(b) - start_pos));
-    }
-
-    return bs_pos(b) - start_pos + 1;
 }
 
 void ts_print_header(const ts_header_t* const tsh)

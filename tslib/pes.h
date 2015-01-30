@@ -155,7 +155,7 @@ typedef struct {
     uint64_t payload_pos_in_stream;  // byte location of payload in transport stream
 } pes_packet_t;
 
-pes_packet_t* pes_new();
+pes_packet_t* pes_new(void);
 void pes_free(pes_packet_t*);
 
 int pes_read(pes_packet_t*, const uint8_t* buf, size_t len);

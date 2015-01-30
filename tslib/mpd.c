@@ -24,19 +24,19 @@ typedef struct {
 } segment_timeline_s_t;
 
 
-bool read_period(xmlNode*, mpd_t*, char* base_url);
-bool read_adaptation_set(xmlNode*, period_t*, char* base_url);
-bool read_representation(xmlNode*, adaptation_set_t*, bool saw_mime_type, char* base_url);
-bool read_segment_base(xmlNode*, representation_t*, char* base_url);
-bool read_segment_list(xmlNode*, representation_t*, char* base_url);
-GPtrArray* read_segment_timeline(xmlNode*);
-bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t duration, char* base_url);
-char* find_base_url(xmlNode*, char* parent_base_url);
-uint32_t read_optional_uint32(xmlNode*, const char* property_name);
-uint32_t read_uint64(xmlNode*, const char* property_name);
-bool read_bool(xmlNode*, const char* property_name);
-char* read_filename(xmlNode*, const char* property_name, const char* base_url);
-uint64_t str_to_uint64(const char*, size_t length);
+static bool read_period(xmlNode*, mpd_t*, char* base_url);
+static bool read_adaptation_set(xmlNode*, period_t*, char* base_url);
+static bool read_representation(xmlNode*, adaptation_set_t*, bool saw_mime_type, char* base_url);
+static bool read_segment_base(xmlNode*, representation_t*, char* base_url);
+static bool read_segment_list(xmlNode*, representation_t*, char* base_url);
+static GPtrArray* read_segment_timeline(xmlNode*);
+static bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t duration, char* base_url);
+static char* find_base_url(xmlNode*, char* parent_base_url);
+static uint32_t read_optional_uint32(xmlNode*, const char* property_name);
+static uint32_t read_uint64(xmlNode*, const char* property_name);
+static bool read_bool(xmlNode*, const char* property_name);
+static char* read_filename(xmlNode*, const char* property_name, const char* base_url);
+static uint64_t str_to_uint64(const char*, int* error);
 
 const char INDENT_BUFFER[] = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
 
@@ -362,6 +362,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
     char* start_with_sap = NULL;
     char* mime_type = NULL;
     bool return_code = true;
+    char* base_url =  NULL;
 
     mime_type = xmlGetProp(node, "mimeType");
     if (!saw_mime_type && (!mime_type || !xmlStrEqual (mime_type, "video/mp2t"))) {
@@ -384,7 +385,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
         representation->start_with_sap = tmp;
     }
 
-    char* base_url = find_base_url(node, parent_base_url);
+    base_url = find_base_url(node, parent_base_url);
 
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
@@ -450,6 +451,7 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
 bool read_segment_list(xmlNode* node, representation_t* representation, char* parent_base_url)
 {
     bool return_code = true;
+    char* base_url = NULL;
 
     /* Get SegmentTimeline first, since we need it to create segments */
     GPtrArray* segment_timeline = NULL;
@@ -463,7 +465,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
         }
     }
 
-    char* base_url = find_base_url(node, parent_base_url);
+    base_url = find_base_url(node, parent_base_url);
 
     char* duration_str = xmlGetProp(node, "duration");
     uint64_t duration = 0;
@@ -472,8 +474,12 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* pa
             g_critical("<SegmentList> cannot have both duration attribute and <SegmentTimeline>. Pick one or the other.");
             goto fail;
         }
-        /* todo: Use something safer than strtoull */
-        duration = strtoull(duration_str, NULL, 10);
+        int error;
+        duration = str_to_uint64(duration_str, &error);
+        if (error) {
+            g_critical("<SegmentList> duration \"%s\" is not a 64-bit number.", duration_str);
+            goto fail;
+        }
         xmlFree(duration_str);
     } else if (segment_timeline == NULL) {
         g_critical("No duration or <SegmentList> found for <SegmentList>.");
@@ -540,12 +546,29 @@ GPtrArray* read_segment_timeline(xmlNode* node)
             char* t = xmlGetProp(cur_node, "t");
             char* d = xmlGetProp(cur_node, "d");
             char* r = xmlGetProp(cur_node, "r");
-            uint64_t start = strtoull(t, NULL, 10);
-            uint64_t duration = strtoull(d, NULL, 10);
-            uint64_t repeat = strtoull(r, NULL, 10);
+            int error;
+            bool failed = false;
+            uint64_t start = str_to_uint64(t, &error);
+            if (error) {
+                g_critical("<S>'s @t value (%s) is not a number.", t);
+                failed = true;
+            }
+            uint64_t duration = str_to_uint64(d, &error);
+            if (error) {
+                g_critical("<S>'s @d value (%s) is not a number.", d);
+                failed = true;
+            }
+            uint64_t repeat = str_to_uint64(r, &error);
+            if (error) {
+                g_critical("<S>'s @r value (%s) is not a number.", r);
+                failed = true;
+            }
             xmlFree(t);
             xmlFree(d);
             xmlFree(r);
+            if (failed) {
+                goto fail;
+            }
 
             for (uint64_t i = 0; i < repeat; ++i) {
                 segment_timeline_s_t* s = malloc(sizeof(*s));
@@ -559,6 +582,9 @@ GPtrArray* read_segment_timeline(xmlNode* node)
         }
     }
     return timeline;
+fail:
+    g_ptr_array_free(timeline, true);
+    return NULL;
 }
 
 bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t start, uint64_t duration, char* base_url)
@@ -611,8 +637,9 @@ uint32_t read_optional_uint32(xmlNode* node, const char* property_name)
     } else if (xmlStrEqual(value, "true")) {
         result = 1;
     } else {
-        result = strtoull(value, NULL, 10);
-        if (value && result == 0 && !xmlStrEqual(value, "0")) {
+        int error;
+        result = str_to_uint64(value, &error);
+        if (error) {
             g_warning("Got invalid ConditionalUintType for property %s: %s", property_name, value);
         }
     }
@@ -626,8 +653,9 @@ uint32_t read_uint64(xmlNode* node, const char* property_name)
     if (value == NULL) {
         return 0;
     }
-    uint64_t result = strtoull(value, NULL, 10);
-    if (value && result == 0 && !xmlStrEqual(value, "0")) {
+    int error;
+    uint64_t result = str_to_uint64(value, &error);
+    if (error) {
         g_warning("Got invalid unsignedLong for property %s: %s", property_name, value);
     }
     xmlFree(value);
@@ -663,16 +691,22 @@ char* read_filename(xmlNode* node, const char* property_name, const char* base_u
     return filename;
 }
 
-uint64_t str_to_uint64(const char* str, size_t length)
+uint64_t str_to_uint64(const char* str, int* error)
 {
     uint64_t result = 0;
-    for (size_t i = 0; i < length; ++i) {
+    for (size_t i = 0; str[i]; ++i) {
         char c = str[i];
         if (c < '0' || c > '9') {
             g_warning("Invalid non-digit in string to parse: %s.", str);
+            if (error) {
+                *error = 1;
+            }
             return 0;
         }
         result = result * 10 + c - '0';
+    }
+    if (error) {
+        *error = 0;
     }
     return result;
 }

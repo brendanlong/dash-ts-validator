@@ -40,10 +40,10 @@
 #include "log.h"
 
 
-int pes_read_header(pes_header_t*, bs_t*);
-void pes_print_header(pes_header_t*);
+static int pes_read_header(pes_header_t*, bs_t*);
+static void pes_print_header(pes_header_t*);
 
-pes_packet_t* pes_new()
+pes_packet_t* pes_new(void)
 {
     pes_packet_t* pes = g_new0(pes_packet_t, 1);
     return pes;
@@ -86,7 +86,7 @@ int pes_read(pes_packet_t* pes, const uint8_t* buf, size_t len)
     return bs_pos(&b);
 }
 
-int pes_read_header(pes_header_t* ph, bs_t* b)
+static int pes_read_header(pes_header_t* ph, bs_t* b)
 {
     int pes_packet_start = bs_pos(b);
 
@@ -254,7 +254,7 @@ int pes_read_header(pes_header_t* ph, bs_t* b)
     return bs_pos(b) - pes_packet_start;
 }
 
-void pes_print_header(pes_header_t* pes_header)
+static void pes_print_header(pes_header_t* pes_header)
 {
     SKIT_LOG_UINT32_DBG("", pes_header->stream_id);
     SKIT_LOG_UINT32_DBG("", pes_header->pes_packet_length);

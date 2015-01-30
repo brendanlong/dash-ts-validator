@@ -33,7 +33,7 @@
 #include "libts_common.h"
 
 
-ecm_pid_t* ecm_pid_new(int pid, elementary_stream_info_t* esi)
+static ecm_pid_t* ecm_pid_new(uint16_t pid, elementary_stream_info_t* esi)
 {
     ecm_pid_t* ep = malloc(sizeof(*ep));
     ep->pid = pid;
@@ -43,7 +43,7 @@ ecm_pid_t* ecm_pid_new(int pid, elementary_stream_info_t* esi)
     return ep;
 }
 
-void ecm_pid_free(ecm_pid_t* ep)
+static void ecm_pid_free(ecm_pid_t* ep)
 {
     if (ep == NULL) {
         return;
@@ -53,7 +53,7 @@ void ecm_pid_free(ecm_pid_t* ep)
     free(ep);
 }
 
-ca_system_t* ca_system_new(int ca_system_id)
+ca_system_t* ca_system_new(uint16_t ca_system_id)
 {
     ca_system_t* cas = calloc(1, sizeof(*cas));
     cas->id = ca_system_id;
@@ -142,15 +142,4 @@ int ca_system_process_ca_descriptor(GPtrArray* cas_list, elementary_stream_info_
     }
 
     return 1;
-}
-
-ts_packet_t* ca_system_get_ecm(ca_system_t* cas, uint32_t ecm_pid)
-{
-    for(gsize i  = 0; i < cas->ecm_pids->len; ++i) {
-        ecm_pid_t* ep = g_ptr_array_index(cas->ecm_pids, i);
-        if(ep->pid == ecm_pid) {
-            return ep->ecm;
-        }
-    }
-    return NULL;
 }

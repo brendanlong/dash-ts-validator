@@ -10,24 +10,22 @@
 
 int global_iframe_counter;
 data_segment_iframes_t* global_iframe_data;
-unsigned int global_segment_duration;
+uint64_t global_segment_duration;
 
-int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
-int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
-int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
-int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
+static int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
+static int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
+static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
+static int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
         void* arg);
-int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
+static int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
         uint64_t* segment_durations, data_segment_iframes_t* iframes, int presentation_time_offset,
         int video_pid, bool is_simple_profile);
-int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
+static int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
         uint64_t segment_duration, data_segment_iframes_t* iframes,
         int presentation_time_offset, int video_pid, bool is_simple_profile);
 
-
-void validate_dash_events(uint8_t* buf, int len);
-int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
-int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
+static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
+static int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
         bool is_simple_profile);
 
 const char* content_component_to_string(content_component_t content_component)
@@ -45,7 +43,7 @@ const char* content_component_to_string(content_component_t content_component)
     }
 }
 
-pid_validator_t* pid_validator_new(int pid, int content_component)
+static pid_validator_t* pid_validator_new(uint16_t pid, content_component_t content_component)
 {
     pid_validator_t* obj = calloc(1, sizeof(*obj));
     obj->pid = pid;
@@ -54,7 +52,7 @@ pid_validator_t* pid_validator_new(int pid, int content_component)
     return obj;
 }
 
-void pid_validator_free(pid_validator_t* obj)
+static void pid_validator_free(pid_validator_t* obj)
 {
     if (obj == NULL) {
         return;
@@ -90,7 +88,7 @@ void dash_validator_free(dash_validator_t* obj)
     free(obj);
 }
 
-int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
+static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
     if (dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
@@ -115,16 +113,7 @@ int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
     return 1;
 }
 
-int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
-{
-    conditional_access_section_print(m2s->cat);
-
-    // TODO: Register an EMM processor here
-
-    return 1;
-}
-
-pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_validator)
+static pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_validator)
 {
     for (gsize i = 0; i < dash_validator->pids->len; ++i) {
         pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);
@@ -135,8 +124,7 @@ pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_validat
     return NULL;
 }
 
-// TODO: fix tpes to try creating last PES packet
-int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
+static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
     if (m2p->pmt == NULL) {  // if we don't have any PSI, there's nothing we can do
@@ -158,8 +146,8 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
     pid_info_t* pi;
     while (g_hash_table_iter_next(&i, NULL, (void**)&pi)) {
         int process_pid = 0;
-        int content_component = 0;
-        int pid = pi->es_info->elementary_pid;
+        content_component_t content_component = UNKNOWN_CONTENT_COMPONENT;
+        uint16_t pid = pi->es_info->elementary_pid;
 
         pid_validator_t* pid_validator = dash_validator_find_pid(pid, dash_validator);
 
@@ -221,12 +209,9 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
     return 1;
 }
 
-// TODO: fix tpes to try creating last PES packet
-int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_source,
+static int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_source,
         dash_validator_t* dash_validator_dest)
 {
-    pid_validator_t* pid_validator_dest = NULL;
-
     dash_validator_dest->pcr_pid = dash_validator_source->pcr_pid;
 
     g_debug("copy_pmt_info: dash_validator_source->pids->len = %u",
@@ -234,7 +219,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
     for (gsize i = 0; i < dash_validator_source->pids->len; ++i) {
         pid_validator_t* pid_validator_src = g_ptr_array_index(dash_validator_source->pids, i);
         int content_component = 0;
-        int pid = pid_validator_src->pid;
+        uint16_t pid = pid_validator_src->pid;
 
         // hook PES validation to PES demuxer
         pes_demux_t* pd = pes_demux_new(validate_pes_packet);
@@ -252,7 +237,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
         // hook PID processor to PID
         mpeg2ts_program_register_pid_processor(m2p, pid, demux_handler, demux_validator);
 
-        pid_validator_dest = pid_validator_new(pid, content_component);
+        pid_validator_t* pid_validator_dest = pid_validator_new(pid, content_component);
 
         g_debug("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
                       pid);
@@ -263,7 +248,7 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
     return 0;
 }
 
-int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg)
+static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
     if (ts == NULL) {
@@ -318,7 +303,7 @@ int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg
     return 1;
 }
 
-void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_validator_t* dash_validator)
+static void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_validator_t* dash_validator)
 {
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
         for (GList* current = ts_queue->head; current; current = current->next) {
@@ -346,6 +331,7 @@ void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_valida
 int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    pid_validator_t* pid_validator = NULL;
     validate_pes_packet_common(pes, ts_queue, dash_validator);
 
     if (pes == NULL) {
@@ -360,7 +346,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
-    pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
+    pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
     assert(pid_validator != NULL);
 
     if (pes->status > 0) {
@@ -394,11 +380,11 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 int nal_start, nal_end;
                 int returnCode;
                 uint8_t* buf = pes->payload;
-                int len = pes->payload_len;
+                size_t len = pes->payload_len;
 
                 // walk the nal units in the PES payload and check to see if they are type 1 or type 5 -- these determine
                 // SAP type
-                int index = 0;
+                size_t index = 0;
                 while (len > index
                         && (returnCode = find_nal_unit(buf + index, len - index, &nal_start, &nal_end)) !=  0) {
                     h264_stream_t* h = h264_new();
@@ -441,12 +427,11 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             // check iFrame location against index file
 
             if (global_iframe_counter < global_iframe_data->num_iframes) {
-                unsigned int expectedIFramePTS = global_iframe_data->iframe_locations_time[global_iframe_counter];
-                unsigned int actualIFramePTS = pes->header.pts;
-                g_debug("expectedIFramePTS = %u, actualIFramePTS = %u", expectedIFramePTS, actualIFramePTS);
+                int64_t expectedIFramePTS = global_iframe_data->iframe_locations_time[global_iframe_counter];
+                int64_t actualIFramePTS = pes->header.pts;
                 if (expectedIFramePTS != actualIFramePTS) {
-                    g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %d, Actual: %d",
-                                   expectedIFramePTS, actualIFramePTS);
+                    g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %"PRIu64", Actual: %"PRIu64,
+                            expectedIFramePTS, actualIFramePTS);
                     dash_validator->status = 0;
                 }
 
@@ -456,15 +441,15 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 g_debug("expectedIFrameByteLocation = %"PRId64", actualIFrameByteLocation = %"PRId64"",
                               expectedFrameByteLocation, actualFrameByteLocation);
                 if (expectedFrameByteLocation != actualFrameByteLocation) {
-                    g_critical("DASH Conformance: expected IFrame Byte Locaton does not match actual.  Expected: %"PRId64", Actual: %"PRId64"",
+                    g_critical("DASH Conformance: expected IFrame Byte Location does not match actual.  Expected: %"PRId64", Actual: %"PRId64"",
                                    expectedFrameByteLocation, actualFrameByteLocation);
                     dash_validator->status = 0;
                 }
 
                 // check SAP type
-                unsigned char expectedStartsWithSAP = global_iframe_data->starts_with_sap[global_iframe_counter];
-                unsigned char expectedSAPType = global_iframe_data->sap_type[global_iframe_counter];
-                unsigned char actualSAPType = pid_validator->sap_type;
+                uint8_t expectedStartsWithSAP = global_iframe_data->starts_with_sap[global_iframe_counter];
+                uint8_t expectedSAPType = global_iframe_data->sap_type[global_iframe_counter];
+                uint8_t actualSAPType = pid_validator->sap_type;
                 g_debug("expectedStartsWithSAP = %d, expectedSAPType = %d, actualSAPType = %d",
                               expectedStartsWithSAP, expectedSAPType, actualSAPType);
                 if (expectedStartsWithSAP == 1 && expectedSAPType != 0 && expectedSAPType != actualSAPType) {
@@ -482,7 +467,7 @@ expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPTyp
     }
 
     if (pid_validator->content_component == AUDIO_CONTENT_COMPONENT) {
-        int index = 0;
+        uint64_t index = 0;
         int frame_counter = 0;
         while (index < pes->payload_len) {
             uint64_t frame_length = ((pes->payload[index + 3] & 0x0003) << 11) +
@@ -499,7 +484,9 @@ expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPTyp
     }
 
 cleanup:
-    pid_validator->pes_count++;
+    if (pid_validator) {
+        pid_validator->pes_count++;
+    }
     pes_free(pes);
     return 1;
 fail:
@@ -507,7 +494,7 @@ fail:
     goto cleanup;
 }
 
-int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
+static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
     validate_pes_packet_common(pes, ts_queue, dash_validator);
@@ -552,9 +539,7 @@ int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, G
         goto cleanup;
     }
 
-    uint8_t* buf = pes->payload;
-    int len = pes->payload_len;
-    if (validate_emsg_msg(buf, len, global_segment_duration) != 0) {
+    if (validate_emsg_msg(pes->payload, pes->payload_len, global_segment_duration) != 0) {
         g_critical("DASH Conformance: validation of EMSG failed");
         dash_validator->status = 0;
     }
@@ -920,14 +905,13 @@ expected %zu, found %d.", num_segments, segment_index);
                 nextIFrameByteLocation = sidx->first_offset;
                 if (segment_index < num_segments) {
                     iframes[segment_index].do_iframe_validation = 1;
-                    iframes[segment_index].iframe_locations_time = calloc(
-                                iframes[segment_index].num_iframes, sizeof(unsigned int));
+                    iframes[segment_index].iframe_locations_time = calloc(iframes[segment_index].num_iframes,
+                            sizeof(uint64_t));
                     iframes[segment_index].iframe_locations_byte = calloc(iframes[segment_index].num_iframes,
                             sizeof(uint64_t));
                     iframes[segment_index].starts_with_sap = calloc(iframes[segment_index].num_iframes,
-                                                            sizeof(unsigned char));
-                    iframes[segment_index].sap_type = calloc(iframes[segment_index].num_iframes,
-                                                      sizeof(unsigned char));
+                            sizeof(uint8_t));
+                    iframes[segment_index].sap_type = calloc(iframes[segment_index].num_iframes, sizeof(uint8_t));
                 }
             }
 
@@ -941,10 +925,10 @@ expected %zu, found %d.", num_segments, segment_index);
 
 
                     if (iframe_counter == 0) {
-                        (iframes[segment_index]).iframe_locations_time[iframe_counter] = segment_start_time + ref.sap_delta_time;
+                        iframes[segment_index].iframe_locations_time[iframe_counter] = segment_start_time + ref.sap_delta_time;
                     } else {
-                        (iframes[segment_index]).iframe_locations_time[iframe_counter] =
-                            (iframes[segment_index]).iframe_locations_time[iframe_counter - 1] + lastIFrameDuration +
+                        iframes[segment_index].iframe_locations_time[iframe_counter] =
+                            iframes[segment_index].iframe_locations_time[iframe_counter - 1] + lastIFrameDuration +
                             ref.sap_delta_time;
                     }
                     iframe_counter++;
@@ -1090,10 +1074,10 @@ Expected %d, actual %d.", video_pid, sidx->reference_id);
     // fill in iFrame locations by walking the list of sidx's again, startng from box 1
 
     iframes->do_iframe_validation = 1;
-    iframes->iframe_locations_time = (unsigned int*)calloc(iframes->num_iframes, sizeof(unsigned int));
-    iframes->iframe_locations_byte = (uint64_t*)calloc(iframes->num_iframes, sizeof(uint64_t));
-    iframes->starts_with_sap = (unsigned char*)calloc(iframes->num_iframes, sizeof(unsigned char));
-    iframes->sap_type = (unsigned char*)calloc(iframes->num_iframes, sizeof(unsigned char));
+    iframes->iframe_locations_time = calloc(iframes->num_iframes, sizeof(unsigned int));
+    iframes->iframe_locations_byte = calloc(iframes->num_iframes, sizeof(uint64_t));
+    iframes->starts_with_sap = calloc(iframes->num_iframes, sizeof(unsigned char));
+    iframes->sap_type = calloc(iframes->num_iframes, sizeof(unsigned char));
 
     num_nested_sidx = 0;
     int iframe_counter = 0;
@@ -1198,8 +1182,8 @@ int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segme
     for(size_t i = 0; i < num_segments; i++) {
         g_info("data_segment_iframes %zu: do_iframe_validation = %d, num_iframes = %d",
                i, iframes[i].do_iframe_validation, iframes[i].num_iframes);
-        for(int j = 0; j < iframes[i].num_iframes; j++) {
-            g_info("   iframe_locations_time[%d] = %d, \tiframe_locations_byte[%d] = %"PRId64, j,
+        for(size_t j = 0; j < iframes[i].num_iframes; j++) {
+            g_info("   iframe_locations_time[%zu] = %"PRIu64", \tiframe_locations_byte[%zu] = %"PRIu64, j,
                    iframes[i].iframe_locations_time[j], j, iframes[i].iframe_locations_byte[j]);
         }
     }
