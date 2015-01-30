@@ -63,7 +63,6 @@ typedef struct {
     uint32_t pmt_program_number;
     uint32_t pmt_version_number;
     int status; // 0 == fail
-    uint32_t psi_tables_seen;
     segment_type_t segment_type;
     bool use_initialization_segment;
     program_map_section_t* initialization_segment_pmt;      /// parsed PMT

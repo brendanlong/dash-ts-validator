@@ -112,7 +112,6 @@ int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
         m2p->arg = dash_validator;
     }
 
-    dash_validator->psi_tables_seen |= 1 << m2s->pat->table_id;
     return 1;
 }
 
@@ -151,7 +150,6 @@ int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
     }
 
     dash_validator->pcr_pid = m2p->pmt->pcr_pid;
-    dash_validator->psi_tables_seen |= 1 << m2p->pmt->table_id;
     dash_validator->pmt_program_number = m2p->pmt->program_number;
     dash_validator->pmt_version_number = m2p->pmt->version_number;
 
@@ -230,7 +228,6 @@ int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_sourc
     pid_validator_t* pid_validator_dest = NULL;
 
     dash_validator_dest->pcr_pid = dash_validator_source->pcr_pid;
-    dash_validator_dest->psi_tables_seen = 0;
 
     g_debug("copy_pmt_info: dash_validator_source->pids->len = %u",
             dash_validator_source->pids->len);
