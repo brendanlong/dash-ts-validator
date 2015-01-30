@@ -125,6 +125,7 @@ int main(int argc, char* argv[])
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     dash_validator_init(&segment->validator, MEDIA_SEGMENT, conformance_level);
                     segment->validator.use_initialization_segment = representation->initialization_file_name != NULL;
+                    segment->validator.segment_alignment = adaptation_set->segment_alignment;
                 }
 
                 if (representation->initialization_file_name) {

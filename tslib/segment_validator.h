@@ -66,6 +66,7 @@ typedef struct {
     segment_type_t segment_type;
     bool use_initialization_segment;
     program_map_section_t* initialization_segment_pmt;      /// parsed PMT
+    bool segment_alignment;
 } dash_validator_t;
 
 const char* content_component_to_string(content_component_t);
