@@ -350,11 +350,9 @@ int check_segment_timing(GPtrArray* segments, content_component_t content_compon
             previous_end = previous->actual_end[content_component];
             delta_previous = actual_start - previous_end;
         }
-        if (delta_start || delta_end || delta_previous) {
+        if (content_component == VIDEO_CONTENT_COMPONENT && (delta_start || delta_end || delta_previous)) {
             log_level = G_LOG_LEVEL_WARNING;
-            if (content_component == VIDEO_CONTENT_COMPONENT) {
-                status = 0;
-            }
+            status = 0;
         }
         if (delta_start) {
             g_log(G_LOG_DOMAIN, log_level,
