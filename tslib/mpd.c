@@ -25,7 +25,7 @@ typedef struct {
 
 
 static bool read_period(xmlNode*, mpd_t*, char* base_url);
-static bool read_adaptation_set(xmlNode*, period_t*, char* base_url);
+static bool read_adaptation_set(xmlNode*, mpd_t*, period_t*, char* base_url);
 static bool read_representation(xmlNode*, adaptation_set_t*, bool saw_mime_type, char* base_url);
 static bool read_segment_base(xmlNode*, representation_t*, char* base_url);
 static bool read_segment_list(xmlNode*, representation_t*, char* base_url);
@@ -37,8 +37,11 @@ static uint32_t read_uint64(xmlNode*, const char* property_name);
 static bool read_bool(xmlNode*, const char* property_name);
 static char* read_filename(xmlNode*, const char* property_name, const char* base_url);
 static uint64_t str_to_uint64(const char*, int* error);
+static dash_profile_t read_profile(xmlNode*, dash_profile_t parent_profile);
+static const char* dash_profile_to_string(dash_profile_t);
 
 const char INDENT_BUFFER[] = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
+
 
 mpd_t* mpd_new(void)
 {
@@ -81,6 +84,7 @@ void mpd_print(const mpd_t* mpd)
     } else {
         PRINT_PROPERTY(indent, "presentation_type: %d", mpd->presentation_type);
     }
+    PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(mpd->profile));
 
     for (size_t i = 0; i < mpd->periods->len; ++i) {
         PRINT_PROPERTY(indent, "periods[%zu]:", i);
@@ -136,6 +140,7 @@ void adaptation_set_free(adaptation_set_t* obj)
 void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned indent)
 {
     ++indent;
+    PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(adaptation_set->profile));
     PRINT_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
     PRINT_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
     PRINT_PROPERTY(indent, "segment_alignment: %"PRIu32, adaptation_set->segment_alignment);
@@ -170,6 +175,7 @@ void representation_free(representation_t* obj)
 void representation_print(const representation_t* representation, unsigned indent)
 {
     ++indent;
+    PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(representation->profile));
     PRINT_PROPERTY(indent, "id: %s", PRINT_STR(representation->id));
     PRINT_PROPERTY(indent, "index_file_name: %s", PRINT_STR(representation->index_file_name));
     PRINT_PROPERTY(indent, "initialization_file_name: %s", PRINT_STR(representation->initialization_file_name));
@@ -234,6 +240,8 @@ mpd_t* read_mpd(char* file_name)
         goto fail;
     }
 
+    mpd->profile = read_profile(root, DASH_PROFILE_FULL);
+
     xmlChar* type = xmlGetProp(root, "type");
     if (xmlStrEqual(type, "static")) {
         mpd->presentation_type = MPD_PRESENTATION_STATIC;
@@ -285,7 +293,7 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
             continue;
         }
         if (xmlStrEqual(cur_node->name, "AdaptationSet")) {
-            if(!read_adaptation_set(cur_node, period, base_url)) {
+            if(!read_adaptation_set(cur_node, mpd, period, base_url)) {
                 goto fail;
             }
         } else if (xmlStrEqual(cur_node->name, "BaseURL")) {
@@ -303,7 +311,7 @@ fail:
     goto cleanup;
 }
 
-bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url)
+bool read_adaptation_set(xmlNode* node, mpd_t* mpd, period_t* period, char* parent_base_url)
 {
     bool return_code = true;
 
@@ -319,6 +327,7 @@ bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url)
         xmlFree(mime_type);
     }
 
+    adaptation_set->profile = read_profile(node, mpd->profile);
     adaptation_set->segment_alignment = read_optional_uint32(node, "segmentAlignment");
     adaptation_set->subsegment_alignment = read_optional_uint32(node, "subsegmentAlignment");
     adaptation_set->bitstream_switching = read_bool(node, "bitstreamSwitching");
@@ -373,6 +382,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
     representation_t* representation = representation_new();
     g_ptr_array_add(adaptation_set->representations, representation);
 
+    representation->profile = read_profile(node, adaptation_set->profile);
     representation->id = xmlGetProp(node, "id");
 
     start_with_sap = xmlGetProp(node, "startWithSAP");
@@ -709,4 +719,55 @@ uint64_t str_to_uint64(const char* str, int* error)
         *error = 0;
     }
     return result;
+}
+
+static dash_profile_t read_profile(xmlNode* node, dash_profile_t parent_profile)
+{
+    dash_profile_t profile = DASH_PROFILE_UNKNOWN;
+    char* property = xmlGetProp(node, "profiles");
+    if (property == NULL) {
+        goto cleanup;
+    }
+
+    gchar** profiles = g_strsplit(property, ",", 0);
+    gchar* profile_str;
+    for (size_t i = 0; (profile_str = profiles[i]); ++i) {
+        dash_profile_t new_profile = DASH_PROFILE_UNKNOWN;
+        if (!strcmp(profile_str, DASH_PROFILE_URN_FULL)) {
+            new_profile = DASH_PROFILE_FULL;
+        } else if (!strcmp(profile_str, DASH_PROFILE_URN_MPEG2TS_MAIN)) {
+            new_profile = DASH_PROFILE_MPEG2TS_MAIN;
+        } else if (!strcmp(profile_str, DASH_PROFILE_URN_MPEG2TS_SIMPLE)) {
+            new_profile = DASH_PROFILE_MPEG2TS_SIMPLE;
+        }
+        /* Pick the strictest listed profile */
+        if (new_profile > profile) {
+            profile = new_profile;
+        }
+    }
+    g_strfreev(profiles);
+
+cleanup:
+    /* Only inherit parent profile if we didn't find one. This is because child profiles aren't necessarily a subset
+     * of their parent profiles (i.e., an MPD with simple profile must contain at least one representation of simple
+     * profile, but it can also contain representations with main and full profile. */
+    if (profile == DASH_PROFILE_UNKNOWN) {
+        profile = parent_profile;
+    }
+    xmlFree(property);
+    return profile;
+}
+
+static const char* dash_profile_to_string(dash_profile_t profile) {
+    switch (profile) {
+    case DASH_PROFILE_FULL:
+        return DASH_PROFILE_URN_FULL;
+    case DASH_PROFILE_MPEG2TS_MAIN:
+        return DASH_PROFILE_URN_MPEG2TS_MAIN;
+    case DASH_PROFILE_MPEG2TS_SIMPLE:
+        return DASH_PROFILE_URN_MPEG2TS_SIMPLE;
+    default:
+        g_error("Print unknown dash_profile_t: %d", profile);
+        return "UNKNOWN DASH PROFILE";
+    }
 }

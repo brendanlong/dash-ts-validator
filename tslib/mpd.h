@@ -6,6 +6,16 @@
 
 #include "segment_validator.h"
 
+#define DASH_PROFILE_URN_FULL "urn:mpeg:dash:profile:full:2011"
+#define DASH_PROFILE_URN_MPEG2TS_MAIN "urn:mpeg:dash:profile:mp2t-main:2011"
+#define DASH_PROFILE_URN_MPEG2TS_SIMPLE "urn:mpeg:dash:profile:mp2t-simple:2011"
+
+typedef enum {
+    DASH_PROFILE_UNKNOWN = -1,
+    DASH_PROFILE_FULL = 0,
+    DASH_PROFILE_MPEG2TS_MAIN,
+    DASH_PROFILE_MPEG2TS_SIMPLE
+} dash_profile_t;
 
 typedef struct {
     char* file_name;
@@ -23,6 +33,7 @@ typedef struct {
 } segment_t;
 
 typedef struct {
+    dash_profile_t profile;
     char* id;
     char* index_file_name;
     char* initialization_file_name;
@@ -32,6 +43,7 @@ typedef struct {
 } representation_t;
 
 typedef struct {
+    dash_profile_t profile;
     uint32_t audio_pid;
     uint32_t video_pid;
     uint32_t segment_alignment;
@@ -51,6 +63,7 @@ typedef enum {
 } mpd_presentation_t;
 
 typedef struct {
+    dash_profile_t profile;
     mpd_presentation_t presentation_type;
     int max_video_gap_pts_ticks;
     int max_audio_gap_pts_ticks;
