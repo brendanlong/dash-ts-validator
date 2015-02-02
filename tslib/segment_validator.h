@@ -9,27 +9,17 @@
 #include "isobmff.h"
 #include "libts_common.h"
 #include "log.h"
+#include "mpd.h"
 #include "mpeg2ts_demux.h"
 #include "pes.h"
 #include "psi.h"
 #include "ts.h"
 
+
 #define TS_STATE_PAT   0x01
 #define TS_STATE_PMT   0x02
 #define TS_STATE_PCR   0x04
 #define TS_STATE_ECM   0x08
-
-#define TS_TEST_DASH   0x01
-#define TS_TEST_MAIN   0x02
-#define TS_TEST_SIMPLE 0x04
-
-
-typedef enum {
-    UNKNOWN_CONTENT_COMPONENT = 0x00,
-    VIDEO_CONTENT_COMPONENT,
-    AUDIO_CONTENT_COMPONENT,
-    NUM_CONTENT_COMPONENTS
-} content_component_t;
 
 typedef enum {
     MEDIA_SEGMENT = 0x00,
@@ -52,7 +42,7 @@ typedef struct {
 } pid_validator_t;
 
 typedef struct {
-    uint32_t conformance_level;
+    dash_profile_t profile;
     int64_t  last_pcr;
     long segment_start;
     long segment_end;
@@ -71,8 +61,8 @@ typedef struct {
 
 const char* content_component_to_string(content_component_t);
 
-dash_validator_t* dash_validator_new(segment_type_t, uint32_t conformance_level);
-void dash_validator_init(dash_validator_t*, segment_type_t, uint32_t conformance_level);
+dash_validator_t* dash_validator_new(segment_type_t, dash_profile_t);
+void dash_validator_init(dash_validator_t*, segment_type_t, dash_profile_t);
 void dash_validator_destroy(dash_validator_t*);
 void dash_validator_free(dash_validator_t*);
 
@@ -82,6 +72,6 @@ int validate_segment(dash_validator_t* dash_validator, char* fname,
 
 int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
         data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, bool is_simple_profile);
+        int presentation_time_offset, int video_pid, dash_profile_t);
 
 #endif

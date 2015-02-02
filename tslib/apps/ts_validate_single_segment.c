@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
     extern int optind;
 
     dash_validator_t dash_validator;
-    dash_validator_init(&dash_validator, MEDIA_SEGMENT, 0);
+    dash_validator_init(&dash_validator, MEDIA_SEGMENT, DASH_PROFILE_FULL);
 
     if(argc < 2) {
         usage(argv[0]);
@@ -70,18 +70,11 @@ int main(int argc, char* argv[])
     while((c = getopt_long(argc, argv, "vdbh", long_options, &long_options_index)) != -1) {
         switch(c) {
         case 'd':
-            dash_validator.conformance_level = TS_TEST_DASH;
             if(optarg != NULL) {
-                if(!strcmp(optarg, "simple")) {
-                    dash_validator.conformance_level |= TS_TEST_SIMPLE;
-                }
-                if(!strcmp(optarg, "main")) {
-                    dash_validator.conformance_level   |= TS_TEST_MAIN;
-                }
-
-                // simple is a subset of main
-                if(dash_validator.conformance_level & TS_TEST_SIMPLE) {
-                    dash_validator.conformance_level |= TS_TEST_MAIN;
+                if (!strcmp(optarg, "simple")) {
+                    dash_validator.profile = DASH_PROFILE_MPEG2TS_SIMPLE;
+                } else if(!strcmp(optarg, "main")) {
+                    dash_validator.profile = DASH_PROFILE_MPEG2TS_MAIN;
                 }
             }
             break;

@@ -19,14 +19,14 @@ static int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi,
         void* arg);
 static int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
         uint64_t* segment_durations, data_segment_iframes_t* iframes, int presentation_time_offset,
-        int video_pid, bool is_simple_profile);
+        int video_pid, dash_profile_t);
 static int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
         uint64_t segment_duration, data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, bool is_simple_profile);
+        int presentation_time_offset, int video_pid, dash_profile_t);
 
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
-static int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx,
-        bool is_simple_profile);
+static int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx, dash_profile_t);
+
 
 const char* content_component_to_string(content_component_t content_component)
 {
@@ -61,17 +61,17 @@ static void pid_validator_free(pid_validator_t* obj)
     free(obj);
 }
 
-dash_validator_t* dash_validator_new(segment_type_t segment_type, uint32_t conformance_level)
+dash_validator_t* dash_validator_new(segment_type_t segment_type, dash_profile_t profile)
 {
     dash_validator_t* obj = calloc(1, sizeof(*obj));
-    dash_validator_init(obj, segment_type, conformance_level);
+    dash_validator_init(obj, segment_type, profile);
     return obj;
 }
 
-void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, uint32_t conformance_level)
+void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, dash_profile_t profile)
 {
     obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
-    obj->conformance_level = conformance_level;
+    obj->profile = profile;
 }
 
 void dash_validator_destroy(dash_validator_t* obj)
@@ -91,7 +91,7 @@ void dash_validator_free(dash_validator_t* obj)
 static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
-    if (dash_validator->conformance_level & TS_TEST_DASH && m2s->programs->len != 1) {
+    if (m2s->programs->len != 1) {
         g_critical("DASH Conformance: 6.4.4.2  Media segments shall contain exactly one program (%u found)",
                        m2s->programs->len);
         dash_validator->status = 0;
@@ -278,14 +278,14 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         if ((ts->header.adaptation_field_control & TS_PAYLOAD)
                 && (pid_validator->content_component != UNKNOWN_CONTENT_COMPONENT)) {
             // if we only have complete PES packets, we must start with PUSI=1 followed by PES header in the first payload-bearing packet
-            if ((dash_validator->conformance_level & TS_TEST_MAIN)
+            if ((dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN)
                     && (ts->header.payload_unit_start_indicator == 0)) {
                 g_critical("DASH Conformance: media segments shall contain only complete PES packets");
                 dash_validator->status = 0;
             }
 
             // by the time we get to the start of the first PES, we need to have seen at least one PCR.
-            if (dash_validator->conformance_level & TS_TEST_SIMPLE) {
+            if (dash_validator->profile >= DASH_PROFILE_MPEG2TS_SIMPLE) {
                 if (!PCR_IS_VALID(dash_validator->last_pcr)) {
                     g_critical("DASH Conformance: PCR must be present before first bytes of media data");
                     dash_validator->status = 0;
@@ -338,7 +338,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         // we have a queue that didn't appear to be a valid PES packet (e.g., because it didn't start with
         // payload_unit_start_indicator = 1)
         // TODO: Where did this requirement come from?
-        if (dash_validator->conformance_level & TS_TEST_MAIN) {
+        if (dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN) {
             g_critical("DASH Conformance: media segments shall contain only complete PES packets");
             dash_validator->status = 0;
         }
@@ -350,7 +350,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     assert(pid_validator != NULL);
 
     if (pes->status > 0) {
-        if (dash_validator->conformance_level & TS_TEST_MAIN) {
+        if (dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN) {
             /* TODO: This is a 'should'. Is there somewhere else that upgrades it to 'shall'? */
             /* TODO: 7.4.3.2 says that this is a 'shall' if we're dealing with @segmentAlignment = true  and 7.4.3.2
              *       says the same for @subsegmentAlignment. */
@@ -365,7 +365,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
             pid_validator->earliest_playout_time = pes->header.pts;
             pid_validator->latest_playout_time = pes->header.pts;
-        } else if (dash_validator->conformance_level & TS_TEST_MAIN) {
+        } else if (dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN) {
             /* TODO: This is probably only if @segmentAlignment is not 'false'
              * 7.4.3.2 Segment alignment
              * If the @segmentAlignment attribute is not set to ‘false’, [...] the first PES packet shall contain a
@@ -670,7 +670,7 @@ fail:
 int validate_representation_index_segment_boxes(size_t num_segments,
         box_t** boxes, size_t num_boxes, uint64_t* segment_durations,
         data_segment_iframes_t* iframes, int presentation_time_offset,
-        int video_pid, bool is_simple_profile)
+        int video_pid, dash_profile_t profile)
 {
     /*
     A Representation Index Segment indexes all Media Segments of one Representation and is defined as follows:
@@ -812,8 +812,7 @@ Expected %d, actual %d.", master_reference_id, sidx->reference_id);
             }
 
             // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if (analyze_sidx_references(sidx, &(iframes[segment_index].num_iframes), &num_nested_sidx,
-                                     is_simple_profile) != 0) {
+            if (analyze_sidx_references(sidx, &(iframes[segment_index].num_iframes), &num_nested_sidx, profile) != 0) {
                 return_code = -1;
             }
             break;
@@ -950,7 +949,7 @@ fail:
 
 int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
         uint64_t segment_duration, data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, bool is_simple_profile)
+        int presentation_time_offset, int video_pid, dash_profile_t profile)
 {
     /*
      A Single Index Segment indexes exactly one Media Segment and is defined as follows:
@@ -1030,7 +1029,7 @@ Expected %d, actual %d.", video_pid, sidx->reference_id);
             }
 
             // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if (analyze_sidx_references(sidx, &(iframes->num_iframes), &num_nested_sidx, is_simple_profile) != 0) {
+            if (analyze_sidx_references(sidx, &(iframes->num_iframes), &num_nested_sidx, profile) != 0) {
                 return_code = -1;
             }
             break;
@@ -1121,8 +1120,7 @@ Expected %d, actual %d.", video_pid, sidx->reference_id);
     return return_code;
 }
 
-int analyze_sidx_references(data_sidx_t* sidx, int* pnum_iframes, int* pnum_nested_sidx,
-                          bool is_simple_profile)
+int analyze_sidx_references(data_sidx_t* sidx, int* pnum_iframes, int* pnum_nested_sidx, dash_profile_t profile)
 {
     int originalnum_nested_sidx = *pnum_nested_sidx;
     int originalnum_iframes = *pnum_iframes;
@@ -1136,7 +1134,7 @@ int analyze_sidx_references(data_sidx_t* sidx, int* pnum_iframes, int* pnum_nest
         }
     }
 
-    if (is_simple_profile) {
+    if (profile >= DASH_PROFILE_MPEG2TS_SIMPLE) {
         if (originalnum_nested_sidx != *pnum_nested_sidx && originalnum_iframes != *pnum_iframes) {
             // failure -- references contain references to both media and nested sidx boxes
             g_critical("ERROR validating Representation Index Segment: Section 8.7.3: Simple profile requires that \
@@ -1149,8 +1147,7 @@ sidx boxes have either media references or sidx references, but not both.");
 }
 
 int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
-                         data_segment_iframes_t* iframes,
-                         int presentation_time_offset, int video_pid, bool is_simple_profile)
+        data_segment_iframes_t* iframes, int presentation_time_offset, int video_pid, dash_profile_t profile)
 {
     g_debug("validate_index_segment: %s", file_name);
     size_t num_boxes = 0;
@@ -1170,11 +1167,11 @@ int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segme
     } else if (num_segments == 1) {
         return_code = validate_single_index_segment_boxes(boxes, num_boxes,
                 segment_durations[0], iframes, presentation_time_offset,
-                video_pid, is_simple_profile);
+                video_pid, profile);
     } else {
         return_code = validate_representation_index_segment_boxes(num_segments,
                 boxes, num_boxes, segment_durations, iframes,
-                presentation_time_offset, video_pid, is_simple_profile);
+                presentation_time_offset, video_pid, profile);
     }
     g_info(" ");
 

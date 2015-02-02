@@ -30,13 +30,11 @@ int check_segment_timing(GPtrArray* segments, content_component_t);
 int check_psi_identical(GPtrArray* representations);
 
 static struct option long_options[] = {
-    { "verbose",	   no_argument,        NULL, 'v' },
-    { "dash",	   optional_argument,  NULL, 'd' },
-    { "help",       no_argument,        NULL, 'h' },
+    { "verbose", no_argument, NULL, 'v' },
+    { "help", no_argument, NULL, 'h' },
 };
 
 static char options[] =
-    "\t-d(main|simple), --dash(main|simple)\n"
     "\t-v, --verbose\n"
     "\t-h, --help\n";
 
@@ -52,26 +50,13 @@ int main(int argc, char* argv[])
     extern char* optarg;
     extern int optind;
 
-    uint32_t conformance_level = 0;
-
     if(argc < 2) {
         usage(argv[0]);
         return 1;
     }
 
-    while((c = getopt_long(argc, argv, "vd::h", long_options, &long_options_index)) != -1) {
+    while((c = getopt_long(argc, argv, "vh", long_options, &long_options_index)) != -1) {
         switch(c) {
-        case 'd':
-            conformance_level = TS_TEST_DASH;
-            if(optarg != NULL) {
-                if(!strcmp(optarg, "simple")) {
-                    conformance_level |= TS_TEST_SIMPLE;
-                    conformance_level |= TS_TEST_MAIN;
-                } else if(!strcmp(optarg, "main")) {
-                    conformance_level |= TS_TEST_MAIN;
-                }
-            }
-            break;
         case 'v':
             if(tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
                 tslib_loglevel++;
@@ -117,19 +102,21 @@ int main(int argc, char* argv[])
                 }
 
                 /* At some point we should replace these gigantic arrays with more reasonable data structures */
-                dash_validator_t* validator_init_segment = NULL;
-
                 data_segment_iframes_t* iframe_data = data_segment_iframes_new(representation->segments->len);
 
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-                    dash_validator_init(&segment->validator, MEDIA_SEGMENT, conformance_level);
-                    segment->validator.use_initialization_segment = representation->initialization_file_name != NULL;
-                    segment->validator.segment_alignment = adaptation_set->segment_alignment;
+                    dash_validator_t* validator = dash_validator_new(MEDIA_SEGMENT, representation->profile);
+                    validator->use_initialization_segment = representation->initialization_file_name != NULL;
+                    validator->segment_alignment = adaptation_set->segment_alignment;
+
+                    segment->arg = validator;
+                    segment->arg_free = (free_func_t)dash_validator_free;
                 }
 
+                dash_validator_t* validator_init_segment = NULL;
                 if (representation->initialization_file_name) {
-                    validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, conformance_level);
+                    validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, representation->profile);
                     if (validate_segment(validator_init_segment, representation->initialization_file_name,
                                            NULL, NULL, 0) != 0) {
                         g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
@@ -150,7 +137,7 @@ int main(int argc, char* argv[])
                                 segment->index_file_name,
                                 1, &segment->duration, &iframe_data[s_i],
                                 first_segment->start,
-                                adaptation_set->video_pid, conformance_level & TS_TEST_SIMPLE) != 0) {
+                                adaptation_set->video_pid, representation->profile) != 0) {
                         g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
                         overall_status = 0;
                     }
@@ -169,7 +156,7 @@ int main(int argc, char* argv[])
                             representation->segments->len, expected_durations,
                             iframe_data, first_segment->start,
                             adaptation_set->video_pid,
-                            conformance_level & TS_TEST_SIMPLE) != 0) {
+                            representation->profile) != 0) {
                         g_critical("Validation of RepresentationIndex %s FAILED", PRINT_STR(representation->index_file_name));
                         overall_status = 0;
                     }
@@ -179,7 +166,8 @@ int main(int argc, char* argv[])
                 // Next, validate media files for each segment
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-                    if (validate_segment(&segment->validator, segment->file_name,
+                    dash_validator_t* validator = (dash_validator_t*)segment->arg;
+                    if (validate_segment(validator, segment->file_name,
                             validator_init_segment, &iframe_data[s_i], segment->duration) != 0) {
                         overall_status = 0;
                         goto cleanup;
@@ -187,8 +175,8 @@ int main(int argc, char* argv[])
 
                     // GORP: what if there is no video in the segment??
 
-                    for(gsize pid_i = 0; pid_i < segment->validator.pids->len; pid_i++) {
-                        pid_validator_t* pv = g_ptr_array_index(segment->validator.pids, pid_i);
+                    for(gsize pid_i = 0; pid_i < validator->pids->len; pid_i++) {
+                        pid_validator_t* pv = g_ptr_array_index(validator->pids, pid_i);
 
                         // refine duration by including duration of last frame (audio and video are different rates)
                         // start time is relative to the start time of the first segment
@@ -205,14 +193,14 @@ int main(int argc, char* argv[])
                                 segment->file_name, pv->pid, content_component_to_string(pv->content_component),
                                 actual_start, actual_end, actual_duration);
 
-                        if(pv->content_component == VIDEO_CONTENT_COMPONENT && representation->start_with_sap != 0) {
-                            if(pv->sap == 0) {
+                        if (pv->content_component == VIDEO_CONTENT_COMPONENT && representation->start_with_sap != 0) {
+                            if (pv->sap == 0) {
                                 g_critical("%s: FAIL: SAP not set", segment->file_name);
-                                segment->validator.status = 0;
-                            } else if(pv->sap_type != representation->start_with_sap) {
+                                validator->status = 0;
+                            } else if (pv->sap_type != representation->start_with_sap) {
                                 g_critical("%s: FAIL: Invalid SAP Type: expected %d, actual %d",
                                         segment->file_name, representation->start_with_sap, pv->sap_type);
-                                segment->validator.status = 0;
+                                validator->status = 0;
                             }
                         }
                     }
@@ -221,8 +209,9 @@ int main(int argc, char* argv[])
 
                 for(gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+                    dash_validator_t* validator = (dash_validator_t*)segment->arg;
 
-                    if (segment->validator.status) {
+                    if (validator->status) {
                         g_info("SEGMENT TEST RESULT: %s: SUCCESS", segment->file_name);
                     } else {
                         g_critical("SEGMENT TEST RESULT: %s: FAIL", segment->file_name);
@@ -245,7 +234,7 @@ int main(int argc, char* argv[])
             overall_status &= check_representation_gaps(adaptation_set->representations,
                     VIDEO_CONTENT_COMPONENT, max_gap_pts_ticks[VIDEO_CONTENT_COMPONENT]);
 
-            if(conformance_level & TS_TEST_SIMPLE) {
+            if(adaptation_set->profile >= DASH_PROFILE_MPEG2TS_SIMPLE) {
                 /* For the simple profile, the PSI must be the same for all Representations in an
                  * AdaptationSet */
                 overall_status &= check_psi_identical(adaptation_set->representations);
@@ -287,8 +276,6 @@ int check_representation_gaps(GPtrArray* representations, content_component_t co
                         g_critical("FAIL: %s gap between for segment %zu for representations %s and %s is %"PRId64" and exceeds limit %"PRId64,
                                 content_component_to_string(content_component), s_i, representation1->id, representation2->id,
                                 pts_delta, max_delta);
-                        segment1->validator.status = 0;
-                        segment2->validator.status = 0;
                         status = 0;
                     }
                 }
@@ -412,7 +399,7 @@ int check_psi_identical(GPtrArray* representations)
         representation_t* representation = g_ptr_array_index(representations, r_i);
         for (gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
             segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-            dash_validator_t* validator = &segment->validator;
+            dash_validator_t* validator = (dash_validator_t*)segment->arg;
 
             if (r_i == 0 && s_i == 0) {
                 video_pid = validator->video_pid;

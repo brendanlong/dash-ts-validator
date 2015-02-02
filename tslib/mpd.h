@@ -3,8 +3,7 @@
 
 #include <glib.h>
 #include <stdbool.h>
-
-#include "segment_validator.h"
+#include <stdint.h>
 
 #define DASH_PROFILE_URN_FULL "urn:mpeg:dash:profile:full:2011"
 #define DASH_PROFILE_URN_MPEG2TS_MAIN "urn:mpeg:dash:profile:mp2t-main:2011"
@@ -16,6 +15,15 @@ typedef enum {
     DASH_PROFILE_MPEG2TS_MAIN,
     DASH_PROFILE_MPEG2TS_SIMPLE
 } dash_profile_t;
+
+typedef enum {
+    UNKNOWN_CONTENT_COMPONENT = 0x00,
+    VIDEO_CONTENT_COMPONENT,
+    AUDIO_CONTENT_COMPONENT,
+    NUM_CONTENT_COMPONENTS
+} content_component_t;
+
+typedef void (*free_func_t)(void*);
 
 typedef struct {
     char* file_name;
@@ -29,7 +37,9 @@ typedef struct {
     /* These don't really belong here, but they make things much easier */
     uint64_t actual_start[NUM_CONTENT_COMPONENTS];
     uint64_t actual_end[NUM_CONTENT_COMPONENTS];
-    dash_validator_t validator;
+
+    void* arg;
+    free_func_t arg_free;
 } segment_t;
 
 typedef struct {
