@@ -78,7 +78,7 @@ static uint64_t bs_read_ull(bs_t* b, int n);
 
 static inline bs_t* bs_init(bs_t* b, uint8_t* buf, size_t size)
 {
-    if(!b || !buf || !size) {
+    if(!b) {
         return NULL;
     }
     b->start = b->p = buf;
@@ -89,9 +89,6 @@ static inline bs_t* bs_init(bs_t* b, uint8_t* buf, size_t size)
 
 static inline bs_t* bs_new(uint8_t* buf, size_t size)
 {
-    if(!buf || !size) {
-        return NULL;
-    }
     bs_t* b = (bs_t*)calloc(1, sizeof(bs_t));
     if(b) {
         bs_init(b, buf, size);

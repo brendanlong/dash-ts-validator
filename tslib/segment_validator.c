@@ -8,21 +8,17 @@
 #include "mpeg2ts_demux.h"
 #include "pes_demux.h"
 
-int global_iframe_counter;
-data_segment_iframes_t* global_iframe_data;
-uint64_t global_segment_duration;
 
 static int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
 static int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
 static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
 static int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
         void* arg);
-static int validate_representation_index_segment_boxes(size_t num_segments, box_t** boxes, size_t num_boxes,
-        uint64_t* segment_durations, data_segment_iframes_t* iframes, int presentation_time_offset,
-        int video_pid, dash_profile_t);
-static int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
-        uint64_t segment_duration, data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, dash_profile_t);
+
+static void validate_representation_index_segment_boxes(index_segment_validator_t*, box_t**, size_t num_boxes,
+        representation_t*, adaptation_set_t*);
+static void validate_single_index_segment_boxes(index_segment_validator_t*, box_t**, size_t num_boxes,
+        segment_t*, representation_t*, adaptation_set_t*);
 
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
 static int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx, dash_profile_t);
@@ -41,6 +37,27 @@ const char* content_component_to_string(content_component_t content_component)
         g_error("Bad content component: %d", content_component);
         return "Bad Content Component Value";
     }
+}
+
+static index_segment_validator_t* index_segment_validator_new(void)
+{
+    index_segment_validator_t* obj = g_new0(index_segment_validator_t, 1);
+    obj->segment_iframes = g_ptr_array_new();
+    return obj;
+}
+
+void index_segment_validator_free(index_segment_validator_t* obj)
+{
+    if (obj == NULL) {
+        return;
+    }
+
+    for (size_t i = 0; i < obj->segment_iframes->len; ++i) {
+        GArray* iframes = g_ptr_array_index(obj->segment_iframes, i);
+        g_array_free(iframes, true);
+    }
+    g_ptr_array_free(obj->segment_iframes, true);
+    g_free(obj);
 }
 
 static pid_validator_t* pid_validator_new(uint16_t pid, content_component_t content_component)
@@ -70,8 +87,9 @@ dash_validator_t* dash_validator_new(segment_type_t segment_type, dash_profile_t
 
 void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, dash_profile_t profile)
 {
-    obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
     obj->profile = profile;
+    obj->iframes = g_array_new(false, false, sizeof(iframe_t));
+    obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
 }
 
 void dash_validator_destroy(dash_validator_t* obj)
@@ -79,6 +97,7 @@ void dash_validator_destroy(dash_validator_t* obj)
     if (obj == NULL) {
         return;
     }
+    g_array_free(obj->iframes, true);
     g_ptr_array_free(obj->pids, true);
 }
 
@@ -422,46 +441,35 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     if (pid_validator->content_component == VIDEO_CONTENT_COMPONENT) {
         pid_validator->duration = 3000;
 
-        if (global_iframe_data->do_iframe_validation && first_ts->adaptation_field.random_access_indicator) {
-            g_debug("Performing IFrame validation");
+        if (dash_validator->do_iframe_validation && first_ts->adaptation_field.random_access_indicator) {
             // check iFrame location against index file
-
-            if (global_iframe_counter < global_iframe_data->num_iframes) {
-                int64_t expectedIFramePTS = global_iframe_data->iframe_locations_time[global_iframe_counter];
-                int64_t actualIFramePTS = pes->header.pts;
-                if (expectedIFramePTS != actualIFramePTS) {
-                    g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %"PRIu64", Actual: %"PRIu64,
-                            expectedIFramePTS, actualIFramePTS);
-                    dash_validator->status = 0;
-                }
-
-                // check frame byte location
-                uint64_t expectedFrameByteLocation = global_iframe_data->iframe_locations_byte[global_iframe_counter];
-                uint64_t actualFrameByteLocation = pes->payload_pos_in_stream;
-                g_debug("expectedIFrameByteLocation = %"PRId64", actualIFrameByteLocation = %"PRId64"",
-                              expectedFrameByteLocation, actualFrameByteLocation);
-                if (expectedFrameByteLocation != actualFrameByteLocation) {
-                    g_critical("DASH Conformance: expected IFrame Byte Location does not match actual.  Expected: %"PRId64", Actual: %"PRId64"",
-                                   expectedFrameByteLocation, actualFrameByteLocation);
-                    dash_validator->status = 0;
-                }
-
-                // check SAP type
-                uint8_t expectedStartsWithSAP = global_iframe_data->starts_with_sap[global_iframe_counter];
-                uint8_t expectedSAPType = global_iframe_data->sap_type[global_iframe_counter];
-                uint8_t actualSAPType = pid_validator->sap_type;
-                g_debug("expectedStartsWithSAP = %d, expectedSAPType = %d, actualSAPType = %d",
-                              expectedStartsWithSAP, expectedSAPType, actualSAPType);
-                if (expectedStartsWithSAP == 1 && expectedSAPType != 0 && expectedSAPType != actualSAPType) {
-                    g_critical("DASH Conformance: expected IFrame SAP Type does not match actual: expectedStartsWithSAP = %d, \
-expectedSAPType = %d, actualSAPType = %d", expectedStartsWithSAP, expectedSAPType, actualSAPType);
-                    dash_validator->status = 0;
-                }
-
-                global_iframe_counter++;
-            } else {
+            if (dash_validator->iframe_index >= dash_validator->iframes->len) {
                 g_critical("DASH Conformance: Stream has more IFrames than index file");
                 dash_validator->status = 0;
+            } else {
+                iframe_t* iframe = &g_array_index(dash_validator->iframes, iframe_t, dash_validator->iframe_index);
+                ++dash_validator->iframe_index;
+
+                // time location
+                if (iframe->location_time != pes->header.pts) {
+                    g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %"PRIu64", "
+                            "Actual: %"PRIu64, iframe->location_time, pes->header.pts);
+                    dash_validator->status = 0;
+                }
+
+                // byte location
+                if (iframe->location_byte != pes->payload_pos_in_stream) {
+                    g_critical("DASH Conformance: expected IFrame Byte Location does not match actual.  Expected: "
+                            "%"PRIu64", Actual: %"PRIu64"", iframe->location_byte, pes->payload_pos_in_stream);
+                    dash_validator->status = 0;
+                }
+
+                // SAP type
+                if (iframe->starts_with_sap && iframe->sap_type != 0 && iframe->sap_type != pid_validator->sap_type) {
+                    g_critical("DASH Conformance: expected IFrame SAP Type does not match actual: expected SAP_type "
+                            "= %d, actual SAP_type = %d", iframe->sap_type, pid_validator->sap_type);
+                    dash_validator->status = 0;
+                }
             }
         }
     }
@@ -539,7 +547,7 @@ static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t*
         goto cleanup;
     }
 
-    if (validate_emsg_msg(pes->payload, pes->payload_len, global_segment_duration) != 0) {
+    if (validate_emsg_msg(pes->payload, pes->payload_len, dash_validator->segment->duration) != 0) {
         g_critical("DASH Conformance: validation of EMSG failed");
         dash_validator->status = 0;
     }
@@ -549,26 +557,13 @@ cleanup:
     return 1; // return code doesn't matter
 }
 
-int validate_segment(dash_validator_t* dash_validator, char* fname,
-        dash_validator_t* dash_validator_init,
-        data_segment_iframes_t* pIFrameData, uint64_t segmentDuration)
+int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_validator_t* dash_validator_init)
 {
-    global_iframe_counter = 0;
-    global_iframe_data = pIFrameData;
-    global_segment_duration = segmentDuration;
-
-    g_debug("doSegmentValidation : %s", fname);
     mpeg2ts_stream_t* m2s = NULL;
 
-// GORP:    initialization segment shall not contain any media data with an assigned presentation time
-// GORP:    initialization segment shall contain PAT and PMT and PCR
-// GORP: self-initializing segment shall contain PAT and PMT and PCR
-// GORP:     check for complete transport stream packets
-// GORP:         check for complete PES packets
-
-    FILE* infile = fopen(fname, "rb");
+    FILE* infile = fopen(file_name, "rb");
     if (infile == NULL) {
-        g_critical("Cannot open file %s - %s", fname, strerror(errno));
+        g_critical("Cannot open file %s - %s", file_name, strerror(errno));
         goto fail;
     }
 
@@ -667,10 +662,8 @@ fail:
     goto cleanup;
 }
 
-int validate_representation_index_segment_boxes(size_t num_segments,
-        box_t** boxes, size_t num_boxes, uint64_t* segment_durations,
-        data_segment_iframes_t* iframes, int presentation_time_offset,
-        int video_pid, dash_profile_t profile)
+static void validate_representation_index_segment_boxes(index_segment_validator_t* validator, box_t** boxes,
+        size_t num_boxes, representation_t* representation, adaptation_set_t* adaptation_set)
 {
     /*
     A Representation Index Segment indexes all Media Segments of one Representation and is defined as follows:
@@ -739,9 +732,9 @@ int validate_representation_index_segment_boxes(size_t num_segments,
     // walk all references: they should all be of type 1 and should point to sidx boxes
     data_sidx_t* master_sidx = (data_sidx_t*)boxes[box_index];
     unsigned int master_reference_id = master_sidx->reference_id;
-    if (master_reference_id != video_pid) {
+    if (master_reference_id != adaptation_set->video_pid) {
         g_critical("ERROR validating Representation Index Segment: master ref ID does not equal \
-video PID.  Expected %d, actual %d.", video_pid, master_reference_id);
+video PID.  Expected %d, actual %d.", adaptation_set->video_pid, master_reference_id);
         return_code = -1;
     }
     for (size_t i = 0; i < master_sidx->reference_count; i++) {
@@ -752,20 +745,23 @@ video PID.  Expected %d, actual %d.", video_pid, master_reference_id);
         }
 
         // validate duration
-        if (segment_durations[i] != ref.subsegment_duration) {
-            g_critical("ERROR validating Representation Index Segment: master ref segment duration does not equal \
-segment duration.  Expected %"PRIu64", actual %d.", segment_durations[i], ref.subsegment_duration);
-            return_code = -1;
+        if (i < representation->segments->len) {
+            segment_t* segment = g_ptr_array_index(representation->segments, i);
+            if (segment->duration != ref.subsegment_duration) {
+                g_critical("ERROR validating Representation Index Segment: master ref segment duration does not equal "
+                        "segment duration.  Expected %"PRIu64", actual %d.", segment->duration, ref.subsegment_duration);
+                return_code = -1;
+            }
         }
     }
     box_index++;
 
-    int segment_index = -1;
+    size_t segment_index = 0;
     bool ssix_present = false;
     bool pcrb_present = false;
     int num_nested_sidx = 0;
+    int num_iframes = 0;
     uint64_t referenced_size = 0;
-    uint64_t segment_start_time = presentation_time_offset;
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
     for (; box_index < num_boxes; ++box_index) {
@@ -781,24 +777,22 @@ segment duration.  Expected %"PRIu64", actual %d.", segment_durations[i], ref.su
                 // GORP: check earliest presentation time
             } else {
                 // check size:
-                g_info("Validating referenced_size for reference %d.", segment_index);
-                if (segment_index >= 0 && referenced_size != master_sidx->references[segment_index].referenced_size) {
-                    g_critical("ERROR validating Representation Index Segment: referenced_size for reference %d. \
-Expected %"PRIu32", actual %"PRIu64"\n", segment_index, master_sidx->references[segment_index].referenced_size,
-                                   referenced_size);
+                g_info("Validating referenced_size for segment %zu.", segment_index);
+                if (segment_index > 1 && referenced_size != master_sidx->references[segment_index - 1].referenced_size) {
+                    g_critical("ERROR validating Representation Index Segment: referenced_size for segment %zu. "
+                            "Expected %"PRIu32", actual %"PRIu64"\n", segment_index,
+                            master_sidx->references[segment_index - 1].referenced_size, referenced_size);
                     return_code = -1;
                 }
 
                 referenced_size = 0;
+                segment_t* segment = g_ptr_array_index(representation->segments, segment_index);
                 segment_index++;
-                if (segment_index > 0) {
-                    segment_start_time += segment_durations[segment_index - 1];
-                }
 
-                g_info("Validating earliest_presentation_time for reference %d.", segment_index);
-                if (segment_start_time != sidx->earliest_presentation_time) {
+                g_info("Validating earliest_presentation_time for segment %zu.", segment_index);
+                if (segment->start != sidx->earliest_presentation_time) {
                     g_critical("ERROR validating Representation Index Segment: invalid earliest_presentation_time in sidx box. \
-Expected %"PRId64", actual %"PRId64".", segment_start_time, sidx->earliest_presentation_time);
+Expected %"PRId64", actual %"PRId64".", segment->start, sidx->earliest_presentation_time);
                     return_code = -1;
                 }
             }
@@ -812,7 +806,7 @@ Expected %d, actual %d.", master_reference_id, sidx->reference_id);
             }
 
             // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if (analyze_sidx_references(sidx, &(iframes[segment_index].num_iframes), &num_nested_sidx, profile) != 0) {
+            if (analyze_sidx_references(sidx, &num_iframes, &num_nested_sidx, representation->profile) != 0) {
                 return_code = -1;
             }
             break;
@@ -858,12 +852,10 @@ Expected %d, actual %d.", master_reference_id, sidx->reference_id);
     }
 
     // check the last reference size -- the last one is not checked in the above loop
-    g_info("Validating referenced_size for reference %d. Expected %"PRIu32", actual %"PRIu64".",
-           segment_index, master_sidx->references[segment_index].referenced_size, referenced_size);
-    if (segment_index >= 0 && referenced_size != master_sidx->references[segment_index].referenced_size) {
-        g_critical("ERROR validating Representation Index Segment: referenced_size for reference %d. \
-Expected %"PRIu32", actual %"PRIu64".", segment_index, master_sidx->references[segment_index].referenced_size,
-                       referenced_size);
+    if (segment_index > 0 && referenced_size != master_sidx->references[segment_index - 1].referenced_size) {
+        g_critical("ERROR validating Representation Index Segment: referenced_size for reference %zu. Expected "
+                "%"PRIu32", actual %"PRIu64".", segment_index,
+                master_sidx->references[segment_index - 1].referenced_size, referenced_size);
         return_code = -1;
     }
 
@@ -873,19 +865,19 @@ Expected %"PRIu32", actual %"PRIu64".", segment_index, master_sidx->references[s
         return_code = -1;
     }
 
-    if ((segment_index + 1) != num_segments) {
-        g_critical("ERROR validating Representation Index Segment: Invalid number of segment sidx boxes following master sidx box: \
-expected %zu, found %d.", num_segments, segment_index);
+    if (segment_index != representation->segments->len) {
+        g_critical("ERROR validating Representation Index Segment: Invalid number of segment sidx boxes following "
+                "master sidx box: expected %u, found %zu.", representation->segments->len, segment_index);
         return_code = -1;
     }
 
     // fill in iFrame locations by walking the list of sidx's again, starting from the third box
     num_nested_sidx = 0;
-    segment_index = -1;
-    int iframe_counter = 0;
-    unsigned int lastIFrameDuration = 0;
-    uint64_t nextIFrameByteLocation = 0;
-    segment_start_time = presentation_time_offset;
+    segment_index = 0;
+    size_t iframe_counter = 0;
+    uint64_t next_iframe_byte_location = 0;
+    uint64_t last_iframe_start_time = representation->presentation_time_offset;
+    uint64_t last_iframe_duration = 0;
     for (box_index = 2; box_index < num_boxes; ++box_index) {
         box_t* box = boxes[box_index];
         if (box->type == BOX_TYPE_SIDX) {
@@ -893,46 +885,31 @@ expected %zu, found %d.", num_segments, segment_index);
 
             if (num_nested_sidx > 0) {
                 num_nested_sidx--;
-                nextIFrameByteLocation += sidx->first_offset;  // convert from 64-bit t0 32 bit
+                next_iframe_byte_location += sidx->first_offset;  // convert from 64-bit t0 32 bit
             } else {
+                segment_t* segment = g_ptr_array_index(representation->segments, segment_index);
+                last_iframe_start_time = segment->start;
+                last_iframe_duration = segment->duration;
                 segment_index++;
-                if (segment_index > 0) {
-                    segment_start_time += segment_durations[segment_index - 1];
-                }
 
                 iframe_counter = 0;
-                nextIFrameByteLocation = sidx->first_offset;
-                if (segment_index < num_segments) {
-                    iframes[segment_index].do_iframe_validation = 1;
-                    iframes[segment_index].iframe_locations_time = calloc(iframes[segment_index].num_iframes,
-                            sizeof(uint64_t));
-                    iframes[segment_index].iframe_locations_byte = calloc(iframes[segment_index].num_iframes,
-                            sizeof(uint64_t));
-                    iframes[segment_index].starts_with_sap = calloc(iframes[segment_index].num_iframes,
-                            sizeof(uint8_t));
-                    iframes[segment_index].sap_type = calloc(iframes[segment_index].num_iframes, sizeof(uint8_t));
-                }
+                next_iframe_byte_location = sidx->first_offset;
             }
 
             // fill in Iframe locations here
-            for (int i = 0; i < sidx->reference_count; i++) {
+            for (size_t i = 0; i < sidx->reference_count; i++) {
                 data_sidx_reference_t ref = sidx->references[i];
                 if (ref.reference_type == 0) {
-                    (iframes[segment_index]).starts_with_sap[iframe_counter] = ref.starts_with_sap;
-                    (iframes[segment_index]).sap_type[iframe_counter] = ref.sap_type;
-                    (iframes[segment_index]).iframe_locations_byte[iframe_counter] = nextIFrameByteLocation;
+                    iframe_t iframe;
+                    iframe.starts_with_sap = ref.starts_with_sap;
+                    iframe.sap_type = ref.sap_type;
+                    iframe.location_byte = next_iframe_byte_location;
+                    iframe.location_time = last_iframe_start_time + last_iframe_duration + ref.sap_delta_time;
 
-
-                    if (iframe_counter == 0) {
-                        iframes[segment_index].iframe_locations_time[iframe_counter] = segment_start_time + ref.sap_delta_time;
-                    } else {
-                        iframes[segment_index].iframe_locations_time[iframe_counter] =
-                            iframes[segment_index].iframe_locations_time[iframe_counter - 1] + lastIFrameDuration +
-                            ref.sap_delta_time;
-                    }
+                    last_iframe_start_time = iframe.location_time;
+                    last_iframe_duration = ref.subsegment_duration;
+                    next_iframe_byte_location += ref.referenced_size;
                     iframe_counter++;
-                    lastIFrameDuration = ref.subsegment_duration;
-                    nextIFrameByteLocation += ref.referenced_size;
                 } else {
                     num_nested_sidx++;
                 }
@@ -941,15 +918,15 @@ expected %zu, found %d.", num_segments, segment_index);
     }
 
 cleanup:
-    return return_code;
+    validator->error = return_code != 0;
+    return;
 fail:
     return_code = -1;
     goto cleanup;
 }
 
-int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
-        uint64_t segment_duration, data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, dash_profile_t profile)
+static void validate_single_index_segment_boxes(index_segment_validator_t* validator, box_t** boxes, size_t num_boxes,
+        segment_t* segment, representation_t* representation, adaptation_set_t* adaptation_set)
 {
     /*
      A Single Index Segment indexes exactly one Media Segment and is defined as follows:
@@ -994,8 +971,9 @@ int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
     int pcrb_present = 0;
     int num_nested_sidx = 0;
     unsigned int referenced_size = 0;
+    int num_iframes = 0;
 
-    uint64_t segment_start_time = presentation_time_offset;
+    uint64_t segment_start_time = representation->presentation_time_offset;
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
     for (; box_index < num_boxes; ++box_index) {
@@ -1014,22 +992,22 @@ int validate_single_index_segment_boxes(box_t** boxes, size_t num_boxes,
 
                 g_info("Validating earliest_presentation_time");
                 if (segment_start_time != sidx->earliest_presentation_time) {
-                    g_critical("ERROR validating Single Index Segment: invalid earliest_presentation_time in sidx box. \
-Expected %"PRId64", actual %"PRId64".", segment_start_time, sidx->earliest_presentation_time);
+                    g_critical("ERROR validating Single Index Segment: invalid earliest_presentation_time in sidx "
+                            "box. Expected %"PRId64", actual %"PRId64".", segment_start_time, sidx->earliest_presentation_time);
                     return_code = -1;
                 }
             }
             referenced_size += sidx->size;
 
             g_info("Validating reference_id");
-            if (video_pid != sidx->reference_id) {
-                g_critical("ERROR validating Single Index Segment: invalid reference id in sidx box. \
-Expected %d, actual %d.", video_pid, sidx->reference_id);
+            if (adaptation_set->video_pid != sidx->reference_id) {
+                g_critical("ERROR validating Single Index Segment: invalid reference id in sidx box. Expected %d, "
+                        "actual %d.", adaptation_set->video_pid, sidx->reference_id);
                 return_code = -1;
             }
 
             // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if (analyze_sidx_references(sidx, &(iframes->num_iframes), &num_nested_sidx, profile) != 0) {
+            if (analyze_sidx_references(sidx, &num_iframes, &num_nested_sidx, representation->profile) != 0) {
                 return_code = -1;
             }
             break;
@@ -1072,52 +1050,43 @@ Expected %d, actual %d.", video_pid, sidx->reference_id);
 
     // fill in iFrame locations by walking the list of sidx's again, startng from box 1
 
-    iframes->do_iframe_validation = 1;
-    iframes->iframe_locations_time = calloc(iframes->num_iframes, sizeof(unsigned int));
-    iframes->iframe_locations_byte = calloc(iframes->num_iframes, sizeof(uint64_t));
-    iframes->starts_with_sap = calloc(iframes->num_iframes, sizeof(unsigned char));
-    iframes->sap_type = calloc(iframes->num_iframes, sizeof(unsigned char));
-
     num_nested_sidx = 0;
-    int iframe_counter = 0;
-    unsigned int lastIFrameDuration = 0;
-    uint64_t nextIFrameByteLocation = 0;
-    segment_start_time = presentation_time_offset;
+    uint64_t last_iframe_start_time = representation->presentation_time_offset;
+    uint64_t last_iframe_duration = 0;
+    uint64_t next_iframe_byte_location = 0;
+    GArray* iframes = g_array_new(false, false, sizeof(iframe_t));
     for (box_index = 1; box_index < num_boxes; ++box_index) {
         if (boxes[box_index]->type != BOX_TYPE_SIDX) {
-                continue;
+            continue;
         }
         data_sidx_t* sidx = (data_sidx_t*)boxes[box_index];
 
         if (num_nested_sidx > 0) {
             num_nested_sidx--;
-            nextIFrameByteLocation += sidx->first_offset;  // convert from 64-bit t0 32 bit
+            next_iframe_byte_location += sidx->first_offset;  // convert from 64-bit t0 32 bit
         }
 
         // fill in Iframe locations here
         for (size_t i = 0; i < sidx->reference_count; i++) {
             data_sidx_reference_t ref = sidx->references[i];
             if (ref.reference_type == 0) {
-                iframes->starts_with_sap[iframe_counter] = ref.starts_with_sap;
-                iframes->sap_type[iframe_counter] = ref.sap_type;
-                iframes->iframe_locations_byte[iframe_counter] = nextIFrameByteLocation;
+                iframe_t iframe;
+                iframe.starts_with_sap = ref.starts_with_sap;
+                iframe.sap_type = ref.sap_type;
+                iframe.location_byte = next_iframe_byte_location;
+                iframe.location_time = last_iframe_start_time + last_iframe_duration + ref.sap_delta_time;
+                g_array_append_val(iframes, iframe);
 
-                if (iframe_counter == 0) {
-                    iframes->iframe_locations_time[iframe_counter] = segment_start_time + ref.sap_delta_time;
-                } else {
-                    iframes->iframe_locations_time[iframe_counter] =
-                        iframes->iframe_locations_time[iframe_counter - 1] + lastIFrameDuration + ref.sap_delta_time;
-                }
-                iframe_counter++;
-                lastIFrameDuration = ref.subsegment_duration;
-                nextIFrameByteLocation += ref.referenced_size;
+                last_iframe_start_time = iframe.location_time;
+                last_iframe_duration = ref.subsegment_duration;
+                next_iframe_byte_location += ref.referenced_size;
             } else {
                 num_nested_sidx++;
             }
         }
     }
-
-    return return_code;
+    g_ptr_array_add(validator->segment_iframes, iframes);
+    validator->error = return_code != 0;
 }
 
 int analyze_sidx_references(data_sidx_t* sidx, int* pnum_iframes, int* pnum_nested_sidx, dash_profile_t profile)
@@ -1146,51 +1115,36 @@ sidx boxes have either media references or sidx references, but not both.");
     return 0;
 }
 
-int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
-        data_segment_iframes_t* iframes, int presentation_time_offset, int video_pid, dash_profile_t profile)
+index_segment_validator_t* validate_index_segment(char* file_name, segment_t* segment, representation_t* representation,
+        adaptation_set_t* adaptation_set)
 {
-    g_debug("validate_index_segment: %s", file_name);
     size_t num_boxes = 0;
     box_t** boxes = NULL;
+    index_segment_validator_t* validator = index_segment_validator_new();
+
+    if (representation->segments->len == 0) {
+        g_critical("ERROR validating Index Segment: No segments in representation.");
+        goto fail;
+    }
 
     int return_code = read_boxes_from_file(file_name, &boxes, &num_boxes);
     if (return_code != 0) {
         g_critical("ERROR validating Index Segment: Error reading boxes from file.");
         goto fail;
     }
-
     print_boxes(boxes, num_boxes);
 
-    if (num_segments <= 0) {
-        g_critical("ERROR validating Index Segment: Invalid number of segments.");
-        goto fail;
-    } else if (num_segments == 1) {
-        return_code = validate_single_index_segment_boxes(boxes, num_boxes,
-                segment_durations[0], iframes, presentation_time_offset,
-                video_pid, profile);
+    if (segment) {
+        validate_single_index_segment_boxes(validator, boxes, num_boxes, segment, representation, adaptation_set);
     } else {
-        return_code = validate_representation_index_segment_boxes(num_segments,
-                boxes, num_boxes, segment_durations, iframes,
-                presentation_time_offset, video_pid, profile);
+        validate_representation_index_segment_boxes(validator, boxes, num_boxes, representation, adaptation_set);
     }
-    g_info(" ");
-
-    /* What is the purpose of this? */
-    for(size_t i = 0; i < num_segments; i++) {
-        g_info("data_segment_iframes %zu: do_iframe_validation = %d, num_iframes = %d",
-               i, iframes[i].do_iframe_validation, iframes[i].num_iframes);
-        for(size_t j = 0; j < iframes[i].num_iframes; j++) {
-            g_info("   iframe_locations_time[%zu] = %"PRIu64", \tiframe_locations_byte[%zu] = %"PRIu64, j,
-                   iframes[i].iframe_locations_time[j], j, iframes[i].iframe_locations_byte[j]);
-        }
-    }
-    g_info(" ");
 
 cleanup:
     free_boxes(boxes, num_boxes);
-    return return_code;
+    return validator;
 fail:
-    return_code = -1;
+    validator->error = true;
     goto cleanup;
 }
 

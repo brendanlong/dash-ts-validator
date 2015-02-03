@@ -502,7 +502,7 @@ box_t* parse_ssix(GDataInputStream* input, uint64_t box_size, GError** error)
     if (*error) {
         goto fail;
     }
-    box->subsegments = g_new(data_ssix_subsegment_t, box->subsegment_count);
+    box->subsegments = g_new0(data_ssix_subsegment_t, box->subsegment_count);
 
     for (size_t i = 0; i < box->subsegment_count; i++) {
         data_ssix_subsegment_t* subsegment = &box->subsegments[i];
@@ -510,7 +510,7 @@ box_t* parse_ssix(GDataInputStream* input, uint64_t box_size, GError** error)
         if (*error) {
             goto fail;
         }
-        subsegment->ranges = g_new(data_ssix_subsegment_range_t, subsegment->ranges_count);
+        subsegment->ranges = g_new0(data_ssix_subsegment_range_t, subsegment->ranges_count);
         for (size_t j = 0; j < subsegment->ranges_count; ++j) {
             data_ssix_subsegment_range_t* range = &subsegment->ranges[i];
             range->level = g_data_input_stream_read_byte(input, NULL, error);
@@ -758,25 +758,4 @@ void print_ssix(data_ssix_t* ssix)
     for (size_t i = 0; i < ssix->subsegment_count; i++) {
         print_ssix_subsegment(&(ssix->subsegments[i]));
     }
-}
-
-data_segment_iframes_t* data_segment_iframes_new(size_t num_segments)
-{
-    data_segment_iframes_t* obj = g_new0(data_segment_iframes_t, num_segments);
-    return obj;
-}
-
-void data_segment_iframes_free(data_segment_iframes_t* obj, size_t num_segments)
-{
-    if (obj == NULL) {
-        return;
-    }
-
-    for (size_t i = 0; i < num_segments; ++i) {
-        g_free(obj[i].iframe_locations_time);
-        g_free(obj[i].iframe_locations_byte);
-        g_free(obj[i].starts_with_sap);
-        g_free(obj[i].sap_type);
-    }
-    g_free(obj);
 }

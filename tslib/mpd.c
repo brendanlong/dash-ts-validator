@@ -603,7 +603,7 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
     segment_t* segment = segment_new();
     g_ptr_array_add(representation->segments, segment);
 
-    segment->start = start + representation->presentation_time_offset;
+    segment->start = start;
     segment->duration = duration;
     /* Might as well calculate this once */
     segment->end = segment->start + duration;

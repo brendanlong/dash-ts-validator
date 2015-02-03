@@ -42,6 +42,13 @@ typedef struct {
 } pid_validator_t;
 
 typedef struct {
+    uint64_t location_time;
+    uint64_t location_byte;
+    bool starts_with_sap;
+    uint8_t sap_type;
+} iframe_t;
+
+typedef struct {
     dash_profile_t profile;
     int64_t  last_pcr;
     long segment_start;
@@ -57,7 +64,18 @@ typedef struct {
     bool use_initialization_segment;
     program_map_section_t* initialization_segment_pmt;      /// parsed PMT
     bool segment_alignment;
+    bool do_iframe_validation;
+    size_t iframe_index;
+    GArray* iframes;
+    segment_t* segment;
 } dash_validator_t;
+
+typedef struct {
+    bool error; // false = success
+
+    /* Each entry is a GArray* of iframe_t, one for each segment */
+    GPtrArray* segment_iframes;
+} index_segment_validator_t;
 
 const char* content_component_to_string(content_component_t);
 
@@ -66,12 +84,10 @@ void dash_validator_init(dash_validator_t*, segment_type_t, dash_profile_t);
 void dash_validator_destroy(dash_validator_t*);
 void dash_validator_free(dash_validator_t*);
 
-int validate_segment(dash_validator_t* dash_validator, char* fname,
-        dash_validator_t* dash_validator_init,
-        data_segment_iframes_t* pIFrameData, uint64_t segmentDuration);
+void index_segment_validator_free(index_segment_validator_t*);
 
-int validate_index_segment(char* file_name, size_t num_segments, uint64_t* segment_durations,
-        data_segment_iframes_t* iframes,
-        int presentation_time_offset, int video_pid, dash_profile_t);
+int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_validator_t* dash_validator_init);
+
+index_segment_validator_t* validate_index_segment(char* file_name, segment_t*, representation_t*, adaptation_set_t*);
 
 #endif

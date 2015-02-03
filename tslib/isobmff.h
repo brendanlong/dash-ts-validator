@@ -117,15 +117,6 @@ typedef struct {
     size_t message_data_size;
 } data_emsg_t;
 
-typedef struct {
-    bool do_iframe_validation;
-    int num_iframes;
-    uint64_t* iframe_locations_time;
-    uint64_t* iframe_locations_byte;
-    uint8_t* starts_with_sap;
-    uint8_t* sap_type;
-} data_segment_iframes_t;
-
 typedef enum {
     BOX_TYPE_EMSG = 0x656d7367,
     BOX_TYPE_PCRB = 0x70637262,
@@ -143,9 +134,6 @@ void free_box(box_t* box);
 
 void print_boxes(box_t** boxes, size_t num_boxes);
 void free_boxes(box_t** boxes, size_t num_boxes);
-
-data_segment_iframes_t* data_segment_iframes_new(size_t num_segments);
-void data_segment_iframes_free(data_segment_iframes_t*, size_t num_segments);
 
 void uint32_to_string(char* str_out, uint32_t num);
 

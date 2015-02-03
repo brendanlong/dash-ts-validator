@@ -111,10 +111,10 @@ typedef struct {
     uint32_t pes_crc_flag;
     uint32_t pes_extension_flag;
     uint32_t pes_header_data_length;
-    int64_t pts;
-    int64_t dts;
-    int64_t escr_base;
-    int32_t escr_extension;
+    uint64_t pts;
+    uint64_t dts;
+    uint64_t escr_base;
+    uint32_t escr_extension;
     uint32_t es_rate;
     uint32_t trick_mode_control;
     uint32_t field_id;

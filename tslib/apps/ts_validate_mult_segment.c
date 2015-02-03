@@ -101,9 +101,6 @@ int main(int argc, char* argv[])
                     goto cleanup;
                 }
 
-                /* At some point we should replace these gigantic arrays with more reasonable data structures */
-                data_segment_iframes_t* iframe_data = data_segment_iframes_new(representation->segments->len);
-
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     dash_validator_t* validator = dash_validator_new(MEDIA_SEGMENT, representation->profile);
@@ -117,58 +114,74 @@ int main(int argc, char* argv[])
                 dash_validator_t* validator_init_segment = NULL;
                 if (representation->initialization_file_name) {
                     validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, representation->profile);
-                    if (validate_segment(validator_init_segment, representation->initialization_file_name,
-                                           NULL, NULL, 0) != 0) {
+                    if (validate_segment(validator_init_segment, representation->initialization_file_name, NULL) != 0) {
                         g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
                         validator_init_segment->status = 0;
                     }
                     overall_status &= validator_init_segment->status;
                 }
 
-                // next process index files, either representation index files or single segment index files
-                // the index files contain iFrame locations which are stored here and then validated when the actual
-                // media segments are processed later
-                segment_t* first_segment = g_ptr_array_index(representation->segments, 0);
+                /* Validate Representation Index */
+                if (representation->index_file_name) {
+                    index_segment_validator_t* index_validator = validate_index_segment(
+                            representation->index_file_name, NULL, representation, adaptation_set);
+                    if (index_validator->error) {
+                        g_critical("Validation of RepresentationIndex %s FAILED", representation->index_file_name);
+                        overall_status = 0;
+                    }
+                    if (index_validator->segment_iframes->len != 0 &&
+                            index_validator->segment_iframes->len != representation->segments->len) {
+                        g_error("PROGRAMMING ERROR: index_segment_validator_t->segment_iframes returned from "
+                                "validate_index_segment()  should have on iframes GArray* per segment, but we have "
+                                "%zu segments and %zu segment_iframes", representation->segments->len,
+                                index_validator->segment_iframes->len);
+                        /* g_error asserts */
+                    }
+                    for (size_t s_i = 0; s_i < index_validator->segment_iframes->len; ++s_i) {
+                        segment_t* segment = g_ptr_array_index(representation->segments, s_i);
+                        dash_validator_t* validator = segment->arg;
+                        GArray* iframes = g_ptr_array_index(index_validator->segment_iframes, s_i);
+                        g_array_append_vals(validator->iframes, iframes->data, iframes->len);
+                        
+                    }
+                    index_segment_validator_free(index_validator);
+                }
+
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
 
                     /* Validate Segment Index */
-                    if (segment->index_file_name && validate_index_segment(
-                                segment->index_file_name,
-                                1, &segment->duration, &iframe_data[s_i],
-                                first_segment->start,
-                                adaptation_set->video_pid, representation->profile) != 0) {
-                        g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
-                        overall_status = 0;
+                    if (segment->index_file_name) {
+                        index_segment_validator_t* index_segment_validator = validate_index_segment(
+                                segment->index_file_name, segment, representation, adaptation_set);
+                        if (index_segment_validator->error) {
+                            g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
+                            overall_status = 0;
+                        }
+                        if (index_segment_validator->segment_iframes->len != 0) {
+                            GArray* iframes = g_ptr_array_index(index_segment_validator->segment_iframes, 0);
+                            dash_validator_t* validator = segment->arg;
+                            if (validator->iframes->len != 0) {
+                                g_critical("DASH Conformance: Segment %s has a representation index and a single "
+                                        "segment index, but should only have one or the other. 6.4.6 Index Segment: "
+                                        "Index Segments may either be associated to a single Media Segment as "
+                                        "specified in 6.4.6.2 or may be associated to all Media Segments in one "
+                                        "Representation as specified in 6.4.6.3.");
+                                overall_status = 0;
+                            } else {
+                                g_array_append_vals(validator->iframes, iframes->data, iframes->len);
+                            }
+                        }
+                        index_segment_validator_free(index_segment_validator);
                     }
                 }
 
-                /* Validate Representation Index */
-                if (representation->index_file_name) {
-
-                    uint64_t* expected_durations = g_new(uint64_t,
-                            representation->segments->len);
-                    for (gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
-                        segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-                        expected_durations[s_i] = segment->duration;
-                    }
-                    if (validate_index_segment(representation->index_file_name,
-                            representation->segments->len, expected_durations,
-                            iframe_data, first_segment->start,
-                            adaptation_set->video_pid,
-                            representation->profile) != 0) {
-                        g_critical("Validation of RepresentationIndex %s FAILED", PRINT_STR(representation->index_file_name));
-                        overall_status = 0;
-                    }
-                    free(expected_durations);
-                }
-
-                // Next, validate media files for each segment
+                /* Validate media segments */
+                /* TODO: Combine this with the previous loop? */
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     dash_validator_t* validator = (dash_validator_t*)segment->arg;
-                    if (validate_segment(validator, segment->file_name,
-                            validator_init_segment, &iframe_data[s_i], segment->duration) != 0) {
+                    if (validate_segment(validator, segment->file_name, validator_init_segment) != 0) {
                         overall_status = 0;
                         goto cleanup;
                     }
@@ -225,7 +238,6 @@ int main(int argc, char* argv[])
                 overall_status &= check_segment_timing(representation->segments, VIDEO_CONTENT_COMPONENT);
 
                 dash_validator_free(validator_init_segment);
-                data_segment_iframes_free(iframe_data, representation->segments->len);
             }
 
             // segment cross checking: check that the gap between all adjacent segments is acceptably small
