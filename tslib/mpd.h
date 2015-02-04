@@ -69,6 +69,7 @@ typedef struct {
 } adaptation_set_t;
 
 typedef struct {
+    bool bitstream_switching;
     GPtrArray* adaptation_sets;
 } period_t;
 

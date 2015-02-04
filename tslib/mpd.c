@@ -114,6 +114,7 @@ void period_free(period_t* obj)
 void period_print(const period_t* period, unsigned indent)
 {
     ++indent;
+    PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(period->bitstream_switching));
     for (size_t i = 0; i < period->adaptation_sets->len; ++i) {
         PRINT_PROPERTY(indent, "adaptation_sets[%zu]:", i);
         adaptation_set_print(g_ptr_array_index(period->adaptation_sets, i), indent);
@@ -289,6 +290,7 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
     g_ptr_array_add(mpd->periods, period);
 
     char* base_url = find_base_url(node, parent_base_url);
+    period->bitstream_switching = read_bool(node, "bitstreamSwitching");
 
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
@@ -332,7 +334,7 @@ bool read_adaptation_set(xmlNode* node, mpd_t* mpd, period_t* period, char* pare
     adaptation_set->profile = read_profile(node, mpd->profile);
     adaptation_set->segment_alignment = read_optional_uint32(node, "segmentAlignment");
     adaptation_set->subsegment_alignment = read_optional_uint32(node, "subsegmentAlignment");
-    adaptation_set->bitstream_switching = read_bool(node, "bitstreamSwitching");
+    adaptation_set->bitstream_switching = period->bitstream_switching || read_bool(node, "bitstreamSwitching");
 
     char* base_url = find_base_url(node, parent_base_url);
 
