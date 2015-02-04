@@ -351,11 +351,16 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         // we have a queue that didn't appear to be a valid PES packet (e.g., because it didn't start with
         // payload_unit_start_indicator = 1)
         if (dash_validator->adaptation_set->segment_alignment.has_int ||
-                dash_validator->adaptation_set->segment_alignment.b) {
+                dash_validator->adaptation_set->segment_alignment.b ||
+                dash_validator->adaptation_set->bitstream_switching) {
             g_critical("DASH Conformance: Media segment %s does not contain complete PES packets and "
                     "@segmentAlignment is not 'false'. 7.4.3.2 Segment alignment: If the @segmentAlignment attribute "
-                    "is not set to 'false' [...] the Media Segment shall contain only complete PES packets [...]",
-                    dash_validator->segment->file_name);
+                    "is not set to 'false' [...] the Media Segment shall contain only complete PES packets [...] %s",
+                    dash_validator->segment->file_name,
+                    dash_validator->adaptation_set->bitstream_switching ? "7.4.3.4 Bitstream switching: [...] at "
+                    "least the following conditions are satisfied if @bitstreamSwitching flag is set to  'true': The "
+                    "conditions required for setting the @segmentAlignment attribute not set to 'false' for the "
+                    "Adaptation Set are fulfilled." : "");
             dash_validator->status = 0;
         }
         goto cleanup;
@@ -374,7 +379,11 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 dash_validator->adaptation_set->segment_alignment.b) {
             g_critical("DASH Conformance: First PES packet in segment %s does not have PTS and @segmentAlignment is "
                     "not 'false'. 7.4.3.2 Segment alignment: If the @segmentAlignment attribute is not set to 'false' "
-                    "[...] the first PES packet shall contain a PTS timestamp.", dash_validator->segment->file_name);
+                    "[...] the first PES packet shall contain a PTS timestamp. %s", dash_validator->segment->file_name,
+                    dash_validator->adaptation_set->bitstream_switching ? "7.4.3.4 Bitstream switching: [...] at "
+                    "least the following conditions are satisfied if @bitstreamSwitching flag is set to  'true': The "
+                    "conditions required for setting the @segmentAlignment attribute not set to 'false' for the "
+                    "Adaptation Set are fulfilled." : "");
             dash_validator->status = 0;
         }
 
