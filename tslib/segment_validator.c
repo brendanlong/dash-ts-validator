@@ -14,12 +14,6 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
 static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
 static int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
         void* arg);
-
-static void validate_representation_index_segment_boxes(index_segment_validator_t*, box_t**, size_t num_boxes,
-        representation_t*, adaptation_set_t*);
-static void validate_single_index_segment_boxes(index_segment_validator_t*, box_t**, size_t num_boxes,
-        segment_t*, representation_t*, adaptation_set_t*);
-
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
 static int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx, dash_profile_t);
 
@@ -662,433 +656,6 @@ fail:
     goto cleanup;
 }
 
-static void validate_representation_index_segment_boxes(index_segment_validator_t* validator, box_t** boxes,
-        size_t num_boxes, representation_t* representation, adaptation_set_t* adaptation_set)
-{
-    /*
-    A Representation Index Segment indexes all Media Segments of one Representation and is defined as follows:
-
-    -- Each Representation Index Segment shall begin with an "styp" box, and the brand "risx" shall be
-    present in the "styp" box. The conformance requirement of the brand "risx" is defined by this subclause.
-
-    -- Each Media Segment is indexed by one or more Segment Index box(es); the boxes for a
-    given Media Segment are contiguous;
-
-    -- Each Segment Index box may be followed by an 'ssix' and/or 'pcrb' box;
-
-    -- The Segment Index for each Media Segments is concatenated in order, preceded by a
-    single Segment Index box that indexes the Index Segment. This initial Segment Index box shall
-    have one entry in its loop for each Media Segment, and each entry refers to the Segment
-    Index information for a single Media Segment.
-    */
-
-    int return_code = 0;
-
-    int box_index = 0;
-    if (num_boxes == 0) {
-        g_critical("ERROR validating Representation Index Segment: no boxes in segment.");
-        goto fail;
-    }
-
-    // first box must be a styp
-    if (boxes[box_index]->type != BOX_TYPE_STYP) {
-        g_critical("ERROR validating Representation Index Segment: first box not a styp.");
-        goto fail;
-    }
-
-    // check brand
-    data_styp_t* styp = (data_styp_t*)boxes[box_index];
-    bool found_risx = false;
-    bool found_ssss = false;
-    for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
-        uint32_t brand = styp->compatible_brands[i];
-        if (brand == BRAND_RISX) {
-            found_risx = true;
-        } else if (brand == BRAND_SSSS) {
-            found_ssss = true;
-        }
-        if (found_risx && found_ssss) {
-            break;
-        }
-    }
-    if (!found_risx) {
-        g_critical("ERROR validating Representation Index Segment: styp compatible brands does not contain \"risx\".");
-        g_info("Brands found are:");
-        g_info("styp major brand = %x", styp->major_brand);
-        for (size_t i = 0; i < styp->num_compatible_brands; ++i) {
-            g_info("styp compatible brand = %x", styp->compatible_brands[i]);
-        }
-        goto fail;
-    }
-
-    box_index++;
-
-    // second box must be a sidx that references other sidx boxes
-    if (boxes[box_index]->type != BOX_TYPE_SIDX) {
-        g_critical("ERROR validating Representation Index Segment: second box not a sidx.");
-        goto fail;
-    }
-
-    // walk all references: they should all be of type 1 and should point to sidx boxes
-    data_sidx_t* master_sidx = (data_sidx_t*)boxes[box_index];
-    unsigned int master_reference_id = master_sidx->reference_id;
-    if (master_reference_id != adaptation_set->video_pid) {
-        g_critical("ERROR validating Representation Index Segment: master ref ID does not equal \
-video PID.  Expected %d, actual %d.", adaptation_set->video_pid, master_reference_id);
-        return_code = -1;
-    }
-    for (size_t i = 0; i < master_sidx->reference_count; i++) {
-        data_sidx_reference_t ref = master_sidx->references[i];
-        if (ref.reference_type != 1) {
-            g_critical("ERROR validating Representation Index Segment: reference type not 1.");
-            goto fail;
-        }
-
-        // validate duration
-        if (i < representation->segments->len) {
-            segment_t* segment = g_ptr_array_index(representation->segments, i);
-            if (segment->duration != ref.subsegment_duration) {
-                g_critical("ERROR validating Representation Index Segment: master ref segment duration does not equal "
-                        "segment duration.  Expected %"PRIu64", actual %d.", segment->duration, ref.subsegment_duration);
-                return_code = -1;
-            }
-        }
-    }
-    box_index++;
-
-    size_t segment_index = 0;
-    bool ssix_present = false;
-    bool pcrb_present = false;
-    int num_nested_sidx = 0;
-    int num_iframes = 0;
-    uint64_t referenced_size = 0;
-
-    // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
-    for (; box_index < num_boxes; ++box_index) {
-        box_t* box = boxes[box_index];
-        switch(box->type) {
-        case BOX_TYPE_SIDX: {
-            ssix_present = false;
-            pcrb_present = false;
-
-            data_sidx_t* sidx = (data_sidx_t*)box;
-            if (num_nested_sidx > 0) {
-                num_nested_sidx--;
-                // GORP: check earliest presentation time
-            } else {
-                // check size:
-                g_info("Validating referenced_size for segment %zu.", segment_index);
-                if (segment_index > 1 && referenced_size != master_sidx->references[segment_index - 1].referenced_size) {
-                    g_critical("ERROR validating Representation Index Segment: referenced_size for segment %zu. "
-                            "Expected %"PRIu32", actual %"PRIu64"\n", segment_index,
-                            master_sidx->references[segment_index - 1].referenced_size, referenced_size);
-                    return_code = -1;
-                }
-
-                referenced_size = 0;
-                segment_t* segment = g_ptr_array_index(representation->segments, segment_index);
-                segment_index++;
-
-                g_info("Validating earliest_presentation_time for segment %zu.", segment_index);
-                if (segment->start != sidx->earliest_presentation_time) {
-                    g_critical("ERROR validating Representation Index Segment: invalid earliest_presentation_time in sidx box. \
-Expected %"PRId64", actual %"PRId64".", segment->start, sidx->earliest_presentation_time);
-                    return_code = -1;
-                }
-            }
-            referenced_size += sidx->size;
-
-            g_info("Validating reference_id");
-            if (master_reference_id != sidx->reference_id) {
-                g_critical("ERROR validating Representation Index Segment: invalid reference id in sidx box. \
-Expected %d, actual %d.", master_reference_id, sidx->reference_id);
-                return_code = -1;
-            }
-
-            // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if (analyze_sidx_references(sidx, &num_iframes, &num_nested_sidx, representation->profile) != 0) {
-                return_code = -1;
-            }
-            break;
-        }
-        case BOX_TYPE_SSIX: {
-            data_ssix_t* ssix = (data_ssix_t*)box;
-            referenced_size += ssix->size;
-            g_info("Validating ssix box");
-            if (ssix_present) {
-                g_critical("ERROR validating Representation Index Segment: More than one ssix box following sidx box.");
-                return_code = -1;
-            } else {
-                ssix_present = true;
-            }
-            if (pcrb_present) {
-                g_critical("ERROR validating Representation Index Segment: pcrb occurred before ssix. 6.4.6.4 says "
-                        "\"The Subsegment Index box (‘ssix’) [...] shall follow immediately after the ‘sidx’ box that "
-                        "documents the same Subsegment. [...] If the 'pcrb' box is present, it shall follow 'ssix'.\".");
-                return_code = -1;
-            }
-            if (!found_ssss) {
-                g_critical("ERROR validating Representation Index Segment: Saw ssix box, but 'ssss' is not in compatible brands. See 6.4.6.4.");
-                return_code = -1;
-            }
-            break;
-        }
-        case BOX_TYPE_PCRB: {
-            data_pcrb_t* pcrb = (data_pcrb_t*)box;
-            referenced_size += pcrb->size;
-            g_info("Validating pcrb box");
-            if (pcrb_present) {
-                g_critical("ERROR validating Representation Index Segment: More than one pcrb box following sidx box.");
-                return_code = -1;
-            } else {
-                pcrb_present = true;
-            }
-            break;
-        }
-        default:
-            g_critical("Invalid box type: %x.", box->type);
-            break;
-        }
-    }
-
-    // check the last reference size -- the last one is not checked in the above loop
-    if (segment_index > 0 && referenced_size != master_sidx->references[segment_index - 1].referenced_size) {
-        g_critical("ERROR validating Representation Index Segment: referenced_size for reference %zu. Expected "
-                "%"PRIu32", actual %"PRIu64".", segment_index,
-                master_sidx->references[segment_index - 1].referenced_size, referenced_size);
-        return_code = -1;
-    }
-
-    if (num_nested_sidx != 0) {
-        g_critical("ERROR validating Representation Index Segment: Incorrect number of nested sidx boxes: %d.",
-                num_nested_sidx);
-        return_code = -1;
-    }
-
-    if (segment_index != representation->segments->len) {
-        g_critical("ERROR validating Representation Index Segment: Invalid number of segment sidx boxes following "
-                "master sidx box: expected %u, found %zu.", representation->segments->len, segment_index);
-        return_code = -1;
-    }
-
-    // fill in iFrame locations by walking the list of sidx's again, starting from the third box
-    num_nested_sidx = 0;
-    segment_index = 0;
-    size_t iframe_counter = 0;
-    uint64_t next_iframe_byte_location = 0;
-    uint64_t last_iframe_start_time = representation->presentation_time_offset;
-    uint64_t last_iframe_duration = 0;
-    for (box_index = 2; box_index < num_boxes; ++box_index) {
-        box_t* box = boxes[box_index];
-        if (box->type == BOX_TYPE_SIDX) {
-            data_sidx_t* sidx = (data_sidx_t*)box;
-
-            if (num_nested_sidx > 0) {
-                num_nested_sidx--;
-                next_iframe_byte_location += sidx->first_offset;  // convert from 64-bit t0 32 bit
-            } else {
-                segment_t* segment = g_ptr_array_index(representation->segments, segment_index);
-                last_iframe_start_time = segment->start;
-                last_iframe_duration = segment->duration;
-                segment_index++;
-
-                iframe_counter = 0;
-                next_iframe_byte_location = sidx->first_offset;
-            }
-
-            // fill in Iframe locations here
-            for (size_t i = 0; i < sidx->reference_count; i++) {
-                data_sidx_reference_t ref = sidx->references[i];
-                if (ref.reference_type == 0) {
-                    iframe_t iframe;
-                    iframe.starts_with_sap = ref.starts_with_sap;
-                    iframe.sap_type = ref.sap_type;
-                    iframe.location_byte = next_iframe_byte_location;
-                    iframe.location_time = last_iframe_start_time + last_iframe_duration + ref.sap_delta_time;
-
-                    last_iframe_start_time = iframe.location_time;
-                    last_iframe_duration = ref.subsegment_duration;
-                    next_iframe_byte_location += ref.referenced_size;
-                    iframe_counter++;
-                } else {
-                    num_nested_sidx++;
-                }
-            }
-        }
-    }
-
-cleanup:
-    validator->error = return_code != 0;
-    return;
-fail:
-    return_code = -1;
-    goto cleanup;
-}
-
-static void validate_single_index_segment_boxes(index_segment_validator_t* validator, box_t** boxes, size_t num_boxes,
-        segment_t* segment, representation_t* representation, adaptation_set_t* adaptation_set)
-{
-    /*
-     A Single Index Segment indexes exactly one Media Segment and is defined as follows:
-
-     -- Each Single Index Segment shall begin with a "styp" box, and the brand "sisx"
-     shall be present in the "styp" box. The conformance requirement of the brand "sisx" is defined in this subclause.
-
-     -- Each Single Index Segment shall contain one or more 'sidx' boxes which index one Media Segment.
-
-     -- A Single Index Segment may contain one or multiple "ssix" boxes. If present, the "ssix"
-     shall follow the "sidx" box that documents the same Subsegment without any other "sidx" preceding the "ssix".
-
-     -- A Single Index Segment may contain one or multiple "pcrb" boxes as defined in 6.4.7.2.
-     If present, "pcrb" shall follow the "sidx" box that documents the same Subsegments, i.e. a "pcrb"
-     box provides PCR information for every subsegment indexed in the last "sidx" box.
-    */
-    int return_code = 0;
-
-    int box_index = 0;
-    if (num_boxes == 0) {
-        g_critical("ERROR validating Single Index Segment: no boxes in segment.");
-        return_code = -1;
-    }
-
-    // first box must be a styp
-    if (boxes[box_index]->type != BOX_TYPE_STYP) {
-        g_critical("ERROR validating Single Index Segment: first box not a styp.");
-        return_code = -1;
-    }
-
-    // check brand
-    data_styp_t* styp = (data_styp_t*)boxes[box_index];
-    if (styp->major_brand != BRAND_SISX) {
-        g_info("styp brand = %x", styp->major_brand);
-        g_critical("ERROR validating Single Index Segment: styp brand not risx.");
-        return_code = -1;
-    }
-
-    box_index++;
-
-    int ssix_present = 0;
-    int pcrb_present = 0;
-    int num_nested_sidx = 0;
-    unsigned int referenced_size = 0;
-    int num_iframes = 0;
-
-    uint64_t segment_start_time = representation->presentation_time_offset;
-
-    // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
-    for (; box_index < num_boxes; ++box_index) {
-        box_t* box = boxes[box_index];
-        switch (box->type) {
-        case BOX_TYPE_SIDX: {
-            ssix_present = 0;
-            pcrb_present = 0;
-
-            data_sidx_t* sidx = (data_sidx_t*)box;
-            if (num_nested_sidx > 0) {
-                num_nested_sidx--;
-                // GORP: check earliest presentation time
-            } else {
-                referenced_size = 0;
-
-                g_info("Validating earliest_presentation_time");
-                if (segment_start_time != sidx->earliest_presentation_time) {
-                    g_critical("ERROR validating Single Index Segment: invalid earliest_presentation_time in sidx "
-                            "box. Expected %"PRId64", actual %"PRId64".", segment_start_time, sidx->earliest_presentation_time);
-                    return_code = -1;
-                }
-            }
-            referenced_size += sidx->size;
-
-            g_info("Validating reference_id");
-            if (adaptation_set->video_pid != sidx->reference_id) {
-                g_critical("ERROR validating Single Index Segment: invalid reference id in sidx box. Expected %d, "
-                        "actual %d.", adaptation_set->video_pid, sidx->reference_id);
-                return_code = -1;
-            }
-
-            // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if (analyze_sidx_references(sidx, &num_iframes, &num_nested_sidx, representation->profile) != 0) {
-                return_code = -1;
-            }
-            break;
-        }
-        case BOX_TYPE_SSIX: {
-            data_ssix_t* ssix = (data_ssix_t*)box;
-            referenced_size += ssix->size;
-            g_info("Validating ssix box");
-            if (ssix_present) {
-                g_critical("ERROR validating Single Index Segment: More than one ssix box following sidx box.");
-                return_code = -1;
-            } else {
-                ssix_present = 1;
-            }
-            break;
-        }
-        case BOX_TYPE_PCRB: {
-            data_pcrb_t* pcrb = (data_pcrb_t*)box;
-            referenced_size += pcrb->size;
-            g_info("Validating pcrb box");
-            if (pcrb_present) {
-                g_critical("ERROR validating Single Index Segment: More than one pcrb box following sidx box.");
-                return_code = -1;
-            } else {
-                pcrb_present = 1;
-            }
-            break;
-        }
-        default:
-            g_debug("Ignoring box: %x", box->type);
-            break;
-        }
-    }
-
-    if (num_nested_sidx != 0) {
-        g_critical("ERROR validating Single Index Segment: Incorrect number of nested sidx boxes: %d.",
-                       num_nested_sidx);
-        return_code = -1;
-    }
-
-    // fill in iFrame locations by walking the list of sidx's again, startng from box 1
-
-    num_nested_sidx = 0;
-    uint64_t last_iframe_start_time = representation->presentation_time_offset;
-    uint64_t last_iframe_duration = 0;
-    uint64_t next_iframe_byte_location = 0;
-    GArray* iframes = g_array_new(false, false, sizeof(iframe_t));
-    for (box_index = 1; box_index < num_boxes; ++box_index) {
-        if (boxes[box_index]->type != BOX_TYPE_SIDX) {
-            continue;
-        }
-        data_sidx_t* sidx = (data_sidx_t*)boxes[box_index];
-
-        if (num_nested_sidx > 0) {
-            num_nested_sidx--;
-            next_iframe_byte_location += sidx->first_offset;  // convert from 64-bit t0 32 bit
-        }
-
-        // fill in Iframe locations here
-        for (size_t i = 0; i < sidx->reference_count; i++) {
-            data_sidx_reference_t ref = sidx->references[i];
-            if (ref.reference_type == 0) {
-                iframe_t iframe;
-                iframe.starts_with_sap = ref.starts_with_sap;
-                iframe.sap_type = ref.sap_type;
-                iframe.location_byte = next_iframe_byte_location;
-                iframe.location_time = last_iframe_start_time + last_iframe_duration + ref.sap_delta_time;
-                g_array_append_val(iframes, iframe);
-
-                last_iframe_start_time = iframe.location_time;
-                last_iframe_duration = ref.subsegment_duration;
-                next_iframe_byte_location += ref.referenced_size;
-            } else {
-                num_nested_sidx++;
-            }
-        }
-    }
-    g_ptr_array_add(validator->segment_iframes, iframes);
-    validator->error = return_code != 0;
-}
-
 int analyze_sidx_references(data_sidx_t* sidx, int* pnum_iframes, int* pnum_nested_sidx, dash_profile_t profile)
 {
     int originalnum_nested_sidx = *pnum_nested_sidx;
@@ -1115,9 +682,18 @@ sidx boxes have either media references or sidx references, but not both.");
     return 0;
 }
 
-index_segment_validator_t* validate_index_segment(char* file_name, segment_t* segment, representation_t* representation,
+index_segment_validator_t* validate_index_segment(char* file_name, segment_t* segment_in, representation_t* representation,
         adaptation_set_t* adaptation_set)
 {
+    bool is_single_index = segment_in != NULL;
+    g_info("Validating %s Index Segment %s", is_single_index ? "Single" : "Representation", file_name);
+    GPtrArray* segments;
+    if (is_single_index) {
+        segments = g_ptr_array_new();
+        g_ptr_array_add(segments, segment_in);
+    } else {
+        segments = representation->segments;
+    }
     size_t num_boxes = 0;
     box_t** boxes = NULL;
     index_segment_validator_t* validator = index_segment_validator_new();
@@ -1127,21 +703,284 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         goto fail;
     }
 
-    int return_code = read_boxes_from_file(file_name, &boxes, &num_boxes);
-    if (return_code != 0) {
-        g_critical("ERROR validating Index Segment: Error reading boxes from file.");
+    if (read_boxes_from_file(file_name, &boxes, &num_boxes) != 0) {
+        g_critical("ERROR validating Index Segment %s: Error reading boxes from file.", file_name);
         goto fail;
     }
     print_boxes(boxes, num_boxes);
 
-    if (segment) {
-        validate_single_index_segment_boxes(validator, boxes, num_boxes, segment, representation, adaptation_set);
+    if (num_boxes == 0) {
+        g_critical("ERROR validating Index Segment %s: no boxes in segment.", file_name);
+        goto fail;
+    }
+
+    size_t box_index = 0;
+
+    bool found_ssss = false;
+    if (boxes[box_index]->type != BOX_TYPE_STYP) {
+        g_critical("DASH Conformance: First box in index segment %sis not an 'styp'. %s", file_name,
+                is_single_index ? "6.4.6.2 Single Index Segment: Each Single Index Segment shall begin with a ‘styp’ "
+                "box" : "6.4.6.3 Representation Index Segment: Each Representation Index Segment shall begin with an "
+                "‘styp’ box");
+        validator->error = true;
     } else {
-        validate_representation_index_segment_boxes(validator, boxes, num_boxes, representation, adaptation_set);
+        data_styp_t* styp = (data_styp_t*)boxes[box_index];
+        bool found_brand = false;
+        uint32_t expected_brand = is_single_index ? BRAND_SISX : BRAND_RISX;
+        for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
+            uint32_t brand = styp->compatible_brands[i];
+            if (brand == expected_brand) {
+                found_brand = true;
+            } else if (brand == BRAND_SSSS) {
+                found_ssss = true;
+            }
+        }
+        if (!found_brand) {
+            g_critical("DASH Conformance: 'styp' box in index segment %s does not contain %s as a compatible brand. "
+                    "%s", file_name, is_single_index ? "sisx" : "risx",
+                    is_single_index ? "6.4.6.2 Single Index Segment: Each Single Index Segment shall begin with a "
+                    "‘styp’ box, and the brand ‘sisx’ shall be present in the ‘styp’ box." : "6.4.6.3 Representation "
+                    "Index Segment: Each Representation Index Segment shall begin with an ‘styp’ box, and the brand "
+                    "‘risx’ shall be present in the ‘styp’ box.");
+            g_info("Brands found are:");
+            g_info("styp major brand = %x", styp->major_brand);
+            for (size_t i = 0; i < styp->num_compatible_brands; ++i) {
+                char brand_str[5] = {0};
+                uint32_to_string(brand_str, styp->compatible_brands[i]);
+                g_info("styp compatible brand = %s", brand_str);
+            }
+            validator->error = true;
+        }
+        ++box_index;
+    }
+
+    data_sidx_t* master_sidx = NULL;
+    uint32_t master_reference_id = 0;
+    if (!is_single_index) {
+        box_t* box = boxes[box_index];
+        if (box->type != BOX_TYPE_SIDX) {
+            char type_str[5] = {0};
+            uint32_to_string(type_str, box->type);
+            /* Is this strictly required? Couldn't there be other boxes that come first, and long as they're not
+             * 'ssix' or 'pcrb'? */
+            g_critical("DASH Conformance: Representation Index Segment %s has box type '%s' following styp, but "
+                    "should have an 'sidx'. 6.4.6.3 Representation Index Segment: The Segment Index for each Media "
+                    "Segments is concatenated in order, preceded by a single Segment Index box that indexes the "
+                    "Index Segment.", file_name, type_str);
+            validator->error = true;
+        } else {
+            // walk all references: they should all be of type 1 and should point to sidx boxes
+            master_sidx = (data_sidx_t*)boxes[box_index];
+            master_reference_id = master_sidx->reference_id;
+            if (master_reference_id != adaptation_set->video_pid) {
+                g_critical("ERROR validating Representation Index Segment: master ref ID does not equal video PID. "
+                        "Expected %d, actual %d.", adaptation_set->video_pid, master_reference_id);
+                validator->error = true;
+            }
+            for (size_t i = 0; i < master_sidx->reference_count; i++) {
+                data_sidx_reference_t ref = master_sidx->references[i];
+                if (ref.reference_type != 1) {
+                    g_critical("ERROR validating Representation Index Segment: reference type not 1.");
+                    validator->error = true;
+                    /* Check this box as a normal sidx instead */
+                    --box_index;
+                    break;
+                }
+
+                // validate duration
+                if (i < segments->len) {
+                    segment_t* segment = g_ptr_array_index(representation->segments, i);
+                    if (segment->duration != ref.subsegment_duration) {
+                        /* Is this a valid test? What if we have more than one sidx per segment? If this is valid,
+                         * shouldn't we have an error for when there are too many references? */
+                        g_critical("ERROR validating Representation Index Segment: master ref segment duration does not equal "
+                                "segment duration.  Expected %"PRIu64", actual %d.", segment->duration, ref.subsegment_duration);
+                        validator->error = true;
+                    }
+                }
+            }
+            box_index++;
+        }
+    }
+
+    size_t sidx_start = box_index;
+    size_t segment_index = 0;
+    bool ssix_present = false;
+    bool pcrb_present = false;
+    int num_nested_sidx = 0;
+    int num_iframes = 0;
+    uint64_t referenced_size = 0;
+
+    // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
+    for (box_index = sidx_start; box_index < num_boxes; ++box_index) {
+        box_t* box = boxes[box_index];
+        switch(box->type) {
+        case BOX_TYPE_SIDX: {
+            ssix_present = false;
+            pcrb_present = false;
+
+            data_sidx_t* sidx = (data_sidx_t*)box;
+            if (num_nested_sidx > 0) {
+                num_nested_sidx--;
+                // GORP: check earliest presentation time
+            } else {
+                // check size:
+                g_info("Validating referenced_size for segment %zu.", segment_index);
+                if (segment_index > 1 && referenced_size != master_sidx->references[segment_index - 1].referenced_size) {
+                    g_critical("ERROR validating Representation Index Segment: referenced_size for segment %zu. "
+                            "Expected %"PRIu32", actual %"PRIu64"\n", segment_index,
+                            master_sidx->references[segment_index - 1].referenced_size, referenced_size);
+                    validator->error = true;
+                }
+
+                referenced_size = 0;
+                segment_t* segment = g_ptr_array_index(segments, segment_index);
+                segment_index++;
+
+                g_info("Validating earliest_presentation_time for segment %zu.", segment_index);
+                if (segment->start != sidx->earliest_presentation_time) {
+                    g_critical("ERROR validating Representation Index Segment: invalid earliest_presentation_time in "
+                            "sidx box. Expected %"PRId64", actual %"PRId64".", segment->start,
+                            sidx->earliest_presentation_time);
+                    validator->error = true;
+                }
+            }
+            referenced_size += sidx->size;
+
+            g_info("Validating reference_id");
+            if (!is_single_index && master_reference_id != sidx->reference_id) {
+                g_critical("ERROR validating Representation Index Segment: invalid reference id in sidx box. "
+                        "Expected %d, actual %d.", master_reference_id, sidx->reference_id);
+                validator->error = true;
+            }
+
+            // count number of Iframes and number of sidx boxes in reference list of this sidx
+            if (analyze_sidx_references(sidx, &num_iframes, &num_nested_sidx, representation->profile) != 0) {
+                validator->error = true;
+            }
+            break;
+        }
+        case BOX_TYPE_SSIX: {
+            data_ssix_t* ssix = (data_ssix_t*)box;
+            referenced_size += ssix->size;
+            g_info("Validating ssix box");
+            if (ssix_present) {
+                g_critical("ERROR validating Representation Index Segment: More than one ssix box following sidx box.");
+                validator->error = true;
+            } else {
+                ssix_present = true;
+            }
+            if (pcrb_present) {
+                g_critical("ERROR validating Representation Index Segment: pcrb occurred before ssix. 6.4.6.4 says "
+                        "\"The Subsegment Index box (‘ssix’) [...] shall follow immediately after the ‘sidx’ box that "
+                        "documents the same Subsegment. [...] If the 'pcrb' box is present, it shall follow 'ssix'.\".");
+                validator->error = true;
+            }
+            if (!found_ssss) {
+                g_critical("ERROR validating Representation Index Segment: Saw ssix box, but 'ssss' is not in compatible brands. See 6.4.6.4.");
+                validator->error = true;
+            }
+            break;
+        }
+        case BOX_TYPE_PCRB: {
+            data_pcrb_t* pcrb = (data_pcrb_t*)box;
+            referenced_size += pcrb->size;
+            g_info("Validating pcrb box");
+            if (pcrb_present) {
+                g_critical("ERROR validating Representation Index Segment: More than one pcrb box following sidx box.");
+                validator->error = true;
+            } else {
+                pcrb_present = true;
+            }
+            break;
+        }
+        default:
+            /* TODO: Is this really an error? */
+            g_critical("Invalid box type: %x.", box->type);
+            break;
+        }
+    }
+
+    // check the last reference size -- the last one is not checked in the above loop
+    if (master_sidx && segment_index > 0 && referenced_size != master_sidx->references[segment_index - 1].referenced_size) {
+        g_critical("ERROR validating Representation Index Segment: referenced_size for reference %zu. Expected "
+                "%"PRIu32", actual %"PRIu64".", segment_index,
+                master_sidx->references[segment_index - 1].referenced_size, referenced_size);
+        validator->error = true;
+    }
+
+    if (num_nested_sidx != 0) {
+        g_critical("ERROR validating Representation Index Segment: Incorrect number of nested sidx boxes: %d.",
+                num_nested_sidx);
+        validator->error = true;
+    }
+
+    if (segment_index != segments->len) {
+        g_critical("ERROR validating Index Segment: Invalid number of segment sidx boxes following master sidx box: "
+                "expected %u, found %zu.", segments->len, segment_index);
+        validator->error = true;
+    }
+
+    // fill in iFrame locations by walking the list of sidx's again, starting from the third box
+    num_nested_sidx = 0;
+    segment_index = 0;
+    size_t iframe_counter = 0;
+    uint64_t next_iframe_byte_location = 0;
+    uint64_t last_iframe_start_time = representation->presentation_time_offset;
+    uint64_t last_iframe_duration = 0;
+    GArray* iframes = NULL;
+    for (box_index = sidx_start; box_index < num_boxes; ++box_index) {
+        box_t* box = boxes[box_index];
+        if (box->type == BOX_TYPE_SIDX) {
+            data_sidx_t* sidx = (data_sidx_t*)box;
+
+            if (num_nested_sidx > 0) {
+                num_nested_sidx--;
+                next_iframe_byte_location += sidx->first_offset;  // convert from 64-bit t0 32 bit
+            } else {
+                segment_t* segment = g_ptr_array_index(segments, segment_index);
+                if (iframes) {
+                    g_ptr_array_add(validator->segment_iframes, iframes);
+                }
+                iframes = g_array_new(false, false, sizeof(iframe_t));
+                last_iframe_start_time = segment->start;
+                last_iframe_duration = segment->duration;
+                segment_index++;
+
+                iframe_counter = 0;
+                next_iframe_byte_location = sidx->first_offset;
+            }
+
+            // fill in Iframe locations here
+            for (size_t i = 0; i < sidx->reference_count; i++) {
+                data_sidx_reference_t ref = sidx->references[i];
+                if (ref.reference_type == 0) {
+                    iframe_t iframe;
+                    iframe.starts_with_sap = ref.starts_with_sap;
+                    iframe.sap_type = ref.sap_type;
+                    iframe.location_byte = next_iframe_byte_location;
+                    iframe.location_time = last_iframe_start_time + last_iframe_duration + ref.sap_delta_time;
+                    g_array_append_val(iframes, iframe);
+
+                    last_iframe_start_time = iframe.location_time;
+                    last_iframe_duration = ref.subsegment_duration;
+                    next_iframe_byte_location += ref.referenced_size;
+                    iframe_counter++;
+                } else {
+                    num_nested_sidx++;
+                }
+            }
+        }
+    }
+    if (iframes) {
+        g_ptr_array_add(validator->segment_iframes, iframes);
     }
 
 cleanup:
     free_boxes(boxes, num_boxes);
+    if (is_single_index) {
+        g_ptr_array_free(segments, true);
+    }
     return validator;
 fail:
     validator->error = true;

@@ -152,27 +152,27 @@ int main(int argc, char* argv[])
 
                     /* Validate Segment Index */
                     if (segment->index_file_name) {
-                        index_segment_validator_t* index_segment_validator = validate_index_segment(
+                        index_segment_validator_t* index_validator = validate_index_segment(
                                 segment->index_file_name, segment, representation, adaptation_set);
-                        if (index_segment_validator->error) {
+                        if (index_validator->error) {
                             g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
                             overall_status = 0;
                         }
-                        if (index_segment_validator->segment_iframes->len != 0) {
-                            GArray* iframes = g_ptr_array_index(index_segment_validator->segment_iframes, 0);
+                        if (index_validator->segment_iframes->len != 0) {
+                            GArray* iframes = g_ptr_array_index(index_validator->segment_iframes, 0);
                             dash_validator_t* validator = segment->arg;
                             if (validator->iframes->len != 0) {
                                 g_critical("DASH Conformance: Segment %s has a representation index and a single "
                                         "segment index, but should only have one or the other. 6.4.6 Index Segment: "
                                         "Index Segments may either be associated to a single Media Segment as "
                                         "specified in 6.4.6.2 or may be associated to all Media Segments in one "
-                                        "Representation as specified in 6.4.6.3.");
+                                        "Representation as specified in 6.4.6.3.", segment->file_name);
                                 overall_status = 0;
                             } else {
                                 g_array_append_vals(validator->iframes, iframes->data, iframes->len);
                             }
                         }
-                        index_segment_validator_free(index_segment_validator);
+                        index_segment_validator_free(index_validator);
                     }
                 }
 
