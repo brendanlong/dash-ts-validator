@@ -26,6 +26,12 @@ typedef enum {
 typedef void (*free_func_t)(void*);
 
 typedef struct {
+    bool has_int;
+    bool b;
+    uint32_t i;
+} optional_uint32_t;
+
+typedef struct {
     char* file_name;
     char* media_range;
     uint64_t start;
@@ -56,8 +62,8 @@ typedef struct {
     dash_profile_t profile;
     uint32_t audio_pid;
     uint32_t video_pid;
-    uint32_t segment_alignment;
-    uint32_t subsegment_alignment;
+    optional_uint32_t segment_alignment;
+    optional_uint32_t subsegment_alignment;
     bool bitstream_switching;
     GPtrArray* representations;
 } adaptation_set_t;

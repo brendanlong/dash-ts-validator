@@ -105,7 +105,7 @@ int main(int argc, char* argv[])
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     dash_validator_t* validator = dash_validator_new(MEDIA_SEGMENT, representation->profile);
                     validator->use_initialization_segment = representation->initialization_file_name != NULL;
-                    validator->segment_alignment = adaptation_set->segment_alignment;
+                    validator->adaptation_set = adaptation_set;
 
                     segment->arg = validator;
                     segment->arg_free = (free_func_t)dash_validator_free;

@@ -347,12 +347,16 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     pid_validator_t* pid_validator = NULL;
     validate_pes_packet_common(pes, ts_queue, dash_validator);
 
-    if (pes == NULL) {
+    if (pes == NULL || pes->status > 0) {
         // we have a queue that didn't appear to be a valid PES packet (e.g., because it didn't start with
         // payload_unit_start_indicator = 1)
-        // TODO: Where did this requirement come from?
-        if (dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN) {
-            g_critical("DASH Conformance: media segments shall contain only complete PES packets");
+        if (dash_validator->adaptation_set->segment_alignment.has_int ||
+                dash_validator->adaptation_set->segment_alignment.b) {
+            g_critical("DASH Conformance: Media segment %s does not contain complete PES packets and "
+                    "@segmentAlignment is not 'false'. 7.4.3.2 Segment alignment: If the @segmentAlignment attribute "
+                    "is not set to ‘false’, the requirements stated in 5.3.2 and 5.3.3.2 shall be met. In addition, "
+                    "the Media Segment shall contain only complete PES packets [...]",
+                    dash_validator->segment->file_name);
             dash_validator->status = 0;
         }
         goto cleanup;
@@ -361,17 +365,6 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
     assert(pid_validator != NULL);
-
-    if (pes->status > 0) {
-        if (dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN) {
-            /* TODO: This is a 'should'. Is there somewhere else that upgrades it to 'shall'? */
-            /* TODO: 7.4.3.2 says that this is a 'shall' if we're dealing with @segmentAlignment = true  and 7.4.3.2
-             *       says the same for @subsegmentAlignment. */
-            g_critical("DASH Conformance: 6.4.4.2 Media Segments should contain only complete PES packets and sections.");
-            dash_validator->status = 0;
-        }
-        goto cleanup;
-    }
 
     // we are in the first PES packet of a PID
     if (pid_validator->pes_count == 0) {

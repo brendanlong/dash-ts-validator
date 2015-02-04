@@ -63,11 +63,11 @@ typedef struct {
     segment_type_t segment_type;
     bool use_initialization_segment;
     program_map_section_t* initialization_segment_pmt;      /// parsed PMT
-    bool segment_alignment;
     bool do_iframe_validation;
     size_t iframe_index;
     GArray* iframes;
     segment_t* segment;
+    adaptation_set_t* adaptation_set;
 } dash_validator_t;
 
 typedef struct {

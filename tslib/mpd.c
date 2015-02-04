@@ -32,7 +32,8 @@ static bool read_segment_list(xmlNode*, representation_t*, char* base_url);
 static GPtrArray* read_segment_timeline(xmlNode*);
 static bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t duration, char* base_url);
 static char* find_base_url(xmlNode*, char* parent_base_url);
-static uint32_t read_optional_uint32(xmlNode*, const char* property_name);
+static optional_uint32_t read_optional_uint32(xmlNode*, const char* property_name);
+static void print_optional_uint32(int indent, const char* name, optional_uint32_t value);
 static uint32_t read_uint64(xmlNode*, const char* property_name);
 static bool read_bool(xmlNode*, const char* property_name);
 static char* read_filename(xmlNode*, const char* property_name, const char* base_url);
@@ -143,8 +144,8 @@ void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned inden
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(adaptation_set->profile));
     PRINT_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
     PRINT_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
-    PRINT_PROPERTY(indent, "segment_alignment: %"PRIu32, adaptation_set->segment_alignment);
-    PRINT_PROPERTY(indent, "subsegment_alignment: %"PRIu32, adaptation_set->subsegment_alignment);
+    print_optional_uint32(indent, "segment_alignment", adaptation_set->segment_alignment);
+    print_optional_uint32(indent, "subsegment_alignment", adaptation_set->subsegment_alignment);
     PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(adaptation_set->bitstream_switching));
     for (size_t i = 0; i < adaptation_set->representations->len; ++i) {
         PRINT_PROPERTY(indent, "representations[%zu]:", i);
@@ -636,26 +637,37 @@ char* find_base_url(xmlNode* node, char* parent_url)
     return g_strdup(parent_url);
 }
 
-uint32_t read_optional_uint32(xmlNode* node, const char* property_name)
+optional_uint32_t read_optional_uint32(xmlNode* node, const char* property_name)
 {
     char* value = xmlGetProp(node, property_name);
-    if (value == 0) {
-        return 0;
-    }
-    uint32_t result;
-    if (xmlStrEqual(value, "false")) {
-        result = 0;
+    optional_uint32_t result;
+    if (value == 0 || xmlStrEqual(value, "false")) {
+        result.has_int = false;
+        result.b = false;
     } else if (xmlStrEqual(value, "true")) {
-        result = 1;
+        result.has_int = false;
+        result.b = true;
     } else {
         int error;
-        result = str_to_uint64(value, &error);
+        uint32_t tmp = str_to_uint64(value, &error);
         if (error) {
             g_warning("Got invalid ConditionalUintType for property %s: %s", property_name, value);
+        } else {
+            result.has_int = true;
+            result.i = tmp;
         }
     }
     xmlFree(value);
     return result;
+}
+
+static void print_optional_uint32(int indent, const char* name, optional_uint32_t value)
+{
+    if (value.has_int) {
+        PRINT_PROPERTY(indent, "%s: %"PRIu32, name, value.i);
+    } else {
+        PRINT_PROPERTY(indent, "%s: %s", name, PRINT_BOOL(value.b));
+    }
 }
 
 uint32_t read_uint64(xmlNode* node, const char* property_name)
