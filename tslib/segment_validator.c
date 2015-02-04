@@ -354,8 +354,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 dash_validator->adaptation_set->segment_alignment.b) {
             g_critical("DASH Conformance: Media segment %s does not contain complete PES packets and "
                     "@segmentAlignment is not 'false'. 7.4.3.2 Segment alignment: If the @segmentAlignment attribute "
-                    "is not set to ‘false’, the requirements stated in 5.3.2 and 5.3.3.2 shall be met. In addition, "
-                    "the Media Segment shall contain only complete PES packets [...]",
+                    "is not set to 'false' [...] the Media Segment shall contain only complete PES packets [...]",
                     dash_validator->segment->file_name);
             dash_validator->status = 0;
         }
@@ -371,12 +370,11 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
             pid_validator->earliest_playout_time = pes->header.pts;
             pid_validator->latest_playout_time = pes->header.pts;
-        } else if (dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN) {
-            /* TODO: This is probably only if @segmentAlignment is not 'false'
-             * 7.4.3.2 Segment alignment
-             * If the @segmentAlignment attribute is not set to ‘false’, [...] the first PES packet shall contain a
-             * PTS timestamp. */
-            g_critical("DASH Conformance: first PES packet must have PTS");
+        } else if (dash_validator->adaptation_set->segment_alignment.has_int ||
+                dash_validator->adaptation_set->segment_alignment.b) {
+            g_critical("DASH Conformance: First PES packet in segment %s does not have PTS and @segmentAlignment is "
+                    "not 'false'. 7.4.3.2 Segment alignment: If the @segmentAlignment attribute is not set to 'false' "
+                    "[...] the first PES packet shall contain a PTS timestamp.", dash_validator->segment->file_name);
             dash_validator->status = 0;
         }
 
