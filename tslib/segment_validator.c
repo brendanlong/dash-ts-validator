@@ -849,6 +849,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
     uint64_t referenced_size = 0;
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
+    data_sidx_t* current_sidx = NULL;
     for (box_index = sidx_start; box_index < num_boxes; ++box_index) {
         box_t* box = boxes[box_index];
         switch(box->type) {
@@ -857,12 +858,13 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             pcrb_present = false;
 
             data_sidx_t* sidx = (data_sidx_t*)box;
+            current_sidx = sidx;
             if (num_nested_sidx > 0) {
                 num_nested_sidx--;
                 // GORP: check earliest presentation time
             } else {
                 // check size:
-                g_info("Validating referenced_size for segment %zu.", segment_index);
+                g_debug("Validating referenced_size for segment %zu.", segment_index);
                 if (segment_index > 1 && referenced_size != master_sidx->references[segment_index - 1].referenced_size) {
                     g_critical("ERROR validating Representation Index Segment: referenced_size for segment %zu. "
                             "Expected %"PRIu32", actual %"PRIu64"\n", segment_index,
@@ -874,7 +876,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                 segment_t* segment = g_ptr_array_index(segments, segment_index);
                 segment_index++;
 
-                g_info("Validating earliest_presentation_time for segment %zu.", segment_index);
+                g_debug("Validating earliest_presentation_time for segment %zu.", segment_index);
                 if (segment->start != sidx->earliest_presentation_time) {
                     g_critical("ERROR validating Representation Index Segment: invalid earliest_presentation_time in "
                             "sidx box. Expected %"PRId64", actual %"PRId64".", segment->start,
@@ -884,7 +886,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             }
             referenced_size += sidx->size;
 
-            g_info("Validating reference_id");
+            g_debug("Validating reference_id");
             if (!is_single_index && master_reference_id != sidx->reference_id) {
                 g_critical("ERROR validating Representation Index Segment: invalid reference id in sidx box. "
                         "Expected %d, actual %d.", master_reference_id, sidx->reference_id);
@@ -900,21 +902,27 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         case BOX_TYPE_SSIX: {
             data_ssix_t* ssix = (data_ssix_t*)box;
             referenced_size += ssix->size;
-            g_info("Validating ssix box");
+            g_debug("Validating ssix box");
             if (ssix_present) {
-                g_critical("ERROR validating Representation Index Segment: More than one ssix box following sidx box.");
+                g_critical("ERROR validating Index Segment: More than one ssix box following sidx box.");
                 validator->error = true;
             } else {
                 ssix_present = true;
             }
             if (pcrb_present) {
-                g_critical("ERROR validating Representation Index Segment: pcrb occurred before ssix. 6.4.6.4 says "
+                g_critical("ERROR validating Index Segment: pcrb occurred before ssix. 6.4.6.4 says "
                         "\"The Subsegment Index box (‘ssix’) [...] shall follow immediately after the ‘sidx’ box that "
                         "documents the same Subsegment. [...] If the 'pcrb' box is present, it shall follow 'ssix'.\".");
                 validator->error = true;
             }
             if (!found_ssss) {
-                g_critical("ERROR validating Representation Index Segment: Saw ssix box, but 'ssss' is not in compatible brands. See 6.4.6.4.");
+                g_critical("ERROR validating Index Segment: Saw ssix box, but 'ssss' is not in compatible brands. See 6.4.6.4.");
+                validator->error = true;
+            }
+            if (current_sidx == NULL) {
+                g_critical("DASH Conformance: In Index Segment %s, saw an 'ssix' before the first 'sidx'. 6.4.6.4 "
+                        "Subsegment Index Segment: The Subsegment Index box ('ssix') shall be present and shall "
+                        "follow immediately after the 'sidx' box that documents the same Subsegment.", file_name);
                 validator->error = true;
             }
             break;
@@ -924,7 +932,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             referenced_size += pcrb->size;
             g_info("Validating pcrb box");
             if (pcrb_present) {
-                g_critical("ERROR validating Representation Index Segment: More than one pcrb box following sidx box.");
+                g_critical("ERROR validating Index Segment: More than one pcrb box following sidx box.");
                 validator->error = true;
             } else {
                 pcrb_present = true;
@@ -932,8 +940,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             break;
         }
         default:
-            /* TODO: Is this really an error? */
-            g_critical("Invalid box type: %x.", box->type);
+            g_warning("Invalid box type in Index Segment %s: %x.", file_name, box->type);
             break;
         }
     }
@@ -947,7 +954,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
     }
 
     if (num_nested_sidx != 0) {
-        g_critical("ERROR validating Representation Index Segment: Incorrect number of nested sidx boxes: %d.",
+        g_critical("ERROR validating Index Segment: Incorrect number of nested sidx boxes: %d.",
                 num_nested_sidx);
         validator->error = true;
     }
