@@ -696,6 +696,7 @@ fail:
 
 static bool read_segment_template(xmlNode* node, representation_t* representation, char* base_url, xmlNode* parent)
 {
+    char* media_template = NULL;
     char* index_template = NULL;
     char* initialization_template = NULL;
     char* bitstream_switching_template = NULL;
@@ -703,7 +704,26 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
 
     bool return_code = read_segment_base(node, representation, base_url, NULL);
 
-    char* media_template = xmlGetProp(node, "media");
+    /* Get SegmentTimeline first, since we need it to create segments */
+    GPtrArray* segment_timeline = NULL;
+    for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
+        if (xmlStrEqual(cur_node->name, "SegmentTimeline")) {
+            if (segment_timeline != NULL) {
+                g_critical("Saw multiple <SegmentTimeline> children for one <SegmentTemplate>.");
+                goto fail;
+            }
+            segment_timeline = read_segment_timeline(cur_node);
+        } else if (xmlStrEqual(cur_node->name, "BitstreamSwitching")) {
+            if (representation->bitstream_switching_file_name != NULL) {
+                g_critical("Saw multiple <BitstreamSwitching> children for one <SegmentTemplate>.");
+                goto fail;
+            }
+            representation->bitstream_switching_file_name = xmlGetProp(cur_node, "sourceURL");
+            representation->bitstream_switching_range = xmlGetProp(cur_node, "range");
+        }
+    }
+
+    media_template = xmlGetProp(node, "media");
     if (!media_template) {
         media_template = xmlGetProp(parent, "media");
     }
@@ -730,10 +750,15 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
     }
 
     bitstream_switching_template = xmlGetProp(node, "bitstreamSwitching");
-    if (!bitstream_switching_template) {
+    if (bitstream_switching_template == NULL && !representation->bitstream_switching_file_name) {
         bitstream_switching_template = xmlGetProp(parent, "bitstreamSwitching");
     }
     if (bitstream_switching_template) {
+        if (representation->bitstream_switching_file_name) {
+            g_critical("<SegmentTemplate> has both <BitstreamSwitching> and @bitstreamSwitching. Pick one or the "
+                    "other.");
+            goto fail;
+        }
         representation->bitstream_switching_file_name = segment_template_replace(bitstream_switching_template, 0,
                 representation, 0, base_url);
         if (!representation->bitstream_switching_file_name) {
@@ -745,10 +770,15 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
 
     uint64_t duration = 0;
     duration_str = xmlGetProp(node, "duration");
-    if (!duration_str) {
+    if (duration_str == NULL && !segment_timeline) {
         duration_str = xmlGetProp(parent, "duration");
     }
     if (duration_str) {
+        if (segment_timeline) {
+            g_critical("SegmentTemplate> has both @duration and <SegmentTimeline>, but you can only use one or the "
+                    "other.");
+            goto fail;
+        }
         int error;
         duration = str_to_uint64(duration_str, &error);
         if (error) {
@@ -771,8 +801,9 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
         }
     }
 
+    size_t timeline_i = 0;
     uint64_t start_time = representation->presentation_time_offset;
-    for (size_t i = start_number;; ++i) {
+    for (size_t i = start_number; segment_timeline == NULL || timeline_i < segment_timeline->len; ++i, ++timeline_i) {
         char* media = segment_template_replace(media_template, i, representation, start_time, base_url);
         if (!media) {
             goto fail;
@@ -792,9 +823,16 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
 
         segment_t* segment = segment_new();
         segment->file_name = media;
-        segment->start = start_time;
-        segment->duration = duration;
-        segment->end = start_time + duration;
+        if (segment_timeline) {
+            segment_timeline_s_t* s = g_ptr_array_index(segment_timeline, timeline_i);
+            segment->start = s->start;
+            segment->duration = s->duration;
+            segment->end = segment->start + segment->duration;
+        } else {
+            segment->start = start_time;
+            segment->duration = duration;
+            segment->end = start_time + duration;
+        }
         if (index_template) {
             segment->index_file_name = segment_template_replace(index_template, i, representation, start_time, base_url);
         }
@@ -804,6 +842,7 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
     }
 
 cleanup:
+    g_ptr_array_free(segment_timeline, true);
     xmlFree(media_template);
     xmlFree(index_template);
     xmlFree(initialization_template);
