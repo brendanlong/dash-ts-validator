@@ -35,6 +35,7 @@ typedef struct {
     int64_t latest_playout_time;
     int64_t duration; // duration of latest pes packet
     uint64_t pes_count;
+    uint64_t subsegment_pes_count;
     uint64_t ts_count;
     content_component_t content_component;
     int continuity_counter;

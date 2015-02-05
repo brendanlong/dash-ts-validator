@@ -370,7 +370,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     if (dash_validator->do_iframe_validation && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
             dash_validator->adaptation_set->subsegment_alignment.b)) {
         ts_packet_t* last_ts = g_queue_peek_tail(ts_queue);
-        uint64_t last_ts_end_byte = last_ts->pos_in_stream + 188 /* length of TS packet */;
+        uint64_t last_ts_end_byte = last_ts->pos_in_stream + 188 /* length of TS packet */; 
         if (first_ts->pos_in_stream < dash_validator->current_subsegment.end_byte
                 && last_ts->pos_in_stream >= dash_validator->current_subsegment.end_byte) {
             g_critical("DASH Conformance: TS packet in segment %s spans byte locations %"PRIu64" to %"PRIu64", but "
@@ -435,6 +435,16 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         // TODO: validate in case of ISO/IEC 14496-10 (?)
     }
 
+    if (pid_validator->subsegment_pes_count == 0 && !(pes->header.pts_dts_flags & PES_PTS_FLAG)
+            && (dash_validator->adaptation_set->segment_alignment.has_int ||
+                dash_validator->adaptation_set->segment_alignment.b)) {
+        g_critical("DASH Conformance: First PES packet in subsegment %zu of %s does not have PTS and "
+                "@subsegmentAlignment is not 'false'. 7.4.3.3 Subsegment alignment: If the @subsegmentAlignment flag "
+                "is not set to 'false' [...] the first PES packet from each elementary stream shall contain a PTS.",
+                dash_validator->iframe_index, dash_validator->segment->file_name);
+        dash_validator->status = 0;
+    }
+
     if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
         // TODO: account for rollovers and discontinuities
         // frames can come in out of PTS order
@@ -460,6 +470,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             } else {
                 iframe_t* iframe = &g_array_index(dash_validator->iframes, iframe_t, dash_validator->iframe_index);
                 dash_validator->current_subsegment = *iframe;
+                pid_validator->subsegment_pes_count = 0;
                 ++dash_validator->iframe_index;
 
                 // time location
@@ -506,6 +517,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
 cleanup:
     if (pid_validator) {
         pid_validator->pes_count++;
+        pid_validator->subsegment_pes_count++;
     }
     pes_free(pes);
     return 1;
