@@ -106,6 +106,7 @@ int main(int argc, char* argv[])
                     dash_validator_t* validator = dash_validator_new(MEDIA_SEGMENT, representation->profile);
                     validator->use_initialization_segment = representation->initialization_file_name != NULL;
                     validator->adaptation_set = adaptation_set;
+                    validator->segment = segment;
 
                     segment->arg = validator;
                     segment->arg_free = (free_func_t)dash_validator_free;
