@@ -141,6 +141,7 @@ int main(int argc, char* argv[])
                     for (size_t s_i = 0; s_i < index_validator->segment_iframes->len; ++s_i) {
                         segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                         dash_validator_t* validator = segment->arg;
+                        validator->do_iframe_validation = true;
                         GArray* iframes = g_ptr_array_index(index_validator->segment_iframes, s_i);
                         g_array_append_vals(validator->iframes, iframes->data, iframes->len);
                         
@@ -170,6 +171,7 @@ int main(int argc, char* argv[])
                                         "Representation as specified in 6.4.6.3.", segment->file_name);
                                 overall_status = 0;
                             } else {
+                                validator->do_iframe_validation = true;
                                 g_array_append_vals(validator->iframes, iframes->data, iframes->len);
                             }
                         }

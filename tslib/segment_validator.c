@@ -433,6 +433,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
     if (pid_validator->content_component == VIDEO_CONTENT_COMPONENT) {
+        /* TODO: Where did this magic number come from? */
         pid_validator->duration = 3000;
 
         if (dash_validator->do_iframe_validation && first_ts->adaptation_field.random_access_indicator) {
@@ -944,7 +945,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                 }
                 iframes = g_array_new(false, false, sizeof(iframe_t));
                 last_iframe_start_time = segment->start;
-                last_iframe_duration = segment->duration;
+                last_iframe_duration = 0;
                 segment_index++;
 
                 iframe_counter = 0;
