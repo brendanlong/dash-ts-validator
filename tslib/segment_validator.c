@@ -367,6 +367,22 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
+    if (dash_validator->do_iframe_validation && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
+            dash_validator->adaptation_set->subsegment_alignment.b)) {
+        ts_packet_t* last_ts = g_queue_peek_tail(ts_queue);
+        uint64_t last_ts_end_byte = last_ts->pos_in_stream + 188 /* length of TS packet */;
+        if (first_ts->pos_in_stream < dash_validator->current_subsegment.end_byte
+                && last_ts->pos_in_stream >= dash_validator->current_subsegment.end_byte) {
+            g_critical("DASH Conformance: TS packet in segment %s spans byte locations %"PRIu64" to %"PRIu64", but "
+                    "'sidx' says that there is a subsegment from %"PRIu64" to %"PRIu64". 7.4.3.3 Subsegment alignment: "
+                    "If the @subsegmentAlignment flag is not set to 'false', [...]] a Subsegment shall contain only "
+                    "complete PES packets [...]", dash_validator->segment->file_name,
+                    first_ts->pos_in_stream, last_ts_end_byte, dash_validator->current_subsegment.start_byte,
+                    dash_validator->current_subsegment.end_byte);
+            dash_validator->status = 0;
+        }
+    }
+
     pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
     assert(pid_validator != NULL);
 
@@ -443,19 +459,20 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                 dash_validator->status = 0;
             } else {
                 iframe_t* iframe = &g_array_index(dash_validator->iframes, iframe_t, dash_validator->iframe_index);
+                dash_validator->current_subsegment = *iframe;
                 ++dash_validator->iframe_index;
 
                 // time location
-                if (iframe->location_time != pes->header.pts) {
+                if (iframe->start_time != pes->header.pts) {
                     g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %"PRIu64", "
-                            "Actual: %"PRIu64, iframe->location_time, pes->header.pts);
+                            "Actual: %"PRIu64, iframe->start_time, pes->header.pts);
                     dash_validator->status = 0;
                 }
 
                 // byte location
-                if (iframe->location_byte != pes->payload_pos_in_stream) {
+                if (iframe->start_byte != pes->payload_pos_in_stream) {
                     g_critical("DASH Conformance: expected IFrame Byte Location does not match actual.  Expected: "
-                            "%"PRIu64", Actual: %"PRIu64"", iframe->location_byte, pes->payload_pos_in_stream);
+                            "%"PRIu64", Actual: %"PRIu64"", iframe->start_byte, pes->payload_pos_in_stream);
                     dash_validator->status = 0;
                 }
 
@@ -554,6 +571,7 @@ cleanup:
 
 int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_validator_t* dash_validator_init)
 {
+    dash_validator->current_subsegment = g_array_index(dash_validator->iframes, iframe_t, 0);
     mpeg2ts_stream_t* m2s = NULL;
 
     FILE* infile = fopen(file_name, "rb");
@@ -959,11 +977,12 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                     iframe_t iframe;
                     iframe.starts_with_sap = ref.starts_with_sap;
                     iframe.sap_type = ref.sap_type;
-                    iframe.location_byte = next_iframe_byte_location;
-                    iframe.location_time = last_iframe_start_time + last_iframe_duration + ref.sap_delta_time;
+                    iframe.start_byte = next_iframe_byte_location;
+                    iframe.end_byte = iframe.start_byte + ref.referenced_size;
+                    iframe.start_time = last_iframe_start_time + last_iframe_duration + ref.sap_delta_time;
                     g_array_append_val(iframes, iframe);
 
-                    last_iframe_start_time = iframe.location_time;
+                    last_iframe_start_time = iframe.start_time;
                     last_iframe_duration = ref.subsegment_duration;
                     next_iframe_byte_location += ref.referenced_size;
                     iframe_counter++;

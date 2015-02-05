@@ -42,8 +42,9 @@ typedef struct {
 } pid_validator_t;
 
 typedef struct {
-    uint64_t location_time;
-    uint64_t location_byte;
+    uint64_t start_time;
+    uint64_t start_byte;
+    uint64_t end_byte;
     bool starts_with_sap;
     uint8_t sap_type;
 } iframe_t;
@@ -64,8 +65,11 @@ typedef struct {
     bool use_initialization_segment;
     program_map_section_t* initialization_segment_pmt;      /// parsed PMT
     bool do_iframe_validation;
+
     size_t iframe_index;
     GArray* iframes;
+    iframe_t current_subsegment;
+
     segment_t* segment;
     adaptation_set_t* adaptation_set;
 } dash_validator_t;
