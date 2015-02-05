@@ -55,6 +55,7 @@ typedef struct {
     char* initialization_file_name;
     uint8_t start_with_sap;
     uint64_t presentation_time_offset;
+    uint32_t bandwidth;
     GPtrArray* segments;
 } representation_t;
 
