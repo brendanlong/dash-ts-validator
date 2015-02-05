@@ -173,6 +173,11 @@ void representation_free(representation_t* obj)
 
     xmlFree(obj->id);
     g_free(obj->index_file_name);
+    g_free(obj->index_range);
+    g_free(obj->initialization_file_name);
+    g_free(obj->initialization_range);
+    g_free(obj->bitstream_switching_file_name);
+    g_free(obj->bitstream_switching_range);
     g_ptr_array_free(obj->segments, true);
 
     free(obj);
@@ -182,9 +187,13 @@ void representation_print(const representation_t* representation, unsigned inden
 {
     ++indent;
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(representation->profile));
-    PRINT_PROPERTY(indent, "id: %s", PRINT_STR(representation->id));
-    PRINT_PROPERTY(indent, "index_file_name: %s", PRINT_STR(representation->index_file_name));
-    PRINT_PROPERTY(indent, "initialization_file_name: %s", PRINT_STR(representation->initialization_file_name));
+    PRINT_PROPERTY(indent, "id: %s", representation->id);
+    PRINT_PROPERTY(indent, "index_file_name: %s", representation->index_file_name);
+    PRINT_PROPERTY(indent, "index_range: %s", representation->index_range);
+    PRINT_PROPERTY(indent, "initialization_file_name: %s", representation->initialization_file_name);
+    PRINT_PROPERTY(indent, "initialization_range: %s", representation->initialization_range);
+    PRINT_PROPERTY(indent, "bitstream_switching_file_name: %s", representation->bitstream_switching_file_name);
+    PRINT_PROPERTY(indent, "bitstream_switching_range: %s", representation->bitstream_switching_range);
     PRINT_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
     PRINT_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
     for (size_t i = 0; i < representation->segments->len; ++i) {
@@ -471,12 +480,19 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
     /* Get SegmentTimeline first, since we need it to create segments */
     GPtrArray* segment_timeline = NULL;
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
-        if (cur_node->type == XML_ELEMENT_NODE && xmlStrEqual(cur_node->name, "SegmentTimeline")) {
+        if (xmlStrEqual(cur_node->name, "SegmentTimeline")) {
             if (segment_timeline != NULL) {
                 g_critical("Saw multiple <SegmentTimeline> children for one <SegmentList>.");
                 goto fail;
             }
             segment_timeline = read_segment_timeline(cur_node);
+        } else if (xmlStrEqual(cur_node->name, "BitstreamSwitching")) {
+            if (representation->bitstream_switching_file_name != NULL) {
+                g_critical("Saw multiple <BitstreamSwitching> children for one <SegmentList>.");
+                goto fail;
+            }
+            representation->bitstream_switching_file_name = xmlGetProp(cur_node, "sourceURL");
+            representation->bitstream_switching_range = xmlGetProp(cur_node, "range");
         }
     }
 
@@ -705,10 +721,24 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
     if (!initialization_template) {
         initialization_template = xmlGetProp(parent, "initialization");
     }
+    if (initialization_template) {
+        representation->initialization_file_name = segment_template_replace(initialization_template, 0, representation,
+                0, base_url);
+        if (!representation->initialization_file_name) {
+            goto fail;
+        }
+    }
 
     bitstream_switching_template = xmlGetProp(node, "bitstreamSwitching");
     if (!bitstream_switching_template) {
         bitstream_switching_template = xmlGetProp(parent, "bitstreamSwitching");
+    }
+    if (bitstream_switching_template) {
+        representation->bitstream_switching_file_name = segment_template_replace(bitstream_switching_template, 0,
+                representation, 0, base_url);
+        if (!representation->bitstream_switching_file_name) {
+            goto fail;
+        }
     }
 
     /* TODO: Read segmentTimeline */

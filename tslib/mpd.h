@@ -52,7 +52,11 @@ typedef struct {
     dash_profile_t profile;
     char* id;
     char* index_file_name;
+    char* index_range;
     char* initialization_file_name;
+    char* initialization_range;
+    char* bitstream_switching_file_name;
+    char* bitstream_switching_range;
     uint8_t start_with_sap;
     uint64_t presentation_time_offset;
     uint32_t bandwidth;
