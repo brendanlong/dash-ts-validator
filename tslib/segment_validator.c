@@ -811,7 +811,13 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             for (size_t i = 0; i < master_sidx->reference_count; i++) {
                 data_sidx_reference_t ref = master_sidx->references[i];
                 if (ref.reference_type != 1) {
-                    g_critical("ERROR validating Representation Index Segment: reference type not 1.");
+                    g_critical("DASH Conformance: In Representation Index Segment %s, found reference_type != 1 in "
+                            "first 'sidx'. The first 'sidx' should index the representation index itself. 6.4.6.3 "
+                            "Representation Index Segment: The Segment Index for each Media Segments is concatenated "
+                            "in order, preceded by a single Segment Index box that indexes the Index Segment. This "
+                            "initial Segment Index box shall have one entry in its loop for each Media Segment, and "
+                            "each entry refers to the Segment Index information for a single Media Segment.",
+                            file_name);
                     validator->error = true;
                     /* Check this box as a normal sidx instead */
                     --box_index;
