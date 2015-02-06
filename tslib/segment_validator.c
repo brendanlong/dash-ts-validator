@@ -610,6 +610,36 @@ static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t*
         dash_validator->status = 0;
     }
 
+    if (dash_validator->current_subsegment && dash_validator->adaptation_set->bitstream_switching) {
+        subsegment_t* subsegment = dash_validator->current_subsegment;
+        if (subsegment->ssix_offset_index < subsegment->ssix_offsets->len) {
+            ts_packet_t* last_ts = g_queue_peek_tail(ts_queue);
+            uint64_t last_ts_end = last_ts->pos_in_stream + TS_SIZE;
+            uint64_t next_ssix_offset = g_array_index(subsegment->ssix_offsets, uint64_t,
+                    subsegment->ssix_offset_index);
+            if (next_ssix_offset >= last_ts_end) {
+                g_critical("DASH Conformance: @bitstreamSwitching is true and current subsegment ends at offset "
+                        "%"PRIu64", but the current 'emsg' PES packet ends at offset %"PRIu64". 5.10.3.3.5 "
+                        "Carriage of the Event Message Box in MPEG-2 TS: If @bitstreamSwitching is set, and "
+                        "subsegments are used, a subsegment shall contain only complete `emsg` boxes.",
+                        next_ssix_offset, last_ts_end);
+                dash_validator->status = 0;
+            }
+            if (subsegment->ssix_offset_index != 0) {
+                uint64_t previous_ssix_offset = g_array_index(subsegment->ssix_offsets, uint64_t,
+                    subsegment->ssix_offset_index - 1);
+                if (first_ts->pos_in_stream < previous_ssix_offset) {
+                    g_critical("DASH Conformance: @bitstreamSwitching is true and current subsegment starts at offset "
+                            "%"PRIu64", but the current 'emsg' PES packet started at offset %"PRIu64". 5.10.3.3.5 "
+                            "Carriage of the Event Message Box in MPEG-2 TS: If @bitstreamSwitching is set, and "
+                            "subsegments are used, a subsegment shall contain only complete `emsg` boxes.",
+                            previous_ssix_offset, first_ts->pos_in_stream);
+                    dash_validator->status = 0;
+                }
+            }
+        }
+    }
+
     if (first_ts->payload.len < 8) {
         /* Note: The first 8 bytes of a Box are the "size" and "type" fields, so if the payload size is >= 8 bytes,
          *       we can guarantee that the Box.type is in it. We check that the type (and size) are correct in
