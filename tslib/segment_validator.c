@@ -36,6 +36,7 @@ const char* content_component_to_string(content_component_t content_component)
 static subsegment_t* subsegment_new(void)
 {
     subsegment_t* obj = g_new0(subsegment_t, 1);
+    obj->ssix_offsets = g_array_new(false, false, sizeof(uint64_t));
     return obj;
 }
 
@@ -44,6 +45,7 @@ static void subsegment_free(subsegment_t* obj)
     if (obj == NULL) {
         return;
     }
+    g_array_free(obj->ssix_offsets, true);
     g_free(obj);
 }
 
@@ -1019,7 +1021,8 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
     GPtrArray* subsegments = NULL;
     for (box_index = sidx_start; box_index < num_boxes; ++box_index) {
         box_t* box = boxes[box_index];
-        if (box->type == BOX_TYPE_SIDX) {
+        switch (box->type) {
+        case BOX_TYPE_SIDX: {
             data_sidx_t* sidx = (data_sidx_t*)box;
 
             if (num_nested_sidx > 0) {
@@ -1057,6 +1060,29 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                     num_nested_sidx++;
                 }
             }
+            break;
+        }
+        case BOX_TYPE_SSIX: {
+            data_ssix_t* ssix = (data_ssix_t*)box;
+            if (ssix->subsegment_count != subsegments->len) {
+                g_critical("Error: 'ssix' has %"PRIu32" subsegments, but the proceeding 'sidx' box has %u. 8.16.4.3 "
+                        "of ISO/IEC 14496-12 says: subsegment_count shall be equal to reference_count (i.e., the "
+                        "number of movie fragment references) in the immediately preceding Segment Index box.",
+                        ssix->subsegment_count, subsegments->len);
+                goto fail;
+            }
+            for (uint32_t i = 0; i < ssix->subsegment_count; ++i) {
+                data_ssix_subsegment_t* s = &ssix->subsegments[i];
+                subsegment_t* subsegment = g_ptr_array_index(subsegments, i);
+                uint64_t byte_offset = subsegment->start_byte;
+                for (uint32_t j = 0; j < s->ranges_count; ++j) {
+                    data_ssix_subsegment_range_t* range = &s->ranges[j];
+                    g_array_append_val(subsegment->ssix_offsets, byte_offset);
+                    byte_offset += range->range_size;
+                }
+            }
+            break;
+        }
         }
     }
     if (subsegments) {

@@ -512,7 +512,7 @@ box_t* parse_ssix(GDataInputStream* input, uint64_t box_size, GError** error)
         }
         subsegment->ranges = g_new0(data_ssix_subsegment_range_t, subsegment->ranges_count);
         for (size_t j = 0; j < subsegment->ranges_count; ++j) {
-            data_ssix_subsegment_range_t* range = &subsegment->ranges[i];
+            data_ssix_subsegment_range_t* range = &subsegment->ranges[j];
             range->level = g_data_input_stream_read_byte(input, NULL, error);
             if (*error) {
                 goto fail;
