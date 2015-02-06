@@ -15,7 +15,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info
 static int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
         void* arg);
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
-static int analyze_sidx_references(data_sidx_t*, int* num_iframes, int* num_nested_sidx, dash_profile_t);
+static int analyze_sidx_references(data_sidx_t*, int* num_subsegments, int* num_nested_sidx, dash_profile_t);
 
 
 const char* content_component_to_string(content_component_t content_component)
@@ -33,10 +33,24 @@ const char* content_component_to_string(content_component_t content_component)
     }
 }
 
+static subsegment_t* subsegment_new(void)
+{
+    subsegment_t* obj = g_new0(subsegment_t, 1);
+    return obj;
+}
+
+static void subsegment_free(subsegment_t* obj)
+{
+    if (obj == NULL) {
+        return;
+    }
+    g_free(obj);
+}
+
 static index_segment_validator_t* index_segment_validator_new(void)
 {
     index_segment_validator_t* obj = g_new0(index_segment_validator_t, 1);
-    obj->segment_iframes = g_ptr_array_new();
+    obj->segment_subsegments = g_ptr_array_new();
     return obj;
 }
 
@@ -46,11 +60,12 @@ void index_segment_validator_free(index_segment_validator_t* obj)
         return;
     }
 
-    for (size_t i = 0; i < obj->segment_iframes->len; ++i) {
-        GArray* iframes = g_ptr_array_index(obj->segment_iframes, i);
-        g_array_free(iframes, true);
+    for (size_t i = 0; i < obj->segment_subsegments->len; ++i) {
+        GPtrArray* subsegments = g_ptr_array_index(obj->segment_subsegments, i);
+        g_ptr_array_set_free_func(subsegments, (GDestroyNotify)subsegment_free);
+        g_ptr_array_free(subsegments, true);
     }
-    g_ptr_array_free(obj->segment_iframes, true);
+    g_ptr_array_free(obj->segment_subsegments, true);
     g_free(obj);
 }
 
@@ -82,7 +97,7 @@ dash_validator_t* dash_validator_new(segment_type_t segment_type, dash_profile_t
 void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, dash_profile_t profile)
 {
     obj->profile = profile;
-    obj->iframes = g_array_new(false, false, sizeof(iframe_t));
+    obj->subsegments = g_ptr_array_new_with_free_func((GDestroyNotify)subsegment_free);
     obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
 }
 
@@ -91,7 +106,7 @@ void dash_validator_destroy(dash_validator_t* obj)
     if (obj == NULL) {
         return;
     }
-    g_array_free(obj->iframes, true);
+    g_ptr_array_free(obj->subsegments, true);
     g_ptr_array_free(obj->pids, true);
 }
 
@@ -367,18 +382,18 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
-    if (dash_validator->do_iframe_validation && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
+    if (dash_validator->has_subsegments && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
             dash_validator->adaptation_set->subsegment_alignment.b)) {
         ts_packet_t* last_ts = g_queue_peek_tail(ts_queue);
         uint64_t last_ts_end_byte = last_ts->pos_in_stream + 188 /* length of TS packet */; 
-        if (first_ts->pos_in_stream < dash_validator->current_subsegment.end_byte
-                && last_ts->pos_in_stream >= dash_validator->current_subsegment.end_byte) {
+        if (first_ts->pos_in_stream < dash_validator->current_subsegment->end_byte
+                && last_ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
             g_critical("DASH Conformance: TS packet in segment %s spans byte locations %"PRIu64" to %"PRIu64", but "
                     "'sidx' says that there is a subsegment from %"PRIu64" to %"PRIu64". 7.4.3.3 Subsegment alignment: "
                     "If the @subsegmentAlignment flag is not set to 'false', [...]] a Subsegment shall contain only "
                     "complete PES packets [...]", dash_validator->segment->file_name,
-                    first_ts->pos_in_stream, last_ts_end_byte, dash_validator->current_subsegment.start_byte,
-                    dash_validator->current_subsegment.end_byte);
+                    first_ts->pos_in_stream, last_ts_end_byte, dash_validator->current_subsegment->start_byte,
+                    dash_validator->current_subsegment->end_byte);
             dash_validator->status = 0;
         }
     }
@@ -441,7 +456,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         g_critical("DASH Conformance: First PES packet in subsegment %zu of %s does not have PTS and "
                 "@subsegmentAlignment is not 'false'. 7.4.3.3 Subsegment alignment: If the @subsegmentAlignment flag "
                 "is not set to 'false' [...] the first PES packet from each elementary stream shall contain a PTS.",
-                dash_validator->iframe_index, dash_validator->segment->file_name);
+                dash_validator->subsegment_index, dash_validator->segment->file_name);
         dash_validator->status = 0;
     }
 
@@ -462,35 +477,35 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         /* TODO: Where did this magic number come from? */
         pid_validator->duration = 3000;
 
-        if (dash_validator->do_iframe_validation && first_ts->adaptation_field.random_access_indicator) {
-            // check iFrame location against index file
-            if (dash_validator->iframe_index >= dash_validator->iframes->len) {
-                g_critical("DASH Conformance: Stream has more IFrames than index file");
+        if (dash_validator->has_subsegments && first_ts->adaptation_field.random_access_indicator) {
+            // check subsegment location against index file
+            if (dash_validator->subsegment_index >= dash_validator->subsegments->len) {
+                g_critical("DASH Conformance: Stream has more subsegments than index file");
                 dash_validator->status = 0;
             } else {
-                iframe_t* iframe = &g_array_index(dash_validator->iframes, iframe_t, dash_validator->iframe_index);
-                dash_validator->current_subsegment = *iframe;
+                subsegment_t* subsegment = g_ptr_array_index(dash_validator->subsegments, dash_validator->subsegment_index);
+                dash_validator->current_subsegment = subsegment;
                 pid_validator->subsegment_pes_count = 0;
-                ++dash_validator->iframe_index;
+                ++dash_validator->subsegment_index;
 
                 // time location
-                if (iframe->start_time != pes->header.pts) {
-                    g_critical("DASH Conformance: expected IFrame PTS does not match actual.  Expected: %"PRIu64", "
-                            "Actual: %"PRIu64, iframe->start_time, pes->header.pts);
+                if (subsegment->start_time != pes->header.pts) {
+                    g_critical("DASH Conformance: expected subsegment PTS does not match actual.  Expected: %"PRIu64", "
+                            "Actual: %"PRIu64, subsegment->start_time, pes->header.pts);
                     dash_validator->status = 0;
                 }
 
                 // byte location
-                if (iframe->start_byte != pes->payload_pos_in_stream) {
-                    g_critical("DASH Conformance: expected IFrame Byte Location does not match actual.  Expected: "
-                            "%"PRIu64", Actual: %"PRIu64"", iframe->start_byte, pes->payload_pos_in_stream);
+                if (subsegment->start_byte != pes->payload_pos_in_stream) {
+                    g_critical("DASH Conformance: expected subsegment Byte Location does not match actual.  Expected: "
+                            "%"PRIu64", Actual: %"PRIu64"", subsegment->start_byte, pes->payload_pos_in_stream);
                     dash_validator->status = 0;
                 }
 
                 // SAP type
-                if (iframe->starts_with_sap && iframe->sap_type != 0 && iframe->sap_type != pid_validator->sap_type) {
-                    g_critical("DASH Conformance: expected IFrame SAP Type does not match actual: expected SAP_type "
-                            "= %d, actual SAP_type = %d", iframe->sap_type, pid_validator->sap_type);
+                if (subsegment->starts_with_sap && subsegment->sap_type != 0 && subsegment->sap_type != pid_validator->sap_type) {
+                    g_critical("DASH Conformance: expected subsegment SAP Type does not match actual: expected SAP_type "
+                            "= %d, actual SAP_type = %d", subsegment->sap_type, pid_validator->sap_type);
                     dash_validator->status = 0;
                 }
             }
@@ -583,7 +598,8 @@ cleanup:
 
 int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_validator_t* dash_validator_init)
 {
-    dash_validator->current_subsegment = g_array_index(dash_validator->iframes, iframe_t, 0);
+    dash_validator->current_subsegment = dash_validator->has_subsegments ?
+            g_ptr_array_index(dash_validator->subsegments, 0) : NULL;
     mpeg2ts_stream_t* m2s = NULL;
 
     FILE* infile = fopen(file_name, "rb");
@@ -687,22 +703,22 @@ fail:
     goto cleanup;
 }
 
-int analyze_sidx_references(data_sidx_t* sidx, int* pnum_iframes, int* pnum_nested_sidx, dash_profile_t profile)
+int analyze_sidx_references(data_sidx_t* sidx, int* pnum_subsegments, int* pnum_nested_sidx, dash_profile_t profile)
 {
     int originalnum_nested_sidx = *pnum_nested_sidx;
-    int originalnum_iframes = *pnum_iframes;
+    int originalnum_subsegments = *pnum_subsegments;
 
     for(int i = 0; i < sidx->reference_count; i++) {
         data_sidx_reference_t ref = sidx->references[i];
         if (ref.reference_type == 1) {
             (*pnum_nested_sidx)++;
         } else {
-            (*pnum_iframes)++;
+            (*pnum_subsegments)++;
         }
     }
 
     if (profile >= DASH_PROFILE_MPEG2TS_SIMPLE) {
-        if (originalnum_nested_sidx != *pnum_nested_sidx && originalnum_iframes != *pnum_iframes) {
+        if (originalnum_nested_sidx != *pnum_nested_sidx && originalnum_subsegments != *pnum_subsegments) {
             // failure -- references contain references to both media and nested sidx boxes
             g_critical("ERROR validating Representation Index Segment: Section 8.7.3: Simple profile requires that \
 sidx boxes have either media references or sidx references, but not both.");
@@ -845,7 +861,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
     bool ssix_present = false;
     bool pcrb_present = false;
     int num_nested_sidx = 0;
-    int num_iframes = 0;
+    int num_subsegments = 0;
     uint64_t referenced_size = 0;
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
@@ -893,8 +909,8 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                 validator->error = true;
             }
 
-            // count number of Iframes and number of sidx boxes in reference list of this sidx
-            if (analyze_sidx_references(sidx, &num_iframes, &num_nested_sidx, representation->profile) != 0) {
+            // count number of subsegments and number of sidx boxes in reference list of this sidx
+            if (analyze_sidx_references(sidx, &num_subsegments, &num_nested_sidx, representation->profile) != 0) {
                 validator->error = true;
             }
             break;
@@ -965,14 +981,13 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         validator->error = true;
     }
 
-    // fill in iFrame locations by walking the list of sidx's again, starting from the third box
+    // fill in subsegment locations by walking the list of sidx's again, starting from the third box
     num_nested_sidx = 0;
     segment_index = 0;
-    size_t iframe_counter = 0;
-    uint64_t next_iframe_byte_location = 0;
-    uint64_t last_iframe_start_time = representation->presentation_time_offset;
-    uint64_t last_iframe_duration = 0;
-    GArray* iframes = NULL;
+    uint64_t next_subsegment_byte_location = 0;
+    uint64_t last_subsegment_start_time = representation->presentation_time_offset;
+    uint64_t last_subsegment_duration = 0;
+    GPtrArray* subsegments = NULL;
     for (box_index = sidx_start; box_index < num_boxes; ++box_index) {
         box_t* box = boxes[box_index];
         if (box->type == BOX_TYPE_SIDX) {
@@ -980,45 +995,43 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
 
             if (num_nested_sidx > 0) {
                 num_nested_sidx--;
-                next_iframe_byte_location += sidx->first_offset;  // convert from 64-bit t0 32 bit
+                next_subsegment_byte_location += sidx->first_offset;  // convert from 64-bit t0 32 bit
             } else {
                 segment_t* segment = g_ptr_array_index(segments, segment_index);
-                if (iframes) {
-                    g_ptr_array_add(validator->segment_iframes, iframes);
+                if (subsegments) {
+                    g_ptr_array_add(validator->segment_subsegments, subsegments);
                 }
-                iframes = g_array_new(false, false, sizeof(iframe_t));
-                last_iframe_start_time = segment->start;
-                last_iframe_duration = 0;
+                subsegments = g_ptr_array_new();
+                last_subsegment_start_time = segment->start;
+                last_subsegment_duration = 0;
                 segment_index++;
 
-                iframe_counter = 0;
-                next_iframe_byte_location = sidx->first_offset;
+                next_subsegment_byte_location = sidx->first_offset;
             }
 
-            // fill in Iframe locations here
+            // fill in subsegment locations here
             for (size_t i = 0; i < sidx->reference_count; i++) {
                 data_sidx_reference_t ref = sidx->references[i];
                 if (ref.reference_type == 0) {
-                    iframe_t iframe;
-                    iframe.starts_with_sap = ref.starts_with_sap;
-                    iframe.sap_type = ref.sap_type;
-                    iframe.start_byte = next_iframe_byte_location;
-                    iframe.end_byte = iframe.start_byte + ref.referenced_size;
-                    iframe.start_time = last_iframe_start_time + last_iframe_duration + ref.sap_delta_time;
-                    g_array_append_val(iframes, iframe);
+                    subsegment_t* subsegment = subsegment_new();
+                    subsegment->starts_with_sap = ref.starts_with_sap;
+                    subsegment->sap_type = ref.sap_type;
+                    subsegment->start_byte = next_subsegment_byte_location;
+                    subsegment->end_byte = subsegment->start_byte + ref.referenced_size;
+                    subsegment->start_time = last_subsegment_start_time + last_subsegment_duration + ref.sap_delta_time;
+                    g_ptr_array_add(subsegments, subsegment);
 
-                    last_iframe_start_time = iframe.start_time;
-                    last_iframe_duration = ref.subsegment_duration;
-                    next_iframe_byte_location += ref.referenced_size;
-                    iframe_counter++;
+                    last_subsegment_start_time = subsegment->start_time;
+                    last_subsegment_duration = ref.subsegment_duration;
+                    next_subsegment_byte_location += ref.referenced_size;
                 } else {
                     num_nested_sidx++;
                 }
             }
         }
     }
-    if (iframes) {
-        g_ptr_array_add(validator->segment_iframes, iframes);
+    if (subsegments) {
+        g_ptr_array_add(validator->segment_subsegments, subsegments);
     }
 
 cleanup:

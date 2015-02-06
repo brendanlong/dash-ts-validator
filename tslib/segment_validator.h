@@ -48,7 +48,7 @@ typedef struct {
     uint64_t end_byte;
     bool starts_with_sap;
     uint8_t sap_type;
-} iframe_t;
+} subsegment_t;
 
 typedef struct {
     dash_profile_t profile;
@@ -65,11 +65,11 @@ typedef struct {
     segment_type_t segment_type;
     bool use_initialization_segment;
     program_map_section_t* initialization_segment_pmt;      /// parsed PMT
-    bool do_iframe_validation;
 
-    size_t iframe_index;
-    GArray* iframes;
-    iframe_t current_subsegment;
+    bool has_subsegments;
+    size_t subsegment_index;
+    GPtrArray* subsegments;
+    subsegment_t* current_subsegment;
 
     segment_t* segment;
     adaptation_set_t* adaptation_set;
@@ -78,8 +78,8 @@ typedef struct {
 typedef struct {
     bool error; // false = success
 
-    /* Each entry is a GArray* of iframe_t, one for each segment */
-    GPtrArray* segment_iframes;
+    /* Each entry is a GPtrArray* of subsegment_t, one for each segment */
+    GPtrArray* segment_subsegments;
 } index_segment_validator_t;
 
 const char* content_component_to_string(content_component_t);

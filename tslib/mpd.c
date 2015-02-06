@@ -688,7 +688,7 @@ static char* segment_template_replace(char* pattern, uint64_t segment_number, re
         g_string_append_printf(result, "%0*"PRIu64, padding, print_num);
     }
 
-    with_base =  g_build_filename(base_url, result->str, NULL);
+    with_base = g_build_filename(base_url, result->str, NULL);
 fail:
     g_string_free(result, true);
     return with_base;

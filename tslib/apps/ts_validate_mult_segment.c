@@ -130,20 +130,23 @@ int main(int argc, char* argv[])
                         g_critical("Validation of RepresentationIndex %s FAILED", representation->index_file_name);
                         overall_status = 0;
                     }
-                    if (index_validator->segment_iframes->len != 0 &&
-                            index_validator->segment_iframes->len != representation->segments->len) {
-                        g_error("PROGRAMMING ERROR: index_segment_validator_t->segment_iframes returned from "
-                                "validate_index_segment()  should have on iframes GArray* per segment, but we have "
-                                "%zu segments and %zu segment_iframes", representation->segments->len,
-                                index_validator->segment_iframes->len);
+                    if (index_validator->segment_subsegments->len != 0 &&
+                            index_validator->segment_subsegments->len != representation->segments->len) {
+                        g_error("PROGRAMMING ERROR: index_segment_validator_t->segment_subsegments returned from "
+                                "validate_index_segment()  should have on subsegments GPtrArray* per segment, but we have "
+                                "%zu segments and %zu segment_subsegments", representation->segments->len,
+                                index_validator->segment_subsegments->len);
                         /* g_error asserts */
                     }
-                    for (size_t s_i = 0; s_i < index_validator->segment_iframes->len; ++s_i) {
+                    for (size_t s_i = 0; s_i < index_validator->segment_subsegments->len; ++s_i) {
                         segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                         dash_validator_t* validator = segment->arg;
-                        validator->do_iframe_validation = true;
-                        GArray* iframes = g_ptr_array_index(index_validator->segment_iframes, s_i);
-                        g_array_append_vals(validator->iframes, iframes->data, iframes->len);
+                        validator->has_subsegments = true;
+                        GPtrArray* subsegments = g_ptr_array_index(index_validator->segment_subsegments, s_i);
+                        for (size_t i = 0; i < subsegments->len; ++i) {
+                            g_ptr_array_add(validator->subsegments, g_ptr_array_index(subsegments, i));
+                        }
+                        g_ptr_array_set_size(subsegments, 0);
                         
                     }
                     index_segment_validator_free(index_validator);
@@ -160,10 +163,10 @@ int main(int argc, char* argv[])
                             g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
                             overall_status = 0;
                         }
-                        if (index_validator->segment_iframes->len != 0) {
-                            GArray* iframes = g_ptr_array_index(index_validator->segment_iframes, 0);
+                        if (index_validator->segment_subsegments->len != 0) {
+                            GPtrArray* subsegments = g_ptr_array_index(index_validator->segment_subsegments, 0);
                             dash_validator_t* validator = segment->arg;
-                            if (validator->iframes->len != 0) {
+                            if (validator->subsegments->len != 0) {
                                 g_critical("DASH Conformance: Segment %s has a representation index and a single "
                                         "segment index, but should only have one or the other. 6.4.6 Index Segment: "
                                         "Index Segments may either be associated to a single Media Segment as "
@@ -171,8 +174,11 @@ int main(int argc, char* argv[])
                                         "Representation as specified in 6.4.6.3.", segment->file_name);
                                 overall_status = 0;
                             } else {
-                                validator->do_iframe_validation = true;
-                                g_array_append_vals(validator->iframes, iframes->data, iframes->len);
+                                validator->has_subsegments = true;
+                                for (size_t i = 0; i < subsegments->len; ++i) {
+                                    g_ptr_array_add(validator->subsegments, g_ptr_array_index(subsegments, i));
+                                }
+                                g_ptr_array_set_size(subsegments, 0);
                             }
                         }
                         index_segment_validator_free(index_validator);
