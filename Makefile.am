@@ -14,7 +14,6 @@ tslib_libts_a_SOURCES = tslib/cas.c tslib/crc32m.c tslib/descriptors.c tslib/iso
 tslib_libts_a_CFLAGS = -isystem$(top_srcdir)/h264bitstream $(LIBXML2_CFLAGS) \
         -O -fdiagnostics-color=always \
         -fstack-protector -pie -fPIE -ftrapv -D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now \
-        -Werror \
         -Wall -Winit-self -Wstrict-overflow=3 -Wtrampolines -Wfloat-equal -Wshadow -Wstack-usage=4096 \
         -Wunsafe-loop-optimizations -Wpointer-arith -Wtype-limits -Wbad-function-cast -Wcast-qual -Wclobbered \
         -Wstrict-prototypes -Wold-style-definition -Wmissing-parameter-type -Wmissing-prototypes -Wno-multichar \
