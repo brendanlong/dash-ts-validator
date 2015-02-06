@@ -81,6 +81,7 @@ struct _mpeg2ts_stream_ {
     pat_processor_t pat_processor;      // callback called after PAT was processed
     cat_processor_t cat_processor;      // callback called after CAT was processed
     demux_pid_handler_t* emsg_processor; // handler for 'emsg' packets
+    demux_pid_handler_t* ts_processor;  // handler for all TS packets
     GPtrArray* programs;                // list of programs in this multiplex
     GPtrArray* ca_systems;              // list of conditional access systems in this multiplex
     void* arg;                          // argument for PAT/CAT callbacks

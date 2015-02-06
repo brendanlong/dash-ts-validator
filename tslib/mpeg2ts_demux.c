@@ -171,6 +171,7 @@ void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
     g_ptr_array_free(m2s->programs, true);
     program_association_section_free(m2s->pat);
     demux_pid_handler_free(m2s->emsg_processor);
+    demux_pid_handler_free(m2s->ts_processor);
     if (m2s->arg_destructor && m2s->arg) {
         m2s->arg_destructor(m2s->arg);
     }
@@ -336,6 +337,9 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     if (ts == NULL) {
         mpeg2ts_stream_reset(m2s);
         return 0;
+    }
+    if (m2s->ts_processor && m2s->ts_processor->process_ts_packet) {
+        m2s->ts_processor->process_ts_packet(ts, NULL, m2s->ts_processor->arg);
     }
 
     if (ts->header.pid == PID_PAT) {

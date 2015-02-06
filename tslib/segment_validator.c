@@ -223,13 +223,8 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
             demux_handler->arg = pd;
             demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
 
-            // hook PES demuxer to the PID processor
-            demux_pid_handler_t* demux_validator = demux_pid_handler_new(validate_ts_packet);
-            demux_validator->arg = dash_validator;
-
             // hook PID processor to PID
-            mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_pid,
-                    demux_handler, demux_validator);
+            mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_pid, demux_handler, NULL);
 
             pid_validator = pid_validator_new(pid, content_component);
             g_ptr_array_add(dash_validator->pids, pid_validator);
@@ -285,9 +280,6 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         return 0;
     }
 
-    pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.pid, dash_validator);
-    assert(pid_validator != NULL);
-
     if (dash_validator->pcr_pid == ts->header.pid) {
         int64_t pcr = ts_read_pcr(ts);
         if (PCR_IS_VALID(pcr)) {
@@ -300,24 +292,50 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         }
     }
 
-    while (dash_validator->current_subsegment && ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
-        if (dash_validator->current_subsegment->ts_count == 0) {
-            g_critical("Did not see any TS packets for subsegment %zu in segment %s. 6.4.2.3 Segment Index: All "
-                    "media offsets within `sidx` boxes shall be to the first (sync) byte of a TS packet.",
-                    dash_validator->subsegment_index, dash_validator->segment->file_name);
-            dash_validator->status = 0;
-        } else if (!dash_validator->current_subsegment->saw_random_access) {
-            g_critical("Error: Did not see iframe for subsegment %zu in segment %s.",
-                    dash_validator->subsegment_index, dash_validator->segment->file_name);
-            dash_validator->status = 0;
+    subsegment_t* subsegment = NULL;
+    if (dash_validator->current_subsegment) {
+        while (ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
+            if (dash_validator->current_subsegment->ts_count == 0) {
+                g_critical("Did not see any TS packets for subsegment %zu in segment %s. 6.4.2.3 Segment Index: All "
+                        "media offsets within `sidx` boxes shall be to the first (sync) byte of a TS packet.",
+                        dash_validator->subsegment_index, dash_validator->segment->file_name);
+                dash_validator->status = 0;
+            } else {
+                if (!dash_validator->current_subsegment->saw_random_access) {
+                    g_critical("Error: Did not see iframe for subsegment %zu in segment %s.",
+                            dash_validator->subsegment_index, dash_validator->segment->file_name);
+                    dash_validator->status = 0;
+                }
+                if (dash_validator->current_subsegment->ssix_offset_index != dash_validator->current_subsegment->ssix_offsets->len) {
+                    uint64_t next_ssix_offset = g_array_index(dash_validator->current_subsegment->ssix_offsets,
+                            uint64_t, dash_validator->current_subsegment->ssix_offset_index);
+                    g_critical("Error: 'ssix' has next offset %"PRIu64", but the subsegment ends at %"PRIu64".",
+                            next_ssix_offset, dash_validator->current_subsegment->end_byte);
+                }
+            }
+            ++dash_validator->subsegment_index;
+            if (dash_validator->subsegment_index >= dash_validator->subsegments->len) {
+                dash_validator->current_subsegment = NULL;
+            } else {
+                dash_validator->current_subsegment = g_ptr_array_index(dash_validator->subsegments,
+                        dash_validator->subsegment_index);
+                dash_validator->current_subsegment->pes_count = 0;
+            }
         }
-        ++dash_validator->subsegment_index;
-        if (dash_validator->subsegment_index >= dash_validator->subsegments->len) {
-            dash_validator->current_subsegment = NULL;
-        } else {
-            dash_validator->current_subsegment = g_ptr_array_index(dash_validator->subsegments,
-                    dash_validator->subsegment_index);
-            dash_validator->current_subsegment->pes_count = 0;
+        subsegment = dash_validator->current_subsegment;
+        if (subsegment->ssix_offset_index < subsegment->ssix_offsets->len) {
+            uint64_t next_ssix_offset = g_array_index(subsegment->ssix_offsets, uint64_t,
+                    subsegment->ssix_offset_index);
+            if (ts->pos_in_stream >= next_ssix_offset) {
+                if (ts->pos_in_stream != next_ssix_offset) {
+                    g_critical("DASH Conformance: Subsegment index in %s has offset %zu, but closest following TS "
+                            "packet starts at %zu. 6.4.2.4 Subsegment Index: All media offsets within `ssix` boxes "
+                            "shall be to the first (sync) byte of a TS packet.",
+                            dash_validator->segment->file_name, next_ssix_offset, ts->pos_in_stream);
+                    dash_validator->status = 0;
+                }
+                ++dash_validator->current_subsegment->ssix_offset_index;
+            }
         }
     }
 
@@ -334,6 +352,12 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         }
     }
     ++dash_validator->current_subsegment->ts_count;
+
+    pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.pid, dash_validator);
+    if (pid_validator == NULL) {
+        /* This PID is not registered as part of the main program */
+        goto cleanup;
+    }
 
     // This is the first TS packet from this PID
     if (pid_validator->ts_count == 0) {
@@ -365,6 +389,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
     // we need to figure out what to do here -- we can let PES parsing fail and get a notice
 
     pid_validator->ts_count++;
+cleanup:
     return 1;
 }
 
@@ -683,6 +708,11 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_val
     emsg_handler->arg = emsg_pd;
     emsg_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
     m2s->emsg_processor = emsg_handler;
+
+    // hook PES demuxer to the PID processor
+    demux_pid_handler_t* ts_validator = demux_pid_handler_new(validate_ts_packet);
+    ts_validator->arg = dash_validator;
+    m2s->ts_processor = ts_validator;
 
     long packet_buf_size = 4096;
     uint64_t packets_read = 0;

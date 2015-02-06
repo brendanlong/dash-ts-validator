@@ -50,6 +50,8 @@ typedef struct {
     bool saw_random_access;
     size_t ts_count;
     size_t pes_count;
+
+    size_t ssix_offset_index;
     GArray* ssix_offsets; /* uint64_t offsets from ssix boxes */
 } subsegment_t;
 
