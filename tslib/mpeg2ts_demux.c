@@ -357,7 +357,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     if (m2s->pat == NULL) {
-        g_critical("PAT missing -- unknown PID 0x%02X", ts->header.pid);
+        g_info("PAT missing -- unknown PID 0x%02X", ts->header.pid);
         ts_free(ts);
         return 0;
     }
@@ -394,7 +394,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // if we are here, we have no clue what this PID is
-    g_warning("Unknown PID 0x%02X", ts->header.pid);
+    g_info("Unknown PID 0x%02X", ts->header.pid);
     ts_free(ts);
     return 0;
 }
