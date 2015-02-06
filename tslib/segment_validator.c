@@ -374,11 +374,11 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
             }
 
             // by the time we get to the start of the first PES, we need to have seen at least one PCR.
-            if (dash_validator->profile >= DASH_PROFILE_MPEG2TS_SIMPLE) {
-                if (!PCR_IS_VALID(dash_validator->last_pcr)) {
-                    g_critical("DASH Conformance: PCR must be present before first bytes of media data");
-                    dash_validator->status = 0;
-                }
+            if (!PCR_IS_VALID(dash_validator->last_pcr) && dash_validator->adaptation_set->bitstream_switching) {
+                g_critical("DASH Conformance: PCR must be present before first bytes of media data. 7.4.3.4 "
+                        "Bitstream switching: PCR shall be present in the Segment prior to the first byte of a "
+                        "TS packet payload containing media data, and not inferred from the `pcrb` box.");
+                dash_validator->status = 0;
             }
         }
     }
