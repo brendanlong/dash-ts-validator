@@ -1,215 +1,81 @@
 
+The ts_validator verifies:
 
+  * MPEG transport stream syntax and conformance
+  * SAP type conformance
+  * Segment timing (audio and video)
+  * Index file conformance
+  * Initialization segment conformance
 
-The ts_validater verifies:
+To run the ts_validator, open a shell for a command line, and run ts_validator.exe (or just ts_validator on OS X or Linux) with the name of the MPD as an input parameter. For example:
 
--- MPEG transport stream syntax and conformance
--- SAP type conformance
--- Segment timing (audio and video)
--- Index file conformance
--- Initialization segment conformance
+    ts_validate_mult_segment.exe example.mpd
 
+By default, the report will only show warnings and errors. To make it more verbose, add -v for info-level logging or -vv for debug-level logging.
 
-The ts_validator uses a configuration file to pass in all the parameters for the validation.  The configuration file contains essentially the same info as the mpd file, but it is in an easier ini file format rather than XML.  The file syntax, as well as an example file are discussed below. 
+    ts_validate_mult_segment.exe example.mpd -v
 
-To run the ts_validator, open a shell for a command line, and run the ts_validator exe with the name of the configuration file as an input parameter.  For example:
+To save the report to file, use file redirection:
 
-ts_validate_mult_segment.exe SegInfoFile.txt 
-
-The validator will produce a rather long report.  To save the report to file, use file redirection:
-
-ts_validate_mult_segment.exe SegInfoFile.txt > myTestOutput.txt
+    ts_validate_mult_segment.exe example.mpd > test_output.txt
 
 The report contains a lot of information, including pass/fail information for each initialization segment, index segment, and media segment.  Below we provide more detail on a few of the features:
 
+## Individual Segment results
 
-Individual Segment results
---------------------------
-The report contains a pass/fail result for each media segment.  To find these, search for the text "SEGMENT TEST RESULT".  If a segment has failed, then more info on the failure will be provided in the lines preceding the "SEGMENT TEST RESULT" line.
+The report contains a pass/fail result for each media segment.  To find these, search for the text "SEGMENT TEST RESULT".  If a segment has failed, then more info on the failure will be provided in the lines preceding the "SEGMENT TEST RESULT" line. 
 
-Overall Test Result
--------------------
+##  Overall Test Result
+
 The last line of the report contains a summary pass/fail test result.  To find this, either scroll to the end of the report or search for the text "OVERALL TEST RESULT".
 
-Audio and Video Gap Matrices
-----------------------------
-In order to measure the timing gaps in the audio and video streams that a user would experience if switching between representations, the report contains timing-gap matrices.  examples are shown below.  If, for example, a user switches from uf7/seg-00001.ts to uf12/seg-00002.ts, then the timing disruption they would experience can be found in row uf7/seg-00001.ts, column uf12/seg-00002.ts of the timing matrix.  In the example below, all the timing gaps are 0, so that the user will not experience any timing disruption in switching between these segment.  The test report contains matrices for all segment pairs in an adaptation set.  The matrices are tab-delimited, so they look clumsy in the test report, but display nicely if pasted into a spreadsheet.
+## Audio and Video Gap Matrices
 
-AudioGapMatrix
-    	uf3/seg-00002.ts	uf7/seg-00002.ts	uf12/seg-00002.ts	uf28/seg-00002.ts	
-uf3/seg-00001.ts	0	0	0	0	
-uf7/seg-00001.ts	0	0	0	0	
-uf12/seg-00001.ts	0	0	0	0	
-uf28/seg-00001.ts	0	0	0	0	
+In order to measure the timing gaps in the audio and video streams that a user would experience if switching between representations, the report contains timing-gap matrices. Examples are shown below.  If, for example, a user switches from uf7/seg-00001.ts to uf12/seg-00002.ts, then the timing disruption they would experience can be found in row uf7/seg-00001.ts, column uf12/seg-00002.ts of the timing matrix.  In the example below, all the timing gaps are 0, so that the user will not experience any timing disruption in switching between these segment.  The test report contains matrices for all segment pairs in an adaptation set.  The matrices are tab-delimited, so they look clumsy in the test report, but display nicely if pasted into a spreadsheet. These reports are only displayed if there is a timing mismatch, or at the info logging level (-v).
 
-VideoGapMatrix
-    	uf3/seg-00002.ts	uf7/seg-00002.ts	uf12/seg-00002.ts	uf28/seg-00002.ts	
-uf3/seg-00001.ts	0	0	0	0	
-uf7/seg-00001.ts	0	0	0	0	
-uf12/seg-00001.ts	0	0	0	0	
-uf28/seg-00001.ts	0	0	0	0	
+    AudioGapMatrix
+        	uf3/seg-00002.ts	uf7/seg-00002.ts	uf12/seg-00002.ts	uf28/seg-00002.ts	
+    uf3/seg-00001.ts	0	0	0	0	
+    uf7/seg-00001.ts	0	0	0	0	
+    uf12/seg-00001.ts	0	0	0	0	
+    uf28/seg-00001.ts	0	0	0	0	
 
+    VideoGapMatrix
+        	uf3/seg-00002.ts	uf7/seg-00002.ts	uf12/seg-00002.ts	uf28/seg-00002.ts	
+    uf3/seg-00001.ts	0	0	0	0	
+    uf7/seg-00001.ts	0	0	0	0	
+    uf12/seg-00001.ts	0	0	0	0	
+    uf28/seg-00001.ts	0	0	0	0	
 
-Audio and Video Timing Summaries
---------------------------------
-Near the end of the test report, a tabular summary of segment timing for each representation is given; an example is shown below.  The table shows the expected and actual start times and end times (in PTS ticks) for each segment.  The matrices are tab-delimited, so they look clumsy in the test report, but display nicely if pasted into a spreadsheet.
+## Audio and Video Timing Summaries
 
-VideoTiming
-segmentFile	expectedStart	expectedEnd	videoStart	videoEnd	deltaStart	deltaEnd
-uf28/seg-00001.ts	6000	906000	6000	906000	0	0
-uf28/seg-00002.ts	906000	1806000	906000	1806000	0	0
-uf28/seg-00003.ts	1806000	2706000	1806000	2706000	0	0
-uf28/seg-00004.ts	2706000	3606000	2706000	3606000	0	0
-uf28/seg-00005.ts	3606000	4506000	3606000	4506000	0	0
-uf28/seg-00006.ts	4506000	5406000	4506000	5406000	0	0
-uf28/seg-00007.ts	5406000	6306000	5406000	6306000	0	0
-uf28/seg-00008.ts	6306000	7206000	6306000	7206000	0	0
-uf28/seg-00009.ts	7206000	8106000	7206000	8106000	0	0
-uf28/seg-00010.ts	8106000	9006000	8106000	9006000	0	0
-uf28/seg-00011.ts	9006000	9906000	9006000	9906000	0	0
-uf28/seg-00012.ts	9906000	10806000	9906000	10806000	0	0
-uf28/seg-00013.ts	10806000	11706000	10806000	11706000	0	0
-uf28/seg-00014.ts	11706000	12606000	11706000	12606000	0	0
-uf28/seg-00015.ts	12606000	13506000	12606000	13506000	0	0
-uf28/seg-00016.ts	13506000	14406000	13506000	14406000	0	0
-uf28/seg-00017.ts	14406000	15306000	14406000	15306000	0	0
-uf28/seg-00018.ts	15306000	16206000	15306000	16206000	0	0
-uf28/seg-00019.ts	16206000	17106000	16206000	17106000	0	0
-uf28/seg-00020.ts	17106000	18006000	17106000	18006000	0	0
-uf28/seg-00021.ts	18006000	18906000	18006000	18906000	0	0
-uf28/seg-00022.ts	18906000	19806000	18906000	19806000	0	0
-uf28/seg-00023.ts	19806000	20706000	19806000	20706000	0	0
-uf28/seg-00024.ts	20706000	21606000	20706000	21606000	0	0
-uf28/seg-00025.ts	21606000	22506000	21606000	22506000	0	0
-uf28/seg-00026.ts	22506000	23153520	22506000	23151000	0	-2520
+Near the end of the test report, a tabular summary of segment timing for each representation is given; an example is shown below.  The table shows the expected and actual start times and end times (in PTS ticks) for each segment.  The matrices are tab-delimited, so they look clumsy in the test report, but display nicely if pasted into a spreadsheet. These reports are only printed if the delta values are non-zero, or at the info logging level (-v)
 
-
-
-
-SegInfoFile syntax
-------------------
-
-The SegInfoFile configuration file describes the adaptation set, and contains similar information to the mpd file, although in ini-file syntax (property = value).  Currently, the user needs to construct the SegInfoFile by hand.
-
-Some notes on the syntax of the configuration file:
-	-- any line starting with a # is a comment
-	-- the parameters can be listed in any order
-	-- there can be spaces around the equals sign
-	-- all filepaths in the configuration file are relative to the directory where the ts_validator is run
-
-
-The specific parameters that the SegInfoFile configuration file contain are listed below.
-
-ExpectedSAPType: The expected SAP type at the start of each segment (valid values are 1 and 2).  If no SAP is expected, then this parameter can be set to 0 or omitted.
-
-MaxAudioGap_PTSTicks: The maximum allowed timing gap (in PTS ticks) between successive audio segments.  If a gap is detected that is greater than this, the conformance validation fails.
-
-MaxVideoGap_PTSTicks: The maximum allowed timing gap (in PTS ticks) between successive video segments.  If a gap is detected that is greater than this, the conformance validation fails.
-
-PresentationTimeOffset_PTSTicks: The starting presentation time (in PTS ticks) of the representations.
-
-InitializationSegment: the filepath of the initilization segment, if used.  If there is no initialization segment, then this field can be left empty or omitted.
-
-RepresentationIndexSegment: a comma-delimited list of filepaths of the segment media files, where n is the segment number. There is one media file per representation in the list, so an adaptstion set with 4 representations would have 4 entries in the comma-delimited list.  For example: "uf3/uf3_iframe.sidx,uf7/uf7_iframe.sidx,uf12/uf12_iframe.sidx,uf28/uf28_iframe.sidx".  If there is no representation index file, then this field can be left empty or omitted.
-
-Segment.n: a comma-delimited list of filepaths of the segment media files, where n is the segment number. There is one media file per representation in the list, so, for example, an adaptation set with 4 representations would have 4 entries in the comma-delimited list.  For example: "Segment.1 = uf3/seg-00001.ts,uf7/seg-00001.ts,uf12/seg-00001.ts,uf28/seg-00001.ts".  In the config file there is one Segment entry for each segment.
-
-Segment_DurationPTSTicks.n: the duration of the n'th segment in PTS ticks.  In the config file there is one Segment_DurationPTSTicks entry for each segment.
-
-Segment_IndexFile.n: a comma-delimited list of filepaths of the segment index file for the n'th segment.  As with the Segment entry, there is one index file per representation.  If there are no segment index files, then these fields can be left empty or omitted.
-
-
-
-Example SegInfoFile File
-------------------------
-
-ExpectedSAPType = 1
-MaxAudioGap_PTSTicks = 10
-MaxVideoGap_PTSTicks = 100
-InitializationSegment = 
-PresentationTimeOffset_PTSTicks = 6000
-
-####### COMMENT ################
-
-RepresentationIndexSegment = uf3/uf3_iframe.sidx,uf7/uf7_iframe.sidx,uf12/uf12_iframe.sidx,uf28/uf28_iframe.sidx
-
-Segment.1 = uf3/seg-00001.ts,uf7/seg-00001.ts,uf12/seg-00001.ts,uf28/seg-00001.ts
-Segment.2 = uf3/seg-00002.ts,uf7/seg-00002.ts,uf12/seg-00002.ts,uf28/seg-00002.ts
-Segment.3 = uf3/seg-00003.ts,uf7/seg-00003.ts,uf12/seg-00003.ts,uf28/seg-00003.ts
-Segment.4 = uf3/seg-00004.ts,uf7/seg-00004.ts,uf12/seg-00004.ts,uf28/seg-00004.ts
-Segment.5 = uf3/seg-00005.ts,uf7/seg-00005.ts,uf12/seg-00005.ts,uf28/seg-00005.ts
-Segment.6 = uf3/seg-00006.ts,uf7/seg-00006.ts,uf12/seg-00006.ts,uf28/seg-00006.ts
-Segment.7 = uf3/seg-00007.ts,uf7/seg-00007.ts,uf12/seg-00007.ts,uf28/seg-00007.ts
-Segment.8 = uf3/seg-00008.ts,uf7/seg-00008.ts,uf12/seg-00008.ts,uf28/seg-00008.ts
-Segment.9 = uf3/seg-00009.ts,uf7/seg-00009.ts,uf12/seg-00009.ts,uf28/seg-00009.ts
-Segment.10 = uf3/seg-00010.ts,uf7/seg-00010.ts,uf12/seg-00010.ts,uf28/seg-00010.ts
-Segment.11 = uf3/seg-00011.ts,uf7/seg-00011.ts,uf12/seg-00011.ts,uf28/seg-00011.ts
-Segment.12 = uf3/seg-00012.ts,uf7/seg-00012.ts,uf12/seg-00012.ts,uf28/seg-00012.ts
-Segment.13 = uf3/seg-00013.ts,uf7/seg-00013.ts,uf12/seg-00013.ts,uf28/seg-00013.ts
-Segment.14 = uf3/seg-00014.ts,uf7/seg-00014.ts,uf12/seg-00014.ts,uf28/seg-00014.ts
-Segment.15 = uf3/seg-00015.ts,uf7/seg-00015.ts,uf12/seg-00015.ts,uf28/seg-00015.ts
-Segment.16 = uf3/seg-00016.ts,uf7/seg-00016.ts,uf12/seg-00016.ts,uf28/seg-00016.ts
-Segment.17 = uf3/seg-00017.ts,uf7/seg-00017.ts,uf12/seg-00017.ts,uf28/seg-00017.ts
-Segment.18 = uf3/seg-00018.ts,uf7/seg-00018.ts,uf12/seg-00018.ts,uf28/seg-00018.ts
-Segment.19 = uf3/seg-00019.ts,uf7/seg-00019.ts,uf12/seg-00019.ts,uf28/seg-00019.ts
-Segment.20 = uf3/seg-00020.ts,uf7/seg-00020.ts,uf12/seg-00020.ts,uf28/seg-00020.ts
-Segment.21 = uf3/seg-00021.ts,uf7/seg-00021.ts,uf12/seg-00021.ts,uf28/seg-00021.ts
-Segment.22 = uf3/seg-00022.ts,uf7/seg-00022.ts,uf12/seg-00022.ts,uf28/seg-00022.ts
-Segment.23 = uf3/seg-00023.ts,uf7/seg-00023.ts,uf12/seg-00023.ts,uf28/seg-00023.ts
-Segment.24 = uf3/seg-00024.ts,uf7/seg-00024.ts,uf12/seg-00024.ts,uf28/seg-00024.ts
-Segment.25 = uf3/seg-00025.ts,uf7/seg-00025.ts,uf12/seg-00025.ts,uf28/seg-00025.ts
-Segment.26 = uf3/seg-00026.ts,uf7/seg-00026.ts,uf12/seg-00026.ts,uf28/seg-00026.ts
-
-Segment_DurationPTSTicks.1 = 900000
-Segment_DurationPTSTicks.2 = 900000
-Segment_DurationPTSTicks.3 = 900000
-Segment_DurationPTSTicks.4 = 900000
-Segment_DurationPTSTicks.5 = 900000
-Segment_DurationPTSTicks.6 = 900000
-Segment_DurationPTSTicks.7 = 900000
-Segment_DurationPTSTicks.8 = 900000
-Segment_DurationPTSTicks.9 = 900000
-Segment_DurationPTSTicks.10 = 900000
-Segment_DurationPTSTicks.11 = 900000
-Segment_DurationPTSTicks.12 = 900000
-Segment_DurationPTSTicks.13 = 900000
-Segment_DurationPTSTicks.14 = 900000
-Segment_DurationPTSTicks.15 = 900000
-Segment_DurationPTSTicks.16 = 900000
-Segment_DurationPTSTicks.17 = 900000
-Segment_DurationPTSTicks.18 = 900000
-Segment_DurationPTSTicks.19 = 900000
-Segment_DurationPTSTicks.20 = 900000
-Segment_DurationPTSTicks.21 = 900000
-Segment_DurationPTSTicks.22 = 900000
-Segment_DurationPTSTicks.23 = 900000
-Segment_DurationPTSTicks.24 = 900000
-Segment_DurationPTSTicks.25 = 900000
-Segment_DurationPTSTicks.26 = 647520
-
-Segment_IndexFile.1 = 
-Segment_IndexFile.2 = 
-Segment_IndexFile.3 = 
-Segment_IndexFile.4 = 
-Segment_IndexFile.5 = 
-Segment_IndexFile.6 = 
-Segment_IndexFile.7 = 
-Segment_IndexFile.8 = 
-Segment_IndexFile.9 = 
-Segment_IndexFile.10 = 
-Segment_IndexFile.11 = 
-Segment_IndexFile.12 = 
-Segment_IndexFile.13 = 
-Segment_IndexFile.14 = 
-Segment_IndexFile.15 = 
-Segment_IndexFile.16 = 
-Segment_IndexFile.17 = 
-Segment_IndexFile.18 = 
-Segment_IndexFile.19 = 
-Segment_IndexFile.20 = 
-Segment_IndexFile.21 = 
-Segment_IndexFile.22 = 
-Segment_IndexFile.23 = 
-Segment_IndexFile.24 = 
-Segment_IndexFile.25 = 
-Segment_IndexFile.26 = 
+    VideoTiming
+    segmentFile	expectedStart	expectedEnd	videoStart	videoEnd	deltaStart	deltaEnd
+    uf28/seg-00001.ts	6000	906000	6000	906000	0	0
+    uf28/seg-00002.ts	906000	1806000	906000	1806000	0	0
+    uf28/seg-00003.ts	1806000	2706000	1806000	2706000	0	0
+    uf28/seg-00004.ts	2706000	3606000	2706000	3606000	0	0
+    uf28/seg-00005.ts	3606000	4506000	3606000	4506000	0	0
+    uf28/seg-00006.ts	4506000	5406000	4506000	5406000	0	0
+    uf28/seg-00007.ts	5406000	6306000	5406000	6306000	0	0
+    uf28/seg-00008.ts	6306000	7206000	6306000	7206000	0	0
+    uf28/seg-00009.ts	7206000	8106000	7206000	8106000	0	0
+    uf28/seg-00010.ts	8106000	9006000	8106000	9006000	0	0
+    uf28/seg-00011.ts	9006000	9906000	9006000	9906000	0	0
+    uf28/seg-00012.ts	9906000	10806000	9906000	10806000	0	0
+    uf28/seg-00013.ts	10806000	11706000	10806000	11706000	0	0
+    uf28/seg-00014.ts	11706000	12606000	11706000	12606000	0	0
+    uf28/seg-00015.ts	12606000	13506000	12606000	13506000	0	0
+    uf28/seg-00016.ts	13506000	14406000	13506000	14406000	0	0
+    uf28/seg-00017.ts	14406000	15306000	14406000	15306000	0	0
+    uf28/seg-00018.ts	15306000	16206000	15306000	16206000	0	0
+    uf28/seg-00019.ts	16206000	17106000	16206000	17106000	0	0
+    uf28/seg-00020.ts	17106000	18006000	17106000	18006000	0	0
+    uf28/seg-00021.ts	18006000	18906000	18006000	18906000	0	0
+    uf28/seg-00022.ts	18906000	19806000	18906000	19806000	0	0
+    uf28/seg-00023.ts	19806000	20706000	19806000	20706000	0	0
+    uf28/seg-00024.ts	20706000	21606000	20706000	21606000	0	0
+    uf28/seg-00025.ts	21606000	22506000	21606000	22506000	0	0
+    uf28/seg-00026.ts	22506000	23153520	22506000	23151000	0	-2520
