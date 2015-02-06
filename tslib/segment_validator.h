@@ -48,6 +48,7 @@ typedef struct {
     uint64_t end_byte;
     bool starts_with_sap;
     uint8_t sap_type;
+    bool saw_random_access;
 } subsegment_t;
 
 typedef struct {

@@ -298,6 +298,22 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         }
     }
 
+    while (dash_validator->current_subsegment && ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
+        if (!dash_validator->current_subsegment->saw_random_access) {
+            g_critical("Error: Did not see iframe for subsegment %zu in segment %s.",
+                    dash_validator->subsegment_index, dash_validator->segment->file_name);
+            dash_validator->status = 0;
+        }
+        ++dash_validator->subsegment_index;
+        if (dash_validator->subsegment_index >= dash_validator->subsegments->len) {
+            dash_validator->current_subsegment = NULL;
+        } else {
+            dash_validator->current_subsegment = g_ptr_array_index(dash_validator->subsegments,
+                    dash_validator->subsegment_index);
+            pid_validator->subsegment_pes_count = 0;
+        }
+    }
+
     // This is the first TS packet from this PID
     if (pid_validator->ts_count == 0) {
         pid_validator->continuity_counter = ts->header.continuity_counter;
@@ -382,7 +398,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
-    if (dash_validator->has_subsegments && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
+    if (dash_validator->current_subsegment && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
             dash_validator->adaptation_set->subsegment_alignment.b)) {
         ts_packet_t* last_ts = g_queue_peek_tail(ts_queue);
         uint64_t last_ts_end_byte = last_ts->pos_in_stream + 188 /* length of TS packet */; 
@@ -477,37 +493,31 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         /* TODO: Where did this magic number come from? */
         pid_validator->duration = 3000;
 
-        if (dash_validator->has_subsegments && first_ts->adaptation_field.random_access_indicator) {
+        if (dash_validator->current_subsegment && first_ts->adaptation_field.random_access_indicator) {
             // check subsegment location against index file
-            if (dash_validator->subsegment_index >= dash_validator->subsegments->len) {
-                g_critical("DASH Conformance: Stream has more subsegments than index file");
+            dash_validator->current_subsegment->saw_random_access = true;
+            // time location
+            if (dash_validator->current_subsegment->start_time != pes->header.pts) {
+                g_critical("DASH Conformance: expected subsegment PTS does not match actual.  Expected: %"PRIu64", "
+                        "Actual: %"PRIu64, dash_validator->current_subsegment->start_time, pes->header.pts);
                 dash_validator->status = 0;
-            } else {
-                subsegment_t* subsegment = g_ptr_array_index(dash_validator->subsegments, dash_validator->subsegment_index);
-                dash_validator->current_subsegment = subsegment;
-                pid_validator->subsegment_pes_count = 0;
-                ++dash_validator->subsegment_index;
+            }
 
-                // time location
-                if (subsegment->start_time != pes->header.pts) {
-                    g_critical("DASH Conformance: expected subsegment PTS does not match actual.  Expected: %"PRIu64", "
-                            "Actual: %"PRIu64, subsegment->start_time, pes->header.pts);
-                    dash_validator->status = 0;
-                }
+            // byte location
+            if (dash_validator->current_subsegment->start_byte != pes->payload_pos_in_stream) {
+                g_critical("DASH Conformance: expected subsegment Byte Location does not match actual.  Expected: "
+                        "%"PRIu64", Actual: %"PRIu64"", dash_validator->current_subsegment->start_byte, pes->payload_pos_in_stream);
+                dash_validator->status = 0;
+            }
 
-                // byte location
-                if (subsegment->start_byte != pes->payload_pos_in_stream) {
-                    g_critical("DASH Conformance: expected subsegment Byte Location does not match actual.  Expected: "
-                            "%"PRIu64", Actual: %"PRIu64"", subsegment->start_byte, pes->payload_pos_in_stream);
-                    dash_validator->status = 0;
-                }
-
-                // SAP type
-                if (subsegment->starts_with_sap && subsegment->sap_type != 0 && subsegment->sap_type != pid_validator->sap_type) {
-                    g_critical("DASH Conformance: expected subsegment SAP Type does not match actual: expected SAP_type "
-                            "= %d, actual SAP_type = %d", subsegment->sap_type, pid_validator->sap_type);
-                    dash_validator->status = 0;
-                }
+            // SAP type
+            if (dash_validator->current_subsegment->starts_with_sap
+                    && dash_validator->current_subsegment->sap_type != 0
+                    && dash_validator->current_subsegment->sap_type != pid_validator->sap_type) {
+                g_critical("DASH Conformance: expected subsegment SAP Type does not match actual: expected SAP_type "
+                        "= %d, actual SAP_type = %d", dash_validator->current_subsegment->sap_type, 
+                        pid_validator->sap_type);
+                dash_validator->status = 0;
             }
         }
     }
