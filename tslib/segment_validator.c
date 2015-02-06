@@ -337,21 +337,21 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
                 ++dash_validator->current_subsegment->ssix_offset_index;
             }
         }
-    }
 
-    // First TS packet in this subsegment
-    if (dash_validator->current_subsegment && ts->pos_in_stream >= dash_validator->current_subsegment->start_byte
-            && dash_validator->current_subsegment->ts_count == 0) {
-        if (dash_validator->current_subsegment->start_byte != ts->pos_in_stream) {
-            g_critical("DASH Conformance: Subsegment %zu in segment %s starts at byte offset %zu, but the sync byte "
-                    "for the first TS packet following the subsegment start is at %zu. 6.4.2.3 Segment Index: All "
-                    "media offsets within `sidx` boxes shall be to the first (sync) byte of a TS packet.",
-                    dash_validator->subsegment_index, dash_validator->segment->file_name,
-                    dash_validator->current_subsegment->start_byte, ts->pos_in_stream);
-            dash_validator->status = 0;
+        // First TS packet in this subsegment
+        if (ts->pos_in_stream >= dash_validator->current_subsegment->start_byte
+                && dash_validator->current_subsegment->ts_count == 0) {
+            if (dash_validator->current_subsegment->start_byte != ts->pos_in_stream) {
+                g_critical("DASH Conformance: Subsegment %zu in segment %s starts at byte offset %zu, but the sync byte "
+                        "for the first TS packet following the subsegment start is at %zu. 6.4.2.3 Segment Index: All "
+                        "media offsets within `sidx` boxes shall be to the first (sync) byte of a TS packet.",
+                        dash_validator->subsegment_index, dash_validator->segment->file_name,
+                        dash_validator->current_subsegment->start_byte, ts->pos_in_stream);
+                dash_validator->status = 0;
+            }
         }
+        ++dash_validator->current_subsegment->ts_count;
     }
-    ++dash_validator->current_subsegment->ts_count;
 
     pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.pid, dash_validator);
     if (pid_validator == NULL) {
@@ -512,7 +512,8 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         // TODO: validate in case of ISO/IEC 14496-10 (?)
     }
 
-    if (dash_validator->current_subsegment->pes_count == 0 && !(pes->header.pts_dts_flags & PES_PTS_FLAG)
+    if (dash_validator->current_subsegment && dash_validator->current_subsegment->pes_count == 0
+            && !(pes->header.pts_dts_flags & PES_PTS_FLAG)
             && (dash_validator->adaptation_set->segment_alignment.has_int ||
                 dash_validator->adaptation_set->segment_alignment.b)) {
         g_critical("DASH Conformance: First PES packet in subsegment %zu of %s does not have PTS and "
@@ -588,7 +589,9 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
 cleanup:
     if (pid_validator) {
         pid_validator->pes_count++;
-        dash_validator->current_subsegment->pes_count++;
+        if (dash_validator->current_subsegment) {
+            dash_validator->current_subsegment->pes_count++;
+        }
     }
     pes_free(pes);
     return 1;
