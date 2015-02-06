@@ -299,7 +299,12 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
     }
 
     while (dash_validator->current_subsegment && ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
-        if (!dash_validator->current_subsegment->saw_random_access) {
+        if (dash_validator->current_subsegment->ts_count == 0) {
+            g_critical("Did not see any TS packets for subsegment %zu in segment %s. 6.4.2.3 Segment Index: All "
+                    "media offsets within `sidx` boxes shall be to the first (sync) byte of a TS packet.",
+                    dash_validator->subsegment_index, dash_validator->segment->file_name);
+            dash_validator->status = 0;
+        } else if (!dash_validator->current_subsegment->saw_random_access) {
             g_critical("Error: Did not see iframe for subsegment %zu in segment %s.",
                     dash_validator->subsegment_index, dash_validator->segment->file_name);
             dash_validator->status = 0;
@@ -310,17 +315,31 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         } else {
             dash_validator->current_subsegment = g_ptr_array_index(dash_validator->subsegments,
                     dash_validator->subsegment_index);
-            pid_validator->subsegment_pes_count = 0;
+            dash_validator->current_subsegment->pes_count = 0;
         }
     }
+
+    // First TS packet in this subsegment
+    if (dash_validator->current_subsegment && ts->pos_in_stream >= dash_validator->current_subsegment->start_byte
+            && dash_validator->current_subsegment->ts_count == 0) {
+        if (dash_validator->current_subsegment->start_byte != ts->pos_in_stream) {
+            g_critical("DASH Conformance: Subsegment %zu in segment %s starts at byte offset %zu, but the sync byte "
+                    "for the first TS packet following the subsegment start is at %zu. 6.4.2.3 Segment Index: All "
+                    "media offsets within `sidx` boxes shall be to the first (sync) byte of a TS packet.",
+                    dash_validator->subsegment_index, dash_validator->segment->file_name,
+                    dash_validator->current_subsegment->start_byte, ts->pos_in_stream);
+            dash_validator->status = 0;
+        }
+    }
+    ++dash_validator->current_subsegment->ts_count;
 
     // This is the first TS packet from this PID
     if (pid_validator->ts_count == 0) {
         pid_validator->continuity_counter = ts->header.continuity_counter;
 
         // we ignore non-payload and non-media packets
-        if ((ts->header.adaptation_field_control & TS_PAYLOAD)
-                && (pid_validator->content_component != UNKNOWN_CONTENT_COMPONENT)) {
+        if (ts->header.adaptation_field_control & TS_PAYLOAD
+                && pid_validator->content_component != UNKNOWN_CONTENT_COMPONENT) {
             // if we only have complete PES packets, we must start with PUSI=1 followed by PES header in the first payload-bearing packet
             if ((dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN)
                     && (ts->header.payload_unit_start_indicator == 0)) {
@@ -466,7 +485,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         // TODO: validate in case of ISO/IEC 14496-10 (?)
     }
 
-    if (pid_validator->subsegment_pes_count == 0 && !(pes->header.pts_dts_flags & PES_PTS_FLAG)
+    if (dash_validator->current_subsegment->pes_count == 0 && !(pes->header.pts_dts_flags & PES_PTS_FLAG)
             && (dash_validator->adaptation_set->segment_alignment.has_int ||
                 dash_validator->adaptation_set->segment_alignment.b)) {
         g_critical("DASH Conformance: First PES packet in subsegment %zu of %s does not have PTS and "
@@ -542,7 +561,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
 cleanup:
     if (pid_validator) {
         pid_validator->pes_count++;
-        pid_validator->subsegment_pes_count++;
+        dash_validator->current_subsegment->pes_count++;
     }
     pes_free(pes);
     return 1;

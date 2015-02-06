@@ -35,7 +35,6 @@ typedef struct {
     int64_t latest_playout_time;
     int64_t duration; // duration of latest pes packet
     uint64_t pes_count;
-    uint64_t subsegment_pes_count;
     uint64_t ts_count;
     content_component_t content_component;
     int continuity_counter;
@@ -49,6 +48,8 @@ typedef struct {
     bool starts_with_sap;
     uint8_t sap_type;
     bool saw_random_access;
+    size_t ts_count;
+    size_t pes_count;
 } subsegment_t;
 
 typedef struct {
