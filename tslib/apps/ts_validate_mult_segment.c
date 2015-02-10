@@ -85,6 +85,7 @@ int main(int argc, char* argv[])
     }
     mpd_t* mpd = read_mpd(file_name);
     if (mpd == NULL) {
+        g_critical("Error: Failed to read MPD.");
         goto cleanup;
     }
     mpd_print(mpd);
@@ -115,7 +116,7 @@ int main(int argc, char* argv[])
                 dash_validator_t* validator_init_segment = NULL;
                 if (representation->initialization_file_name) {
                     validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, representation->profile);
-                    if (validate_segment(validator_init_segment, representation->initialization_file_name, NULL) != 0) {
+                    if (validate_segment(validator_init_segment, representation->initialization_file_name, 0, 0, NULL) != 0) {
                         g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
                         validator_init_segment->status = 0;
                     }
@@ -190,7 +191,8 @@ int main(int argc, char* argv[])
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     dash_validator_t* validator = (dash_validator_t*)segment->arg;
-                    if (validate_segment(validator, segment->file_name, validator_init_segment) != 0) {
+                    if (validate_segment(validator, segment->file_name, segment->media_range_start,
+                            segment->media_range_end, validator_init_segment) != 0) {
                         overall_status = 0;
                         goto cleanup;
                     }

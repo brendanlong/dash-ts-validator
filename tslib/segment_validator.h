@@ -58,8 +58,6 @@ typedef struct {
 typedef struct {
     dash_profile_t profile;
     int64_t  last_pcr;
-    long segment_start;
-    long segment_end;
     GPtrArray* pids;
     uint16_t pcr_pid;
     uint16_t video_pid;
@@ -96,7 +94,8 @@ void dash_validator_free(dash_validator_t*);
 
 void index_segment_validator_free(index_segment_validator_t*);
 
-int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_validator_t* dash_validator_init);
+int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t byte_range_start,
+        uint64_t byte_range_end, dash_validator_t* dash_validator_init);
 
 index_segment_validator_t* validate_index_segment(char* file_name, segment_t*, representation_t*, adaptation_set_t*);
 

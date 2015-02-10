@@ -44,6 +44,7 @@ static char* read_filename(xmlNode*, const char* property_name, const char* base
 static uint64_t str_to_uint64(const char*, int* error);
 static dash_profile_t read_profile(xmlNode*, dash_profile_t parent_profile);
 static const char* dash_profile_to_string(dash_profile_t);
+static bool read_range(xmlNode*, const char* property_name, uint64_t* start_out, uint64_t* end_out);
 
 const char INDENT_BUFFER[] = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
 
@@ -215,9 +216,7 @@ void segment_free(segment_t* obj)
     }
 
     g_free(obj->file_name);
-    xmlFree(obj->media_range);
     g_free(obj->index_file_name);
-    xmlFree(obj->index_range);
 
     if (obj->arg_free && obj->arg) {
         obj->arg_free(obj->arg);
@@ -228,11 +227,15 @@ void segment_free(segment_t* obj)
 void segment_print(const segment_t* segment, unsigned indent)
 {
     PRINT_PROPERTY(indent, "file_name: %s", PRINT_STR(segment->file_name));
-    PRINT_PROPERTY(indent, "media_range: %s", PRINT_STR(segment->media_range));
+    if (segment->media_range_start != 0 || segment->media_range_end != 0) {
+        PRINT_PROPERTY(indent, "media_range: %"PRIu64"-%"PRIu64, segment->media_range_start, segment->media_range_end);
+    }
     PRINT_PROPERTY(indent, "start: %"PRIu64, segment->start);
     PRINT_PROPERTY(indent, "duration: %"PRIu64, segment->duration);
     PRINT_PROPERTY(indent, "index_file_name: %s", PRINT_STR(segment->index_file_name));
-    PRINT_PROPERTY(indent, "index_range: %s", PRINT_STR(segment->index_range));
+    if (segment->index_range_start != 0 || segment->index_range_end != 0) {
+        PRINT_PROPERTY(indent, "index_range: %"PRIu64"-%"PRIu64, segment->index_range_start, segment->index_range_end);
+    }
 }
 
 mpd_t* read_mpd(char* file_name)
@@ -605,7 +608,6 @@ fail:
 bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t start, uint64_t duration, char* base_url)
 {
     segment_t* segment = segment_new();
-    g_ptr_array_add(representation->segments, segment);
 
     segment->start = start;
     segment->duration = duration;
@@ -613,12 +615,20 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
     segment->end = segment->start + duration;
 
     segment->file_name = read_filename(node, "media", base_url);
-    segment->media_range = xmlGetProp(node, "mediaRange");
+    if(!read_range(node, "mediaRange", &segment->media_range_start, &segment->media_range_end)) {
+        goto fail;
+    }
     if (xmlHasProp(node, "index")) {
         segment->index_file_name = read_filename(node, "index", base_url);
     }
-    segment->index_range = xmlGetProp(node, "indexRange");
+    if(!read_range(node, "indexRange", &segment->index_range_start, &segment->index_range_end)) {
+        goto fail;
+    }
+    g_ptr_array_add(representation->segments, segment);
     return true;
+fail:
+    segment_free(segment);
+    return false;
 }
 
 static char* segment_template_replace(char* pattern, uint64_t segment_number, representation_t* representation,
@@ -1022,4 +1032,42 @@ static const char* dash_profile_to_string(dash_profile_t profile) {
         g_error("Print unknown dash_profile_t: %d", profile);
         return "UNKNOWN DASH PROFILE";
     }
+}
+
+static bool read_range(xmlNode* node, const char* property_name, uint64_t* start_out, uint64_t* end_out)
+{
+    bool ret = true;
+    char* property = xmlGetProp(node, property_name);
+    if (property == NULL) {
+        goto cleanup;
+    }
+
+    char** split = g_strsplit(property, "-", 0);
+    /* Length of the split string should be exactly 2 */
+    if (split[0] == NULL || split[1] == NULL || split[2] != NULL) {
+        goto fail;
+    }
+
+    int error;
+    uint64_t start = str_to_uint64(split[0], &error);
+    if (error) {
+        goto fail;
+    }
+    uint64_t end = str_to_uint64(split[1], &error);
+    if (error) {
+        goto fail;
+    }
+    if (start_out) {
+        *start_out = start;
+    }
+    if (end_out) {
+        *end_out = end;
+    }
+cleanup:
+    xmlFree(property);
+    return ret;
+fail:
+    g_critical("Range %s is not a valid byte range.", property);
+    ret = false;
+    goto cleanup;
 }

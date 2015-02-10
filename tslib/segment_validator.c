@@ -685,7 +685,8 @@ cleanup:
     return 1; // return code doesn't matter
 }
 
-int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_validator_t* dash_validator_init)
+int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t byte_range_start,
+        uint64_t byte_range_end, dash_validator_t* dash_validator_init)
 {
     dash_validator->current_subsegment = dash_validator->has_subsegments ?
             g_ptr_array_index(dash_validator->subsegments, 0) : NULL;
@@ -697,12 +698,9 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_val
         goto fail;
     }
 
-    if (dash_validator->segment_start > 0) {
-        if (!fseek(infile, dash_validator->segment_start, SEEK_SET)) {
-            g_critical("Error seeking to offset %ld - %s", dash_validator->segment_start,
-                           strerror(errno));
-            goto fail;
-        }
+    if (byte_range_start > 0 && fseek(infile, byte_range_start, SEEK_SET)) {
+        g_critical("Error seeking to offset %ld in %s - %s", byte_range_start, file_name, strerror(errno));
+        goto fail;
     }
 
     m2s = mpeg2ts_stream_new();
@@ -753,8 +751,8 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_val
     uint64_t packets_to_read =  UINT64_MAX;
     uint8_t* ts_buf = malloc(TS_SIZE * packet_buf_size);
 
-    if (dash_validator->segment_end > 0) {
-        packets_to_read = (dash_validator->segment_end - dash_validator->segment_start) / (uint64_t)TS_SIZE;
+    if (byte_range_end > 0) {
+        packets_to_read = (byte_range_end - byte_range_start) / (uint64_t)TS_SIZE;
     }
 
     while ((num_packets = fread(ts_buf, TS_SIZE, packet_buf_size, infile)) > 0) {

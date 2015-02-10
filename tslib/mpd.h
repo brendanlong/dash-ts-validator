@@ -33,12 +33,14 @@ typedef struct {
 
 typedef struct {
     char* file_name;
-    char* media_range;
+    uint64_t media_range_start;
+    uint64_t media_range_end;
     uint64_t start;
     uint64_t duration;
     uint64_t end;
     char* index_file_name;
-    char* index_range;
+    uint64_t index_range_start;
+    uint64_t index_range_end;
 
     /* These don't really belong here, but they make things much easier */
     uint64_t actual_start[NUM_CONTENT_COMPONENTS];
