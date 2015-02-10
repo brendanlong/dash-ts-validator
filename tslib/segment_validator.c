@@ -1066,13 +1066,15 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
     if (num_nested_sidx != 0) {
         g_critical("ERROR validating Index Segment: Incorrect number of nested sidx boxes: %d.",
                 num_nested_sidx);
-        validator->error = true;
+        /* No point build up a list of indexes since we won't understand them */
+        goto fail;
     }
 
     if (segment_index != segments->len) {
         g_critical("ERROR validating Index Segment: Invalid number of segment sidx boxes following master sidx box: "
                 "expected %u, found %zu.", segments->len, segment_index);
-        validator->error = true;
+        /* No point build up a list of indexes since we won't understand them */
+        goto fail;
     }
 
     // fill in subsegment locations by walking the list of sidx's again, starting from the third box
