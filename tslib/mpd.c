@@ -427,6 +427,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
             }
             segment_t* segment = segment_new();
             segment->file_name = g_strdup(base_url);
+            segment->start = representation->presentation_time_offset;
             g_ptr_array_add(representation->segments, segment);
         }  else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
             if (!read_segment_template(cur_node, representation, base_url, parent_segment_template)) {
