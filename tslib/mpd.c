@@ -957,7 +957,9 @@ char* read_filename(xmlNode* node, const char* property_name, const char* base_u
     } else if (base_url == NULL) {
         filename = g_strdup(property);
     } else {
-        filename = g_build_filename(base_url, property, NULL);
+        char* directory = g_path_get_dirname(base_url);
+        filename = g_build_filename(directory, property, NULL);
+        g_free(directory);
     }
     xmlFree(property);
     return filename;
