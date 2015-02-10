@@ -789,7 +789,9 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, dash_val
 
 cleanup:
     mpeg2ts_stream_free(m2s);
-    fclose(infile);
+    if (infile) {
+        fclose(infile);
+    }
     return tslib_errno;
 fail:
     dash_validator->status = 0;
@@ -845,7 +847,6 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
     }
 
     if (read_boxes_from_file(file_name, &boxes, &num_boxes) != 0) {
-        g_critical("ERROR validating Index Segment %s: Error reading boxes from file.", file_name);
         goto fail;
     }
     print_boxes(boxes, num_boxes);

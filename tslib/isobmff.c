@@ -124,17 +124,22 @@ int read_boxes_from_file(char* file_name, box_t*** boxes_out, size_t* num_boxes)
     GFile* file = g_file_new_for_path(file_name);
     GError* error = NULL;
     GFileInputStream* file_input = g_file_read(file, NULL, &error);
-    GDataInputStream* input = g_data_input_stream_new(G_INPUT_STREAM(file_input));
+    GDataInputStream* input = NULL;
     if (error != NULL) {
         g_critical("Error validating index segment, unable to read file %s. Error is: %s.", file_name, error->message);
         g_error_free(error);
         goto fail;
     }
+    input = g_data_input_stream_new(G_INPUT_STREAM(file_input));
 
     return_code = read_boxes_from_stream(input, boxes_out, num_boxes);
 cleanup:
-    g_object_unref(input);
-    g_object_unref(file_input);
+    if (input) {
+        g_object_unref(input);
+    }
+    if (file_input) {
+        g_object_unref(file_input);
+    }
     g_object_unref(file);
     return return_code;
 fail:

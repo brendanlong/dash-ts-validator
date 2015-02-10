@@ -426,7 +426,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
                 goto fail;
             }
             segment_t* segment = segment_new();
-            segment->file_name = base_url;
+            segment->file_name = g_strdup(base_url);
             g_ptr_array_add(representation->segments, segment);
         }  else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
             if (!read_segment_template(cur_node, representation, base_url, parent_segment_template)) {
@@ -522,7 +522,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
     }
 
     size_t timeline_i = 0;
-    uint64_t start = 0;
+    uint64_t start = representation->presentation_time_offset;
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (xmlStrEqual(cur_node->name, "SegmentURL")) {
             if (segment_timeline != NULL) {
