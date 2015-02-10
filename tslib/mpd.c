@@ -614,7 +614,9 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
 
     segment->file_name = read_filename(node, "media", base_url);
     segment->media_range = xmlGetProp(node, "mediaRange");
-    segment->index_file_name = read_filename(node, "index", base_url);
+    if (xmlHasProp(node, "index")) {
+        segment->index_file_name = read_filename(node, "index", base_url);
+    }
     segment->index_range = xmlGetProp(node, "indexRange");
     return true;
 }
@@ -938,16 +940,14 @@ bool read_bool(xmlNode* node, const char* property_name)
 char* read_filename(xmlNode* node, const char* property_name, const char* base_url)
 {
     char* property = xmlGetProp(node, property_name);
-    if (property == NULL) {
-        return NULL;
-    }
-
     char* filename;
-    if (base_url) {
-        filename = g_build_filename(base_url, property, NULL);
-    } else {
+    if (property == NULL) {
         /* Make a duplicate so we always return strings allocated by glib. */
+        filename = g_strdup(base_url);
+    } else if (base_url == NULL) {
         filename = g_strdup(property);
+    } else {
+        filename = g_build_filename(base_url, property, NULL);
     }
     xmlFree(property);
     return filename;
