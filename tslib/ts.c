@@ -292,7 +292,7 @@ void ts_print(const ts_packet_t* const ts)
     if (ts->header.adaptation_field_control & TS_ADAPTATION_FIELD) {
         ts_print_adaptation_field(&ts->adaptation_field);
     }
-    SKIT_LOG_UINT64_DBG("", ts->payload.len);
+    SKIT_LOG_UINT64_DBG("", (uint64_t)ts->payload.len);
 }
 
 int64_t ts_read_pcr(const ts_packet_t* const ts)

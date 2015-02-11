@@ -368,5 +368,5 @@ void pes_print(pes_packet_t* pes)
         return;
     }
     pes_print_header(&pes->header);
-    SKIT_LOG_UINT64_DBG("", pes->payload_len);
+    SKIT_LOG_UINT64_DBG("", (uint64_t)pes->payload_len);
 }

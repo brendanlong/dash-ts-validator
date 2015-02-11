@@ -265,7 +265,7 @@ void parse_full_box(GDataInputStream* input, fullbox_t* box, uint64_t box_size, 
     }
     */
     if (box_size < 4) {
-        *error = g_error_new(isobmff_error_quark(), ISOBMFF_ERROR_BAD_BOX_SIZE, "FullBox is 4 bytes, but this box size only has %zu bytes remaining.", box_size);
+        *error = g_error_new(isobmff_error_quark(), ISOBMFF_ERROR_BAD_BOX_SIZE, "FullBox is 4 bytes, but this box size only has %"PRIu64" bytes remaining.", box_size);
         return;
     }
     box->version = g_data_input_stream_read_byte(input, NULL, error);
@@ -450,7 +450,7 @@ box_t* parse_pcrb(GDataInputStream* input, uint64_t box_size, GError** error)
     uint64_t pcr_size = box->subsegment_count * (48 / 8);
     if (pcr_size != box_size) {
         *error = g_error_new(isobmff_error_quark(), ISOBMFF_ERROR_BAD_BOX_SIZE,
-                "pcrb box has subsegment_count %"PRIu32", indicating the remaining size should be %zu bytes, but the box has %zu bytes left.",
+                "pcrb box has subsegment_count %"PRIu32", indicating the remaining size should be %"PRIu64" bytes, but the box has %"PRIu64" bytes left.",
                 box->subsegment_count, pcr_size, box_size);
         if (box_size == box->subsegment_count * 8) {
             g_critical("Note: Your encoder appears to be writing 64-bit pcrb entries instead of 48-bit. See https://github.com/gpac/gpac/issues/34 for details.");

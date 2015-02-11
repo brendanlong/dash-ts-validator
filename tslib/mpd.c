@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <libxml/tree.h>
-#include <pcre.h>
 #include "log.h"
 
 

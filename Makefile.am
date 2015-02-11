@@ -13,10 +13,10 @@ tslib_libts_a_SOURCES = tslib/cas.c tslib/crc32m.c tslib/descriptors.c tslib/iso
         tslib/mpeg2ts_demux.c tslib/pes.c tslib/pes_demux.c tslib/psi.c tslib/segment_validator.c tslib/ts.c
 tslib_libts_a_CFLAGS = -isystem$(top_srcdir)/h264bitstream $(LIBXML2_CFLAGS) \
         -O -fdiagnostics-color=always \
-        -fstack-protector -pie -fPIE -ftrapv -D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now \
-        -Wall -Winit-self -Wstrict-overflow=3 -Wtrampolines -Wfloat-equal -Wshadow -Wstack-usage=4096 \
-        -Wunsafe-loop-optimizations -Wpointer-arith -Wtype-limits -Wbad-function-cast -Wcast-qual -Wclobbered \
-        -Wstrict-prototypes -Wold-style-definition -Wmissing-parameter-type -Wmissing-prototypes -Wno-multichar \
+        -fstack-protector -fPIE -ftrapv -D_FORTIFY_SOURCE=2 \
+        -Wall -Winit-self -Wstrict-overflow=3 -Wfloat-equal -Wshadow \
+        -Wpointer-arith -Wtype-limits -Wbad-function-cast -Wcast-qual \
+        -Wstrict-prototypes -Wold-style-definition -Wmissing-prototypes -Wno-multichar \
         -Wredundant-decls -Wvla -Wformat-security
 
 tslib_apps_ts_validate_mult_segment_SOURCES = tslib/apps/ts_validate_mult_segment.c
