@@ -69,6 +69,7 @@ typedef struct {
 } representation_t;
 
 typedef struct {
+    char* id;
     dash_profile_t profile;
     uint32_t audio_pid;
     uint32_t video_pid;

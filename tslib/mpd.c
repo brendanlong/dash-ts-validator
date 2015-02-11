@@ -144,6 +144,7 @@ void adaptation_set_free(adaptation_set_t* obj)
         return;
     }
 
+    xmlFree(obj->id);
     g_ptr_array_free(obj->representations, true);
 
     free(obj);
@@ -152,6 +153,7 @@ void adaptation_set_free(adaptation_set_t* obj)
 void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned indent)
 {
     ++indent;
+    PRINT_PROPERTY(indent, "id: %s", adaptation_set->id);
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(adaptation_set->profile));
     PRINT_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
     PRINT_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
@@ -348,6 +350,7 @@ bool read_adaptation_set(xmlNode* node, mpd_t* mpd, period_t* period, char* pare
         xmlFree(mime_type);
     }
 
+    adaptation_set->id = xmlGetProp(node, "id");
     adaptation_set->profile = read_profile(node, mpd->profile);
     adaptation_set->segment_alignment = read_optional_uint32(node, "segmentAlignment");
     adaptation_set->subsegment_alignment = read_optional_uint32(node, "subsegmentAlignment");

@@ -94,8 +94,14 @@ int main(int argc, char* argv[])
         period_t* period = g_ptr_array_index(mpd->periods, p_i);
         for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
             adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
+            bool adaptation_set_valid = true;
+
+            g_print("VALIDATING ADAPTATION SET: %s\n", adaptation_set->id);
             for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
                 representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
+                bool representation_valid = true;
+                g_print("\nVALIDATING REPRESENTATION: %s\n", representation->id);
+
                 if (representation->segments->len == 0) {
                     g_critical("Representation has no segments!");
                     goto cleanup;
@@ -120,7 +126,7 @@ int main(int argc, char* argv[])
                         g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
                         validator_init_segment->status = 0;
                     }
-                    overall_status &= validator_init_segment->status;
+                    representation_valid &= validator_init_segment->status;
                 }
 
                 /* Validate Representation Index */
@@ -129,7 +135,7 @@ int main(int argc, char* argv[])
                             representation->index_file_name, NULL, representation, adaptation_set);
                     if (index_validator->error) {
                         g_critical("Validation of RepresentationIndex %s FAILED", representation->index_file_name);
-                        overall_status = 0;
+                        representation_valid = false;
                     }
                     if (index_validator->segment_subsegments->len != 0 &&
                             index_validator->segment_subsegments->len != representation->segments->len) {
@@ -162,7 +168,7 @@ int main(int argc, char* argv[])
                                 segment->index_file_name, segment, representation, adaptation_set);
                         if (index_validator->error) {
                             g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
-                            overall_status = 0;
+                            representation_valid = false;
                         }
                         if (index_validator->segment_subsegments->len != 0) {
                             GPtrArray* subsegments = g_ptr_array_index(index_validator->segment_subsegments, 0);
@@ -173,7 +179,7 @@ int main(int argc, char* argv[])
                                         "Index Segments may either be associated to a single Media Segment as "
                                         "specified in 6.4.6.2 or may be associated to all Media Segments in one "
                                         "Representation as specified in 6.4.6.3.", segment->file_name);
-                                overall_status = 0;
+                                representation_valid = false;
                             } else {
                                 validator->has_subsegments = true;
                                 for (size_t i = 0; i < subsegments->len; ++i) {
@@ -187,10 +193,8 @@ int main(int argc, char* argv[])
 
                     /* Validate Segment */
                     dash_validator_t* validator = segment->arg;
-                    if (validate_segment(validator, segment->file_name, segment->media_range_start,
+                    if (!validate_segment(validator, segment->file_name, segment->media_range_start,
                             segment->media_range_end, validator_init_segment) != 0) {
-                        overall_status = 0;
-                    } else {
                         // GORP: what if there is no video in the segment??
                         for (gsize pid_i = 0; pid_i < validator->pids->len; pid_i++) {
                             pid_validator_t* pv = g_ptr_array_index(validator->pids, pid_i);
@@ -223,37 +227,45 @@ int main(int argc, char* argv[])
                         }
                     }
 
-                    if (validator->status) {
-                        g_print("SEGMENT TEST RESULT: %s: SUCCESS\n", segment->file_name);
-                    } else {
-                        g_print("SEGMENT TEST RESULT: %s: FAIL\n", segment->file_name);
-                        overall_status = 0;
-                    }
+                    g_print("SEGMENT TEST RESULT: %s: %s\n", segment->file_name,
+                            validator->status ? "SUCCESS" : "FAIL");
                     g_info("");
+                    representation_valid &= validator->status;
                 }
 
                 /* Check that segments in the same representation don't have gaps between them */
-                overall_status &= check_segment_timing(representation->segments, AUDIO_CONTENT_COMPONENT);
-                overall_status &= check_segment_timing(representation->segments, VIDEO_CONTENT_COMPONENT);
+                representation_valid &= check_segment_timing(representation->segments, AUDIO_CONTENT_COMPONENT);
+                representation_valid &= check_segment_timing(representation->segments, VIDEO_CONTENT_COMPONENT);
+
+                g_print("REPRESENTATION TEST RESULT: %s: %s\n", representation->id,
+                        representation_valid ? "SUCCESS" : "FAIL");
+                g_info("");
+                adaptation_set_valid &= representation_valid;
 
                 dash_validator_free(validator_init_segment);
             }
 
+
             // segment cross checking: check that the gap between all adjacent segments is acceptably small
-            overall_status &= check_representation_gaps(adaptation_set->representations,
+            adaptation_set_valid &= check_representation_gaps(adaptation_set->representations,
                     AUDIO_CONTENT_COMPONENT, max_gap_pts_ticks[AUDIO_CONTENT_COMPONENT]);
-            overall_status &= check_representation_gaps(adaptation_set->representations,
+            adaptation_set_valid &= check_representation_gaps(adaptation_set->representations,
                     VIDEO_CONTENT_COMPONENT, max_gap_pts_ticks[VIDEO_CONTENT_COMPONENT]);
 
             if(adaptation_set->profile >= DASH_PROFILE_MPEG2TS_SIMPLE) {
                 /* For the simple profile, the PSI must be the same for all Representations in an
                  * AdaptationSet */
-                overall_status &= check_psi_identical(adaptation_set->representations);
+                adaptation_set_valid &= check_psi_identical(adaptation_set->representations);
             }
+
+            g_print("ADAPTATION SET TEST RESULT: %s: %s\n", adaptation_set->id,
+                    adaptation_set_valid ? "SUCCESS" : "FAIL");
+            g_info("");
+            overall_status &= adaptation_set_valid;
         }
     }
 
-    printf("OVERALL TEST RESULT: %s\n", overall_status ? "PASS" : "FAIL");
+    g_print("\nOVERALL TEST RESULT: %s\n", overall_status ? "PASS" : "FAIL");
 cleanup:
     mpd_free(mpd);
     xmlCleanupParser();
