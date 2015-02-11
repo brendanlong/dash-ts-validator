@@ -18,6 +18,11 @@ g_debug("%.*s"printf_str, \
         indent < sizeof(INDENT_BUFFER) ? indent : (int)sizeof(INDENT_BUFFER), \
         INDENT_BUFFER, __VA_ARGS__)
 
+#define PRINT_RANGE(indent, owner, property_name) \
+if (owner->property_name##_start != 0 || owner->property_name##_end != 0) { \
+    PRINT_PROPERTY(indent, #property_name ": %"PRIu64"-%"PRIu64, owner->property_name##_start, \
+            owner->property_name##_end); \
+}
 
 typedef struct {
     uint64_t start;
@@ -174,11 +179,8 @@ void representation_free(representation_t* obj)
 
     xmlFree(obj->id);
     g_free(obj->index_file_name);
-    g_free(obj->index_range);
     g_free(obj->initialization_file_name);
-    g_free(obj->initialization_range);
     g_free(obj->bitstream_switching_file_name);
-    g_free(obj->bitstream_switching_range);
     g_ptr_array_free(obj->segments, true);
 
     free(obj);
@@ -190,11 +192,11 @@ void representation_print(const representation_t* representation, unsigned inden
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(representation->profile));
     PRINT_PROPERTY(indent, "id: %s", representation->id);
     PRINT_PROPERTY(indent, "index_file_name: %s", representation->index_file_name);
-    PRINT_PROPERTY(indent, "index_range: %s", representation->index_range);
+    PRINT_RANGE(indent, representation, index_range);
     PRINT_PROPERTY(indent, "initialization_file_name: %s", representation->initialization_file_name);
-    PRINT_PROPERTY(indent, "initialization_range: %s", representation->initialization_range);
+    PRINT_RANGE(indent, representation, initialization_range);
     PRINT_PROPERTY(indent, "bitstream_switching_file_name: %s", representation->bitstream_switching_file_name);
-    PRINT_PROPERTY(indent, "bitstream_switching_range: %s", representation->bitstream_switching_range);
+    PRINT_RANGE(indent, representation, bitstream_switching_range);
     PRINT_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
     PRINT_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
     for (size_t i = 0; i < representation->segments->len; ++i) {
@@ -227,15 +229,11 @@ void segment_free(segment_t* obj)
 void segment_print(const segment_t* segment, unsigned indent)
 {
     PRINT_PROPERTY(indent, "file_name: %s", PRINT_STR(segment->file_name));
-    if (segment->media_range_start != 0 || segment->media_range_end != 0) {
-        PRINT_PROPERTY(indent, "media_range: %"PRIu64"-%"PRIu64, segment->media_range_start, segment->media_range_end);
-    }
+    PRINT_RANGE(indent, segment, media_range);
     PRINT_PROPERTY(indent, "start: %"PRIu64, segment->start);
     PRINT_PROPERTY(indent, "duration: %"PRIu64, segment->duration);
     PRINT_PROPERTY(indent, "index_file_name: %s", PRINT_STR(segment->index_file_name));
-    if (segment->index_range_start != 0 || segment->index_range_end != 0) {
-        PRINT_PROPERTY(indent, "index_range: %"PRIu64"-%"PRIu64, segment->index_range_start, segment->index_range_end);
-    }
+    PRINT_RANGE(indent, segment, index_range);
 }
 
 mpd_t* read_mpd(char* file_name)
@@ -496,7 +494,10 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
                 goto fail;
             }
             representation->bitstream_switching_file_name = xmlGetProp(cur_node, "sourceURL");
-            representation->bitstream_switching_range = xmlGetProp(cur_node, "range");
+            if(!read_range(node, "range", &representation->bitstream_switching_range_start,
+                    &representation->bitstream_switching_range_end)) {
+                goto fail;
+            }
         }
     }
 
@@ -732,7 +733,10 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
                 goto fail;
             }
             representation->bitstream_switching_file_name = xmlGetProp(cur_node, "sourceURL");
-            representation->bitstream_switching_range = xmlGetProp(cur_node, "range");
+            if(!read_range(node, "range", &representation->bitstream_switching_range_start,
+                    &representation->bitstream_switching_range_end)) {
+                goto fail;
+            }
         }
     }
 
