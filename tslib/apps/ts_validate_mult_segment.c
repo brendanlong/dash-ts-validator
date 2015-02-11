@@ -90,7 +90,6 @@ int main(int argc, char* argv[])
     }
     mpd_print(mpd);
 
-    // if there is an initialization segment, process it first in order to get the PAT and PMT tables
     for (size_t p_i = 0; p_i < mpd->periods->len; ++p_i) {
         period_t* period = g_ptr_array_index(mpd->periods, p_i);
         for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
@@ -102,6 +101,7 @@ int main(int argc, char* argv[])
                     goto cleanup;
                 }
 
+                // if there is an initialization segment, process it first in order to get the PAT and PMT tables
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     dash_validator_t* validator = dash_validator_new(MEDIA_SEGMENT, representation->profile);
@@ -184,67 +184,55 @@ int main(int argc, char* argv[])
                         }
                         index_segment_validator_free(index_validator);
                     }
-                }
 
-                /* Validate media segments */
-                /* TODO: Combine this with the previous loop? */
-                for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
-                    segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-                    dash_validator_t* validator = (dash_validator_t*)segment->arg;
+                    /* Validate Segment */
+                    dash_validator_t* validator = segment->arg;
                     if (validate_segment(validator, segment->file_name, segment->media_range_start,
                             segment->media_range_end, validator_init_segment) != 0) {
                         overall_status = 0;
-                        goto cleanup;
-                    }
+                    } else {
+                        // GORP: what if there is no video in the segment??
+                        for (gsize pid_i = 0; pid_i < validator->pids->len; pid_i++) {
+                            pid_validator_t* pv = g_ptr_array_index(validator->pids, pid_i);
 
-                    // GORP: what if there is no video in the segment??
+                            // refine duration by including duration of last frame (audio and video are different rates)
+                            // start time is relative to the start time of the first segment
 
-                    for(gsize pid_i = 0; pid_i < validator->pids->len; pid_i++) {
-                        pid_validator_t* pv = g_ptr_array_index(validator->pids, pid_i);
+                            // units of 90kHz ticks
+                            int64_t actual_start = pv->earliest_playout_time;
+                            int64_t actual_duration = (pv->latest_playout_time - pv->earliest_playout_time) + pv->duration;
+                            int64_t actual_end = actual_start + actual_duration;
 
-                        // refine duration by including duration of last frame (audio and video are different rates)
-                        // start time is relative to the start time of the first segment
+                            segment->actual_start[pv->content_component] = actual_start;
+                            segment->actual_end[pv->content_component] = actual_end;
 
-                        // units of 90kHz ticks
-                        int64_t actual_start = pv->earliest_playout_time;
-                        int64_t actual_duration = (pv->latest_playout_time - pv->earliest_playout_time) + pv->duration;
-                        int64_t actual_end = actual_start + actual_duration;
+                            g_debug("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
+                                    segment->file_name, pv->pid, content_component_to_string(pv->content_component),
+                                    actual_start, actual_end, actual_duration);
 
-                        segment->actual_start[pv->content_component] = actual_start;
-                        segment->actual_end[pv->content_component] = actual_end;
-
-                        g_debug("%s: %04X: %s STARTTIME=%"PRId64", ENDTIME=%"PRId64", DURATION=%"PRId64"",
-                                segment->file_name, pv->pid, content_component_to_string(pv->content_component),
-                                actual_start, actual_end, actual_duration);
-
-                        if (pv->content_component == VIDEO_CONTENT_COMPONENT && representation->start_with_sap != 0) {
-                            if (pv->sap == 0) {
-                                g_critical("%s: FAIL: SAP not set", segment->file_name);
-                                validator->status = 0;
-                            } else if (pv->sap_type != representation->start_with_sap) {
-                                g_critical("%s: FAIL: Invalid SAP Type: expected %d, actual %d",
-                                        segment->file_name, representation->start_with_sap, pv->sap_type);
-                                validator->status = 0;
+                            if (pv->content_component == VIDEO_CONTENT_COMPONENT && representation->start_with_sap != 0) {
+                                if (pv->sap == 0) {
+                                    g_critical("%s: FAIL: SAP not set", segment->file_name);
+                                    validator->status = 0;
+                                } else if (pv->sap_type != representation->start_with_sap) {
+                                    g_critical("%s: FAIL: Invalid SAP Type: expected %d, actual %d",
+                                            segment->file_name, representation->start_with_sap, pv->sap_type);
+                                    validator->status = 0;
+                                }
                             }
                         }
                     }
-                }
-                g_print("\n");
-
-                for(gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
-                    segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-                    dash_validator_t* validator = (dash_validator_t*)segment->arg;
 
                     if (validator->status) {
-                        g_info("SEGMENT TEST RESULT: %s: SUCCESS", segment->file_name);
+                        g_print("SEGMENT TEST RESULT: %s: SUCCESS\n", segment->file_name);
                     } else {
-                        g_critical("SEGMENT TEST RESULT: %s: FAIL", segment->file_name);
+                        g_print("SEGMENT TEST RESULT: %s: FAIL\n", segment->file_name);
                         overall_status = 0;
                     }
+                    g_info("");
                 }
-                g_print("\n");
 
-                // print out results
+                /* Check that segments in the same representation don't have gaps between them */
                 overall_status &= check_segment_timing(representation->segments, AUDIO_CONTENT_COMPONENT);
                 overall_status &= check_segment_timing(representation->segments, VIDEO_CONTENT_COMPONENT);
 
