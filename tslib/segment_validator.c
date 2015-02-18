@@ -424,7 +424,8 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     pid_validator_t* pid_validator = NULL;
     validate_pes_packet_common(pes, ts_queue, dash_validator);
 
-    if (pes == NULL || pes->status > 0) {
+    ts_packet_t* first_ts = ts_queue ? g_queue_peek_head(ts_queue) : NULL;
+    if (pes == NULL || pes->status < 0) {
         // we have a queue that didn't appear to be a valid PES packet (e.g., because it didn't start with
         // payload_unit_start_indicator = 1)
         if (dash_validator->adaptation_set->segment_alignment.has_int ||
@@ -440,10 +441,17 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                     "Adaptation Set are fulfilled." : "");
             dash_validator->status = 0;
         }
+        if (dash_validator->current_subsegment && first_ts && first_ts->header.pid == dash_validator->current_subsegment->reference_id) {
+            g_critical("DASH Conformance: Media segment %s has an incomplete PES packet for the indexed media stream "
+                    "in this subsegment (PID %"PRIu16"). 6.4.2.1. Subsegment: A subsegment shall contain complete "
+                    "access units for the indexed media stream (i.e., stream for which reference_ID equals PID), "
+                    "however it may contain incomplete PES packets from other media streams.",
+                    dash_validator->segment->file_name, first_ts->header.pid);
+            dash_validator->status = 0;
+        }
         goto cleanup;
     }
 
-    ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     if (dash_validator->current_subsegment && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
             dash_validator->adaptation_set->subsegment_alignment.b)) {
         ts_packet_t* last_ts = g_queue_peek_tail(ts_queue);
@@ -1110,6 +1118,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                 data_sidx_reference_t ref = sidx->references[i];
                 if (ref.reference_type == 0) {
                     subsegment_t* subsegment = subsegment_new();
+                    subsegment->reference_id = sidx->reference_id;
                     subsegment->starts_with_sap = ref.starts_with_sap;
                     subsegment->sap_type = ref.sap_type;
                     subsegment->start_byte = next_subsegment_byte_location;

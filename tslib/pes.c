@@ -79,7 +79,7 @@ int pes_read(pes_packet_t* pes, const uint8_t* buf, size_t len)
 
     if (pes->header.pes_packet_length > 0 && pes->header.pes_packet_length + 6 > pes->buf_len) {
         pes->status = PES_ERROR_NOT_ENOUGH_DATA;
-        g_critical("PES packet header promises %u bytes, only %ld found in buffer",
+        g_info("PES packet header promises %u bytes, only %ld found in buffer",
                        pes->header.pes_packet_length + 6, pes->buf_len);
     }
 

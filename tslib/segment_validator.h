@@ -42,6 +42,7 @@ typedef struct {
 } pid_validator_t;
 
 typedef struct {
+    uint16_t reference_id;
     uint64_t start_time;
     uint64_t start_byte;
     uint64_t end_byte;
