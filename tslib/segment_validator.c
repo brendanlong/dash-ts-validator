@@ -319,37 +319,37 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         }
     }
 
-    subsegment_t* subsegment = NULL;
-    if (dash_validator->current_subsegment) {
-        while (ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
-            if (dash_validator->current_subsegment->ts_count == 0) {
-                g_critical("Did not see any TS packets for subsegment %zu in segment %s. 6.4.2.3 Segment Index: All "
-                        "media offsets within `sidx` boxes shall be to the first (sync) byte of a TS packet.",
+    while (dash_validator->current_subsegment
+            && ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
+        if (dash_validator->current_subsegment->ts_count == 0) {
+            g_critical("Did not see any TS packets for subsegment %zu in segment %s. 6.4.2.3 Segment Index: All "
+                    "media offsets within `sidx` boxes shall be to the first (sync) byte of a TS packet.",
+                    dash_validator->subsegment_index, dash_validator->segment->file_name);
+            dash_validator->status = 0;
+        } else {
+            if (!dash_validator->current_subsegment->saw_random_access) {
+                g_critical("Error: Did not see iframe for subsegment %zu in segment %s.",
                         dash_validator->subsegment_index, dash_validator->segment->file_name);
                 dash_validator->status = 0;
-            } else {
-                if (!dash_validator->current_subsegment->saw_random_access) {
-                    g_critical("Error: Did not see iframe for subsegment %zu in segment %s.",
-                            dash_validator->subsegment_index, dash_validator->segment->file_name);
-                    dash_validator->status = 0;
-                }
-                if (dash_validator->current_subsegment->ssix_offset_index != dash_validator->current_subsegment->ssix_offsets->len) {
-                    uint64_t next_ssix_offset = g_array_index(dash_validator->current_subsegment->ssix_offsets,
-                            uint64_t, dash_validator->current_subsegment->ssix_offset_index);
-                    g_critical("Error: 'ssix' has next offset %"PRIu64", but the subsegment ends at %"PRIu64".",
-                            next_ssix_offset, dash_validator->current_subsegment->end_byte);
-                }
             }
-            ++dash_validator->subsegment_index;
-            if (dash_validator->subsegment_index >= dash_validator->subsegments->len) {
-                dash_validator->current_subsegment = NULL;
-            } else {
-                dash_validator->current_subsegment = g_ptr_array_index(dash_validator->subsegments,
-                        dash_validator->subsegment_index);
-                dash_validator->current_subsegment->pes_count = 0;
+            if (dash_validator->current_subsegment->ssix_offset_index != dash_validator->current_subsegment->ssix_offsets->len) {
+                uint64_t next_ssix_offset = g_array_index(dash_validator->current_subsegment->ssix_offsets,
+                        uint64_t, dash_validator->current_subsegment->ssix_offset_index);
+                g_critical("Error: 'ssix' has next offset %"PRIu64", but the subsegment ends at %"PRIu64".",
+                        next_ssix_offset, dash_validator->current_subsegment->end_byte);
             }
         }
-        subsegment = dash_validator->current_subsegment;
+        ++dash_validator->subsegment_index;
+        if (dash_validator->subsegment_index >= dash_validator->subsegments->len) {
+            dash_validator->current_subsegment = NULL;
+        } else {
+            dash_validator->current_subsegment = g_ptr_array_index(dash_validator->subsegments,
+                    dash_validator->subsegment_index);
+            dash_validator->current_subsegment->pes_count = 0;
+        }
+    }
+    subsegment_t* subsegment = dash_validator->current_subsegment;
+    if (subsegment) {
         if (subsegment->ssix_offset_index < subsegment->ssix_offsets->len) {
             uint64_t next_ssix_offset = g_array_index(subsegment->ssix_offsets, uint64_t,
                     subsegment->ssix_offset_index);
