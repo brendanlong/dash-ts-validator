@@ -132,6 +132,7 @@ enum {
 
 
 ts_packet_t* ts_new(void);
+ts_packet_t* ts_copy(ts_packet_t*);
 void ts_free(ts_packet_t* ts);
 int ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num);
 void ts_print(const ts_packet_t* const ts);

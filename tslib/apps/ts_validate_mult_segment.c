@@ -123,7 +123,6 @@ int main(int argc, char* argv[])
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     dash_validator_t* validator = dash_validator_new(MEDIA_SEGMENT, representation->profile);
-                    validator->use_initialization_segment = representation->initialization_file_name != NULL;
                     validator->adaptation_set = adaptation_set;
                     validator->segment = segment;
 

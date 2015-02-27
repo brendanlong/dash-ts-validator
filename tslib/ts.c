@@ -54,6 +54,15 @@ ts_packet_t* ts_new(void)
     return ts;
 }
 
+ts_packet_t* ts_copy(ts_packet_t* original)
+{
+    ts_packet_t* ts = g_memdup(original, sizeof(*original));
+    ts->payload.bytes = g_memdup(original->payload.bytes, original->payload.len);
+    ts->adaptation_field.private_data_bytes.bytes = g_memdup(original->adaptation_field.private_data_bytes.bytes,
+            original->adaptation_field.private_data_bytes.len);
+    return ts;
+}
+
 void ts_free(ts_packet_t* ts)
 {
     if (ts == NULL) {

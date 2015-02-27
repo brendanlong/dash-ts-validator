@@ -129,6 +129,7 @@ void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, das
     obj->profile = profile;
     obj->subsegments = g_ptr_array_new_with_free_func((GDestroyNotify)subsegment_free);
     obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
+    obj->initialization_segment_ts = g_ptr_array_new_with_free_func((GDestroyNotify)ts_free);
 }
 
 void dash_validator_destroy(dash_validator_t* obj)
@@ -138,6 +139,7 @@ void dash_validator_destroy(dash_validator_t* obj)
     }
     g_ptr_array_free(obj->subsegments, true);
     g_ptr_array_free(obj->pids, true);
+    g_ptr_array_free(obj->initialization_segment_ts, true);
 }
 
 void dash_validator_free(dash_validator_t* obj)
@@ -152,12 +154,6 @@ static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
     if (m2s->programs->len != 1) {
         g_critical("DASH Conformance: 6.4.4.2  Media segments shall contain exactly one program (%u found)",
                        m2s->programs->len);
-        dash_validator->status = 0;
-        return 0;
-    }
-
-    if (dash_validator->use_initialization_segment) {
-        g_critical("DASH Conformance: No PAT allowed if initialization segment is used");
         dash_validator->status = 0;
         return 0;
     }
@@ -186,12 +182,6 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
     if (m2p->pmt == NULL) {  // if we don't have any PSI, there's nothing we can do
-        return 0;
-    }
-
-    if (dash_validator->use_initialization_segment) {
-        g_critical("DASH Conformance: No PMT allowed if initialization segment is used");
-        dash_validator->status = 0;
         return 0;
     }
 
@@ -260,45 +250,6 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         }
     }
     return 1;
-}
-
-static int copy_pmt_info(mpeg2ts_program_t* m2p, dash_validator_t* dash_validator_source,
-        dash_validator_t* dash_validator_dest)
-{
-    dash_validator_dest->pcr_pid = dash_validator_source->pcr_pid;
-
-    g_debug("copy_pmt_info: dash_validator_source->pids->len = %u",
-            dash_validator_source->pids->len);
-    for (gsize i = 0; i < dash_validator_source->pids->len; ++i) {
-        pid_validator_t* pid_validator_src = g_ptr_array_index(dash_validator_source->pids, i);
-        int content_component = 0;
-        uint16_t pid = pid_validator_src->pid;
-
-        // hook PES validation to PES demuxer
-        pes_demux_t* pd = pes_demux_new(validate_pes_packet);
-        pd->pes_arg = dash_validator_source;
-
-        // hook PES demuxer to the PID processor
-        demux_pid_handler_t* demux_handler = demux_pid_handler_new(pes_demux_process_ts_packet);
-        demux_handler->arg = pd;
-        demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
-
-        // hook PES demuxer to the PID processor
-        demux_pid_handler_t* demux_validator = demux_pid_handler_new(validate_ts_packet);
-        demux_validator->arg = dash_validator_source;
-
-        // hook PID processor to PID
-        mpeg2ts_program_register_pid_processor(m2p, pid, demux_handler, demux_validator);
-
-        pid_validator_t* pid_validator_dest = pid_validator_new(pid, content_component);
-
-        g_debug("copy_pmt_info: adding pid_validator %"PRIxPTR" for PID %d", (uintptr_t)pid_validator_dest,
-                      pid);
-        g_ptr_array_add(dash_validator_dest->pids, pid_validator_dest);
-        // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
-    }
-
-    return 0;
 }
 
 static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg)
@@ -748,23 +699,6 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
         goto fail;
     }
 
-    // if had intialization segment, then copy program info and setup PES callbacks
-    if (dash_validator_init != NULL) {
-        mpeg2ts_program_t* prog = mpeg2ts_program_new(
-                                      200 /* GORP */,  // can I just use dummy values here?
-                                      201 /* GORP */);
-        prog->pmt = dash_validator_init->initialization_segment_pmt;
-
-        g_debug("Adding initialization PSI info...program = %"PRIXPTR, (uintptr_t)prog);
-        g_ptr_array_add(m2s->programs, prog);
-
-        int return_code = copy_pmt_info(prog, dash_validator_init, dash_validator);
-        if (return_code != 0) {
-            g_critical("Error copying PMT info");
-            goto fail;
-        }
-    }
-
     m2s->pat_processor = pat_processor;
     m2s->arg = dash_validator;
 
@@ -780,6 +714,12 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
     demux_pid_handler_t* ts_validator = demux_pid_handler_new(validate_ts_packet);
     ts_validator->arg = dash_validator;
     m2s->ts_processor = ts_validator;
+
+    // Read TS packets from initialization segment
+    for (gsize i = 0; dash_validator_init && i < dash_validator_init->initialization_segment_ts->len; ++i) {
+        ts_packet_t* ts = g_ptr_array_index(dash_validator_init->initialization_segment_ts, i);
+        mpeg2ts_stream_read_ts_packet(m2s, ts_copy(ts));
+    }
 
     long packet_buf_size = 4096;
     uint64_t packets_read = 0;
@@ -799,7 +739,9 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
                 g_critical("Error parsing TS packet %"PRIo64" (%d)", packets_read, res);
                 goto fail;
             }
-
+            if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+                g_ptr_array_add(dash_validator->initialization_segment_ts, ts_copy(ts));
+            }
             mpeg2ts_stream_read_ts_packet(m2s, ts);
             packets_read++;
         }
@@ -812,14 +754,7 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
 
     // need to reset the mpeg stream to be sure to process the last PES packet
     mpeg2ts_stream_reset(m2s);
-
     g_debug("%"PRIo64" TS packets read", packets_read);
-
-    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-        mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, 0);  // should be only one program
-        g_debug("m2p = %"PRIxPTR"\n", (uintptr_t)m2p);
-        dash_validator->initialization_segment_pmt = m2p->pmt;
-    }
 
 cleanup:
     mpeg2ts_stream_free(m2s);

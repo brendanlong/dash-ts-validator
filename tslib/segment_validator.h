@@ -94,8 +94,7 @@ typedef struct {
     uint32_t pmt_version_number;
     int status; // 0 == fail
     segment_type_t segment_type;
-    bool use_initialization_segment;
-    program_map_section_t* initialization_segment_pmt;      /// parsed PMT
+    GPtrArray* initialization_segment_ts;
 
     bool has_subsegments;
     size_t subsegment_index;
