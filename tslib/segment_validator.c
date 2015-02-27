@@ -125,6 +125,7 @@ dash_validator_t* dash_validator_new(segment_type_t segment_type, dash_profile_t
 
 void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, dash_profile_t profile)
 {
+    obj->segment_type = segment_type;
     obj->profile = profile;
     obj->subsegments = g_ptr_array_new_with_free_func((GDestroyNotify)subsegment_free);
     obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
