@@ -1017,6 +1017,10 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                 }
 
                 referenced_size = 0;
+                if (segment_index >= segments->len) {
+                    g_critical("ERROR, representation index has too many 'sidx' boxes.");
+                    goto fail;
+                }
                 segment_t* segment = g_ptr_array_index(segments, segment_index);
                 segment_index++;
 

@@ -120,7 +120,6 @@ int main(int argc, char* argv[])
                     goto cleanup;
                 }
 
-                // if there is an initialization segment, process it first in order to get the PAT and PMT tables
                 for (size_t s_i = 0; s_i < representation->segments->len; ++s_i) {
                     segment_t* segment = g_ptr_array_index(representation->segments, s_i);
                     dash_validator_t* validator = dash_validator_new(MEDIA_SEGMENT, representation->profile);
@@ -132,13 +131,15 @@ int main(int argc, char* argv[])
                     segment->arg_free = (free_func_t)dash_validator_free;
                 }
 
+                // if there is an initialization segment, process it first in order to get the PAT and PMT tables
                 dash_validator_t* validator_init_segment = NULL;
                 if (representation->initialization_file_name) {
                     validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, representation->profile);
                     if (validate_segment(validator_init_segment, representation->initialization_file_name, 0, 0, NULL) != 0) {
-                        g_critical("Validation of initialization segment %s FAILED.", representation->initialization_file_name);
                         validator_init_segment->status = 0;
                     }
+                    g_print("INITIALIZATION SEGMENT TEST RESULT: %s: %s\n", representation->initialization_file_name,
+                            validator_init_segment->status ? "SUCCESS" : "FAIL");
                     representation_valid &= validator_init_segment->status;
                 }
 
@@ -147,9 +148,10 @@ int main(int argc, char* argv[])
                     index_segment_validator_t* index_validator = validate_index_segment(
                             representation->index_file_name, NULL, representation, adaptation_set);
                     if (index_validator->error) {
-                        g_critical("Validation of RepresentationIndex %s FAILED", representation->index_file_name);
                         representation_valid = false;
                     }
+                    g_print("REPRESENTATION INDEX TEST RESULT: %s: %s\n", representation->index_file_name,
+                            index_validator->error ? "FAIL" : "SUCCESS");
                     if (index_validator->segment_subsegments->len != 0 &&
                             index_validator->segment_subsegments->len != representation->segments->len) {
                         g_error("PROGRAMMING ERROR: index_segment_validator_t->segment_subsegments returned from "
@@ -180,9 +182,10 @@ int main(int argc, char* argv[])
                         index_segment_validator_t* index_validator = validate_index_segment(
                                 segment->index_file_name, segment, representation, adaptation_set);
                         if (index_validator->error) {
-                            g_critical("Validation of SegmentIndexFile %s FAILED", segment->index_file_name);
                             representation_valid = false;
                         }
+                        g_print("SINGLE SEGMENT INDEX TEST RESULT: %s: %s\n", representation->index_file_name,
+                                index_validator->error ? "FAIL" : "SUCCESS");
                         if (index_validator->segment_subsegments->len != 0) {
                             GPtrArray* subsegments = g_ptr_array_index(index_validator->segment_subsegments, 0);
                             dash_validator_t* validator = segment->arg;
