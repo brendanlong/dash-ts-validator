@@ -479,17 +479,17 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             pid_validator->sap = 1; // we trust AF by default.
             if (pid_validator->content_component == VIDEO_CONTENT_COMPONENT) {
                 int nal_start, nal_end;
-                int returnCode;
                 uint8_t* buf = pes->payload;
                 size_t len = pes->payload_len;
 
                 // walk the nal units in the PES payload and check to see if they are type 1 or type 5 -- these determine
                 // SAP type
-                size_t index = 0;
-                while (len > index
-                        && (returnCode = find_nal_unit(buf + index, len - index, &nal_start, &nal_end)) !=  0) {
+                for (size_t i = 0; i < len; i += nal_end) {
+                    if (!find_nal_unit(buf + i, len - i, &nal_start, &nal_end) != 0) {
+                        break;
+                    }
                     h264_stream_t* h = h264_new();
-                    read_nal_unit(h, &buf[nal_start + index], nal_end - nal_start);
+                    read_nal_unit(h, &buf[nal_start + i], nal_end - nal_start);
                     int unit_type = h->nal->nal_unit_type;
                     h264_free(h);
                     if (unit_type == 5) {
@@ -499,8 +499,6 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                         pid_validator->sap_type = 2;
                         break;
                     }
-
-                    index += nal_end;
                 }
             }
         }
