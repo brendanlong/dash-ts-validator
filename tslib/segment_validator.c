@@ -736,7 +736,15 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
             ts_packet_t* ts = ts_new();
             int res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read);
             if (res < TS_SIZE) {
-                g_critical("Error parsing TS packet %"PRIo64" (%d)", packets_read, res);
+                g_critical("DASH Conformance: Error parsing TS packet %"PRIo64" in segment %s. %s",
+                        packets_read, file_name,
+                        dash_validator->segment_type == INITIALIZATION_SEGMENT ? "6.4.3.2 Initialization Segment: An "
+                        "Initialization Segment shall be a valid MPEG-2 TS, conforming to ISO/IEC 13818-1."
+                        : dash_validator->segment_type == BITSTREAM_SWITCHING_SEGMENT ? "6.4.5 Bitstream Switching "
+                        "Segment: A Bitstream Switching Segment shall be a valid MPEG-2 TS, conforming to ISO/IEC "
+                        "13818-1."
+                        : "6.4.4.2 Basic Media Segment: A Media Segment shall be a valid MPEG-2 TS, conforming to "
+                        "ISO/IEC 13818-1.");
                 goto fail;
             }
             if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
