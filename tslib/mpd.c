@@ -488,19 +488,33 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
         }
         if (xmlStrEqual(cur_node->name, "RepresentationIndex")) {
             if (representation->index_file_name != NULL) {
-                g_warning("Ignoring duplicate index file in <%s>.", node->name);
-                continue;
+                g_critical("Ignoring duplicate index file in <%s>.", node->name);
+                goto fail;
             }
             representation->index_file_name = read_filename(cur_node, "sourceURL", base_url);
         } else if (xmlStrEqual(cur_node->name, "Initialization")) {
             if (representation->initialization_file_name != NULL) {
-                g_warning("Ignoring duplicate initialization segment in <%s>.", node->name);
-                continue;
+                g_critical("Ignoring duplicate initialization segment in <%s>.", node->name);
+                goto fail;
             }
             representation->initialization_file_name = read_filename(cur_node, "sourceURL", base_url);
+        } else if (xmlStrEqual(cur_node->name, "BitstreamSwitching")) {
+            if (representation->bitstream_switching_file_name != NULL) {
+                g_critical("Duplicate <BitstreamSwitching> segment in <%s>.", node->name);
+                goto fail;
+            }
+            representation->bitstream_switching_file_name = read_filename(cur_node, "sourceURL", base_url);
+            if(!read_range(node, "range", &representation->bitstream_switching_range_start,
+                    &representation->bitstream_switching_range_end)) {
+                goto fail;
+            }
         }
     }
+cleanup:
     return return_code;
+fail:
+    return_code = false;
+    goto cleanup;
 }
 
 bool read_segment_list(xmlNode* node, representation_t* representation, char* base_url, xmlNode* parent_segment_list)
@@ -517,16 +531,6 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
                 goto fail;
             }
             segment_timeline = read_segment_timeline(cur_node);
-        } else if (xmlStrEqual(cur_node->name, "BitstreamSwitching")) {
-            if (representation->bitstream_switching_file_name != NULL) {
-                g_critical("Saw multiple <BitstreamSwitching> children for one <SegmentList>.");
-                goto fail;
-            }
-            representation->bitstream_switching_file_name = xmlGetProp(cur_node, "sourceURL");
-            if(!read_range(node, "range", &representation->bitstream_switching_range_start,
-                    &representation->bitstream_switching_range_end)) {
-                goto fail;
-            }
         }
     }
 
@@ -756,16 +760,6 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
                 goto fail;
             }
             segment_timeline = read_segment_timeline(cur_node);
-        } else if (xmlStrEqual(cur_node->name, "BitstreamSwitching")) {
-            if (representation->bitstream_switching_file_name != NULL) {
-                g_critical("Saw multiple <BitstreamSwitching> children for one <SegmentTemplate>.");
-                goto fail;
-            }
-            representation->bitstream_switching_file_name = xmlGetProp(cur_node, "sourceURL");
-            if(!read_range(node, "range", &representation->bitstream_switching_range_start,
-                    &representation->bitstream_switching_range_end)) {
-                goto fail;
-            }
         }
     }
 

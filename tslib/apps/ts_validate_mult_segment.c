@@ -142,6 +142,20 @@ int main(int argc, char* argv[])
                     representation_valid &= validator_init_segment->status;
                 }
 
+                /* Validate Bitstream Switching Segment */
+                if (representation->initialization_file_name) {
+                    dash_validator_t* validator = dash_validator_new(BITSTREAM_SWITCHING_SEGMENT,
+                            representation->profile);
+                    if (validate_segment(validator, representation->bitstream_switching_file_name,
+                            representation->bitstream_switching_range_start,
+                            representation->bitstream_switching_range_end, validator_init_segment) != 0) {
+                        validator->status = 0;
+                    }
+                    g_print("BITSTREAM SWITCHING SEGMENT TEST RESULT: %s: %s\n",
+                            representation->bitstream_switching_file_name, validator->status ? "SUCCESS" : "FAIL");
+                    representation_valid &= validator->status;
+                }
+
                 /* Validate Representation Index */
                 if (representation->index_file_name) {
                     index_segment_validator_t* index_validator = validate_index_segment(

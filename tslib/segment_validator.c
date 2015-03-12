@@ -259,14 +259,15 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         return 0;
     }
 
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT && ts->adaptation_field.pcr_flag) {
+        g_critical("DASH Conformance: TS packet in initialization segment has pcr_flag = 1. 6.4.3.2 says, "
+                "\"PCR-bearing packets shall not be present in the Initialization Segment;\".");
+        dash_validator->status = 0;
+    }
+
     if (dash_validator->pcr_pid == ts->header.pid) {
         int64_t pcr = ts_read_pcr(ts);
         if (PCR_IS_VALID(pcr)) {
-            if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-                g_critical("DASH Conformance: 6.4.3.2: \"PCR-bearing packets shall not be present in the "
-                        "Initialization Segment;\"");
-                dash_validator->status = 0;
-            }
             dash_validator->last_pcr = pcr;
         }
     }
@@ -374,17 +375,16 @@ cleanup:
 
 static void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_validator_t* dash_validator)
 {
-    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-        for (GList* current = ts_queue->head; current; current = current->next) {
-            ts_packet_t* tsp = current->data;
-            if (tsp->adaptation_field.pcr_flag) {
-                g_critical("DASH Conformance: TS packet in initialization segment has pcr_flag = 1. 6.4.3.2 says, "
-                        "\"PCR-bearing packets shall not be present in the Initialization Segment;\".");
-                dash_validator->status = 0;
-            }
-        }
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT
+            || dash_validator->segment_type == BITSTREAM_SWITCHING_SEGMENT) {
+        bool is_init = dash_validator->segment_type == INITIALIZATION_SEGMENT;
+        g_critical("DASH Conformance: PES packet found in %s segment. %s: The concatenation of %s Segment with any "
+                "Media Segment shall have the same presentation duration as the original Media Segment.",
+                is_init ? "initialization" : "bitstream switching",
+                is_init ? "" : "6.4.5 Bitstream Switching Segment",
+                is_init ? "an Initialization" : "a Bitstream Switching");
+        dash_validator->status = 0;
     }
-
     if (pes == NULL) {
         return;
     }
@@ -449,14 +449,6 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
 
     pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
     assert(pid_validator != NULL);
-
-    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-        g_critical("DASH Conformance: PES packet for elementary stream %"PRIu16" found in initialization segment. "
-                "6.4.3.2 Initialization Segment: The concatenation of an Initialization Segment with any Media "
-                "Segment shall have the same presentation duration as the original Media Segment.",
-                first_ts->header.pid);
-        dash_validator->status = 0;
-    }
 
     // we are in the first PES packet of a PID
     if (pid_validator->pes_count == 0) {
