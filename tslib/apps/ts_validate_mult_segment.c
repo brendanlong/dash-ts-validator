@@ -134,7 +134,9 @@ int main(int argc, char* argv[])
                 dash_validator_t* validator_init_segment = NULL;
                 if (representation->initialization_file_name) {
                     validator_init_segment = dash_validator_new(INITIALIZATION_SEGMENT, representation->profile);
-                    if (validate_segment(validator_init_segment, representation->initialization_file_name, 0, 0, NULL) != 0) {
+                    if (validate_segment(validator_init_segment, representation->initialization_file_name,
+                            representation->initialization_range_start,
+                            representation->initialization_range_end, NULL) != 0) {
                         validator_init_segment->status = 0;
                     }
                     g_print("INITIALIZATION SEGMENT TEST RESULT: %s: %s\n", representation->initialization_file_name,
