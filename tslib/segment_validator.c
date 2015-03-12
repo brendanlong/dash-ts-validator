@@ -450,6 +450,14 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
     assert(pid_validator != NULL);
 
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
+        g_critical("DASH Conformance: PES packet for elementary stream %"PRIu16" found in initialization segment. "
+                "6.4.3.2 Initialization Segment: The concatenation of an Initialization Segment with any Media "
+                "Segment shall have the same presentation duration as the original Media Segment.",
+                first_ts->header.pid);
+        dash_validator->status = 0;
+    }
+
     // we are in the first PES packet of a PID
     if (pid_validator->pes_count == 0) {
         if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
@@ -515,12 +523,6 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         // frames can come in out of PTS order
         pid_validator->earliest_playout_time = MIN(pid_validator->earliest_playout_time, pes->header.pts);
         pid_validator->latest_playout_time = MAX(pid_validator->latest_playout_time, pes->header.pts);
-        if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-            g_critical("DASH Conformance: 'PES packet in initialization segment has PTS_DTS_flags set to 0x%x. "
-                    "Initialization segment packets should not contain timing information.",
-                    pes->header.pts_dts_flags);
-            dash_validator->status = 0;
-        }
     }
 
     if (pid_validator->content_component == VIDEO_CONTENT_COMPONENT) {
