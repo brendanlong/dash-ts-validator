@@ -146,7 +146,7 @@ int main(int argc, char* argv[])
                 }
 
                 /* Validate Bitstream Switching Segment */
-                if (representation->initialization_file_name) {
+                if (representation->bitstream_switching_file_name) {
                     dash_validator_t* validator = dash_validator_new(BITSTREAM_SWITCHING_SEGMENT,
                             representation->profile);
                     if (validate_segment(validator, representation->bitstream_switching_file_name,
@@ -154,9 +154,18 @@ int main(int argc, char* argv[])
                             representation->bitstream_switching_range_end, validator_init_segment) != 0) {
                         validator->status = 0;
                     }
+                    if (!check_segment_psi_identical(representation->initialization_file_name, validator_init_segment,
+                            representation->bitstream_switching_file_name, validator)) {
+                        g_critical("DASH Conformance: PSI in bitstream switching segment does not match PSI in "
+                                "initialization segment. 6.4.5 Bitstream Switching Segment: If initialization "
+                                "information is carried within a Bitstream Switching Segment, it shall be identical "
+                                "to the one in the Initialization Segment, if present, of the Representation.");
+                        validator->status = 0;
+                    }
                     g_print("BITSTREAM SWITCHING SEGMENT TEST RESULT: %s: %s\n",
                             representation->bitstream_switching_file_name, validator->status ? "SUCCESS" : "FAIL");
                     representation_valid &= validator->status;
+                    dash_validator_free(validator);
                 }
 
                 /* Validate Representation Index */

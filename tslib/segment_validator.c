@@ -180,11 +180,9 @@ static pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_
 
 static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 {
-    dash_validator_t* dash_validator = (dash_validator_t*)arg;
-    if (m2p->pmt == NULL) {  // if we don't have any PSI, there's nothing we can do
-        return 0;
-    }
+    g_return_val_if_fail(m2p->pmt != NULL, 0);
 
+    dash_validator_t* dash_validator = arg;
     dash_validator->pcr_pid = m2p->pmt->pcr_pid;
     dash_validator->pmt_program_number = m2p->pmt->program_number;
     dash_validator->pmt_version_number = m2p->pmt->version_number;
@@ -201,7 +199,9 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 
 // TODO: we need to figure out what we do when section versions change
 // Do we need to fix something? Profile something out?
-        assert(pid_validator == NULL);
+        if (pid_validator != NULL) {
+            g_ptr_array_remove(dash_validator->pids, pid_validator);
+        }
 
         switch (pi->es_info->stream_type) {
         case STREAM_TYPE_MPEG2_VIDEO:

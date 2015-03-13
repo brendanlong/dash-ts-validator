@@ -285,27 +285,22 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet PAT
-    if (m2p->pmt == NULL || (m2p->pmt->version_number != new_pms->version_number
-            && new_pms->current_next_indicator == 1)) {
-        if (m2p->pmt != NULL) {
-            g_warning("New PMT in force, discarding the old one");
-            program_map_section_free(m2p->pmt);
-        }
+    if (m2p->pmt != NULL) {
+        g_warning("New PMT in force, discarding the old one");
+        g_hash_table_remove_all(m2p->pids);
+        program_map_section_free(m2p->pmt);
+    }
+    m2p->pmt = new_pms;
 
-        m2p->pmt = new_pms;
+    for (size_t es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
+        elementary_stream_info_t* es = g_ptr_array_index(m2p->pmt->es_info, es_idx);
+        pid_info_t* pi = pid_info_new();
+        pi->es_info = es;
+        g_hash_table_insert(m2p->pids, GINT_TO_POINTER(pi->es_info->elementary_pid), pi);
+    }
 
-        for (size_t es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
-            elementary_stream_info_t* es = g_ptr_array_index(m2p->pmt->es_info, es_idx);
-            pid_info_t* pi = pid_info_new();
-            pi->es_info = es;
-            g_hash_table_insert(m2p->pids, GINT_TO_POINTER(pi->es_info->elementary_pid), pi);
-        }
-
-        if (m2p->pmt_processor != NULL) {
-            m2p->pmt_processor(m2p, m2p->arg);
-        }
-    } else {
-        program_map_section_free(new_pms);
+    if (m2p->pmt_processor != NULL) {
+        m2p->pmt_processor(m2p, m2p->arg);
     }
 
 cleanup:
