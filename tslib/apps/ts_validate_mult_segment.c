@@ -40,7 +40,7 @@
 
 int check_representation_gaps(GPtrArray* representations, content_component_t, int64_t max_delta);
 int check_segment_timing(GPtrArray* segments, content_component_t);
-bool check_segment_psi_identical(segment_t*, segment_t*);
+bool check_segment_psi_identical(const char* file_name1, dash_validator_t*, const char* file_name2, dash_validator_t*);
 bool check_psi_identical(GPtrArray* representations);
 
 static struct option long_options[] = {
@@ -438,38 +438,35 @@ int check_segment_timing(GPtrArray* segments, content_component_t content_compon
     return status;
 }
 
-bool check_segment_psi_identical(segment_t* s1, segment_t* s2)
+bool check_segment_psi_identical(const char* f1, dash_validator_t* v1, const char* f2, dash_validator_t* v2)
 {
-    g_return_val_if_fail(s1 != NULL, false);
-    g_return_val_if_fail(s2 != NULL, false);
-
-    dash_validator_t* v1 = s1->arg;
-    dash_validator_t* v2 = s2->arg;
+    g_return_val_if_fail(v1 != NULL, false);
+    g_return_val_if_fail(v2 != NULL, false);
 
     bool identical = true;
     if (v1->video_pid != v2->video_pid) {
         g_info("Video PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
-                s1->file_name, s2->file_name, v1->video_pid, v2->video_pid);
+                f1, f2, v1->video_pid, v2->video_pid);
         identical = false;
     }
     if (v1->audio_pid != v2->audio_pid) {
         g_info("Audio PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
-                s1->file_name, s2->file_name, v1->audio_pid, v2->audio_pid);
+                f1, f2, v1->audio_pid, v2->audio_pid);
         identical = false;
     }
     if (v1->pcr_pid != v2->pcr_pid) {
         g_info("PCR PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
-                s1->file_name, s2->file_name, v1->pcr_pid, v2->pcr_pid);
+                f1, f2, v1->pcr_pid, v2->pcr_pid);
         identical = false;
     }
     if (v1->pmt_program_number != v2->pmt_program_number) {
         g_info("PMT program number in segments %s and %s do not match. Values are %"PRIu32" and %"PRIu32".",
-                s1->file_name, s2->file_name, v1->pmt_program_number, v2->pmt_program_number);
+                f1, f2, v1->pmt_program_number, v2->pmt_program_number);
         identical = false;
     }
     if (v1->pmt_version_number != v2->pmt_version_number) {
         g_info("PMT version number in segments %s and %s do not match. Values are %"PRIu32" and %"PRIu32".",
-                s1->file_name, s2->file_name, v1->pmt_version_number, v2->pmt_version_number);
+                f1, f2, v1->pmt_version_number, v2->pmt_version_number);
         identical = false;
     }
     return identical;
@@ -481,17 +478,16 @@ bool check_psi_identical(GPtrArray* representations)
 
     g_info("Validating that PSI info is identical in each segment\n");
     bool identical = true;
-    segment_t* segment1;
+    segment_t* reference;
     for (gsize r_i = 0; r_i < representations->len; ++r_i) {
         representation_t* representation = g_ptr_array_index(representations, r_i);
         for (gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
-            segment_t* segment = g_ptr_array_index(representation->segments, s_i);
-            dash_validator_t* validator = (dash_validator_t*)segment->arg;
+            segment_t* current = g_ptr_array_index(representation->segments, s_i);
 
             if (r_i == 0 && s_i == 0) {
-                segment1 = segment;
+                reference = current;
             } else {
-                if (!check_segment_psi_identical(segment1, segment)) {
+                if (!check_segment_psi_identical(reference->file_name, reference->arg, current->file_name, current->arg)) {
                     identical = false;
                 }
             }
