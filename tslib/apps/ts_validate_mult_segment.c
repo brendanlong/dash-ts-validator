@@ -338,13 +338,15 @@ int check_representation_gaps(GPtrArray* representations, content_component_t co
                 representation_t* representation2 = g_ptr_array_index(representations, r_i2);
                 segment_t* segment2 = g_ptr_array_index(representation2->segments, s_i);
 
-                int64_t pts_delta = segment2->actual_start[content_component] - (int64_t)segment1->actual_end[content_component];
+                int64_t pts_delta = segment2->actual_start[content_component] - \
+                        (int64_t)segment1->actual_end[content_component];
                 if (pts_delta) {
                     flags = G_LOG_LEVEL_WARNING;
                     if (pts_delta > max_delta) {
-                        g_critical("FAIL: %s gap between for segment %zu for representations %s and %s is %"PRId64" and exceeds limit %"PRId64,
-                                content_component_to_string(content_component), s_i, representation1->id, representation2->id,
-                                pts_delta, max_delta);
+                        g_critical("FAIL: %s gap between for segment %zu for representations %s and %s is %"PRId64" "
+                                "and exceeds limit %"PRId64,
+                                content_component_to_string(content_component), s_i, representation1->id,
+                                representation2->id, pts_delta, max_delta);
                         status = 0;
                     }
                 }
