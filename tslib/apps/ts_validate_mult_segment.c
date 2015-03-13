@@ -40,7 +40,8 @@
 
 int check_representation_gaps(GPtrArray* representations, content_component_t, int64_t max_delta);
 int check_segment_timing(GPtrArray* segments, content_component_t);
-int check_psi_identical(GPtrArray* representations);
+bool check_segment_psi_identical(segment_t*, segment_t*);
+bool check_psi_identical(GPtrArray* representations);
 
 static struct option long_options[] = {
     { "verbose", no_argument, NULL, 'v' },
@@ -283,9 +284,14 @@ int main(int argc, char* argv[])
             adaptation_set_valid &= check_representation_gaps(adaptation_set->representations,
                     VIDEO_CONTENT_COMPONENT, max_gap_pts_ticks[VIDEO_CONTENT_COMPONENT]);
 
-            if(adaptation_set->profile >= DASH_PROFILE_MPEG2TS_SIMPLE) {
-                /* For the simple profile, the PSI must be the same for all Representations in an
-                 * AdaptationSet */
+            /* For the simple profile, the PSI must be the same for all Representations in an
+             * AdaptationSet */
+            if(adaptation_set->profile >= DASH_PROFILE_MPEG2TS_SIMPLE
+                    && !check_psi_identical(adaptation_set->representations)) {
+                g_critical("DASH Conformance: PSI info not identical for all segments in AdaptationSet with "
+                        "profile=\"urn:mpeg:dash:profile:mp2t-simple:2011\". 8.7.3 Segment format constraints: PSI "
+                        "information, including versions, shall be identical within all Representations contained in an "
+                        "AdaptationSet;\n");
                 adaptation_set_valid &= check_psi_identical(adaptation_set->representations);
             }
 
@@ -432,23 +438,50 @@ int check_segment_timing(GPtrArray* segments, content_component_t content_compon
     return status;
 }
 
-// check that each segment has the same video PID, audio PID, PMT version, PMT program num, and PCR PID
-int check_psi_identical(GPtrArray* representations)
+bool check_segment_psi_identical(segment_t* s1, segment_t* s2)
 {
-    if (representations->len == 0) {
-        g_warning("Can't check PSI for empty set of representations.");
-        return 0;
+    g_return_val_if_fail(s1 != NULL, false);
+    g_return_val_if_fail(s2 != NULL, false);
+
+    dash_validator_t* v1 = s1->arg;
+    dash_validator_t* v2 = s2->arg;
+
+    bool identical = true;
+    if (v1->video_pid != v2->video_pid) {
+        g_info("Video PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
+                s1->file_name, s2->file_name, v1->video_pid, v2->video_pid);
+        identical = false;
     }
+    if (v1->audio_pid != v2->audio_pid) {
+        g_info("Audio PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
+                s1->file_name, s2->file_name, v1->audio_pid, v2->audio_pid);
+        identical = false;
+    }
+    if (v1->pcr_pid != v2->pcr_pid) {
+        g_info("PCR PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
+                s1->file_name, s2->file_name, v1->pcr_pid, v2->pcr_pid);
+        identical = false;
+    }
+    if (v1->pmt_program_number != v2->pmt_program_number) {
+        g_info("PMT program number in segments %s and %s do not match. Values are %"PRIu32" and %"PRIu32".",
+                s1->file_name, s2->file_name, v1->pmt_program_number, v2->pmt_program_number);
+        identical = false;
+    }
+    if (v1->pmt_version_number != v2->pmt_version_number) {
+        g_info("PMT version number in segments %s and %s do not match. Values are %"PRIu32" and %"PRIu32".",
+                s1->file_name, s2->file_name, v1->pmt_version_number, v2->pmt_version_number);
+        identical = false;
+    }
+    return identical;
+}
+
+bool check_psi_identical(GPtrArray* representations)
+{
+    g_return_val_if_fail(representations->len != 0, false);
 
     g_info("Validating that PSI info is identical in each segment\n");
-    int status = 1; // 1=PASS, 0=FAIL
-
-    int video_pid;
-    int audio_pid;
-    int pcr_pid;
-    uint32_t pmt_program_number;
-    uint32_t pmt_version_number;
-
+    bool identical = true;
+    segment_t* segment1;
     for (gsize r_i = 0; r_i < representations->len; ++r_i) {
         representation_t* representation = g_ptr_array_index(representations, r_i);
         for (gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
@@ -456,42 +489,13 @@ int check_psi_identical(GPtrArray* representations)
             dash_validator_t* validator = (dash_validator_t*)segment->arg;
 
             if (r_i == 0 && s_i == 0) {
-                video_pid = validator->video_pid;
-                audio_pid = validator->audio_pid;
-                pcr_pid = validator->pcr_pid;
-                pmt_program_number = validator->pmt_program_number;
-                pmt_version_number = validator->pmt_version_number;
+                segment1 = segment;
             } else {
-                if (video_pid != validator->video_pid) {
-                    g_critical("PSI Table Validation FAILED: Incorrect video PID: Expected = %d, Actual = %d",
-                            video_pid, validator->video_pid);
-                    status = 0;
-                }
-                if (audio_pid != validator->audio_pid) {
-                    g_critical("PSI Table Validation FAILED: Incorrect audio PID: Expected = %d, Actual = %d",
-                            audio_pid, validator->audio_pid);
-                    status = 0;
-                }
-                if (pcr_pid != validator->pcr_pid) {
-                    g_critical("PSI Table Validation FAILED: Incorrect PCR PID: Expected = %d, Actual = %d",
-                            pcr_pid, validator->pcr_pid);
-                    status = 0;
-                }
-                if (pmt_program_number != validator->pmt_program_number) {
-                    g_critical("PSI Table Validation FAILED: Incorrect pmt_program_number: Expected = %d, Actual = %d",
-                            pmt_program_number, validator->pmt_program_number);
-                    status = 0;
-                }
-                if (pmt_version_number != validator->pmt_version_number) {
-                    g_critical("PSI Table Validation FAILED: Incorrect pmt_version_number: Expected = %d, Actual = %d",
-                            pmt_version_number, validator->pmt_version_number);
-                    status = 0;
+                if (!check_segment_psi_identical(segment1, segment)) {
+                    identical = false;
                 }
             }
         }
     }
-    if (status != 1) {
-        g_critical("Validation FAILED: PSI info not identical for all segments\n");
-    }
-    return status;
+    return identical;
 }
