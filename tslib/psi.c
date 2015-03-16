@@ -105,7 +105,6 @@ static int section_header_read(mpeg2ts_section_t* section, bs_t* b)
     if ((section->table_id < 0x40 || section->table_id > 0xFE) && section->private_indicator) {
         g_critical("Private indicator set to 0x%x in table 0x%02x, but this is not in the private range 0x40-0xFE.",
                 section->private_indicator, section->table_id);
-        SAFE_REPORT_TS_ERR(-34);
         return 0;
     }
 
@@ -119,13 +118,11 @@ static int section_header_read(mpeg2ts_section_t* section, bs_t* b)
     case TABLE_ID_PROGRAM_MAP_SECTION:
         if (!section->section_syntax_indicator) {
             g_critical("section_syntax_indicator not set in table with table_id 0x%02x.", section->table_id);
-            SAFE_REPORT_TS_ERR(-31);
             return 0;
         }
         if (section->section_length > MAX_SECTION_LEN) {
             g_critical("section length is 0x%02X, larger than maximum allowed 0x%02X",
                     section->section_length, MAX_SECTION_LEN);
-            SAFE_REPORT_TS_ERR(-32);
             return 0;
         }
         break;
@@ -133,7 +130,7 @@ static int section_header_read(mpeg2ts_section_t* section, bs_t* b)
     return 1;
 }
 
-program_association_section_t* program_association_section_new(void)
+static program_association_section_t* program_association_section_new(void)
 {
     program_association_section_t* pas = calloc(1, sizeof(*pas));
     return pas;
@@ -149,19 +146,19 @@ void program_association_section_free(program_association_section_t* pas)
     free(pas);
 }
 
-int program_association_section_read(program_association_section_t* pas, uint8_t* buf, size_t buf_len)
+program_association_section_t* program_association_section_read(uint8_t* buf, size_t buf_len)
 {
+    program_association_section_t* pas = program_association_section_new();
     bs_t* b = bs_new(buf, buf_len);
-    int status = section_header_read((mpeg2ts_section_t*)pas, b);
-    if (!status) {
-        return status;
+
+    if (!section_header_read((mpeg2ts_section_t*)pas, b)) {
+        goto fail;
     }
 
     if (pas->table_id != TABLE_ID_PROGRAM_ASSOCIATION_SECTION) {
         g_critical("Table ID in PAT is 0x%02X instead of expected 0x%02X", pas->table_id,
                 TABLE_ID_PROGRAM_ASSOCIATION_SECTION);
-        SAFE_REPORT_TS_ERR(-30);
-        return 0;
+        goto fail;
     }
 
     pas->transport_stream_id = bs_read_u16(b);
@@ -172,13 +169,14 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
     pas->version_number = bs_read_u(b, 5);
     pas->current_next_indicator = bs_read_u1(b);
     if (!pas->current_next_indicator) {
-        g_warning("This PAT is not yet applicable/n");
+        g_warning("This PAT is not yet applicable");
     }
 
     pas->section_number = bs_read_u8(b);
     pas->last_section_number = bs_read_u8(b);
     if(pas->section_number != 0 || pas->last_section_number != 0) {
-        g_warning("Multi-section PAT is not supported yet/n");
+        g_warning("Multi-section PAT is not supported yet");
+        goto fail;
     }
 
     // section_length gives us the length from the end of section_length
@@ -188,7 +186,8 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
 
     if (pas->num_programs > 1) {
         g_warning("%zd programs found, but only SPTS is fully supported. Patches are welcome.",
-                      pas->num_programs);
+                pas->num_programs);
+        goto fail;
     }
 
     pas->programs = malloc(pas->num_programs * sizeof(program_info_t));
@@ -206,12 +205,16 @@ int program_association_section_read(program_association_section_t* pas, uint8_t
     pas_crc = crc_finalize(pas_crc);
     if (pas_crc != pas->crc_32) {
         g_critical("PAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pas->crc_32, pas_crc);
-        SAFE_REPORT_TS_ERR(-33);
-        return 0;
+        goto fail;
     }
 
+cleanup:
     bs_free(b);
-    return 1;
+    return pas;
+fail:
+    program_association_section_free(pas);
+    pas = NULL;
+    goto cleanup;
 }
 
 void program_association_section_print(const program_association_section_t* pas)
@@ -290,7 +293,7 @@ static void es_info_print(elementary_stream_info_t* es, int level)
     print_descriptor_loop(es->descriptors, level + 1);
 }
 
-program_map_section_t* program_map_section_new(void)
+static program_map_section_t* program_map_section_new(void)
 {
     program_map_section_t* pms = calloc(1, sizeof(*pms));
     pms->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
@@ -310,19 +313,19 @@ void program_map_section_free(program_map_section_t* pms)
     free(pms);
 }
 
-int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t buf_size)
+program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_size)
 {
+    program_map_section_t* pms = program_map_section_new();
     bs_t* b = bs_new(buf, buf_size);
-    int status = section_header_read((mpeg2ts_section_t*)pms, b);
-    if (!status) {
-        return status;
+
+    if (!section_header_read((mpeg2ts_section_t*)pms, b)) {
+        goto fail;
     }
 
     if (pms->table_id != TABLE_ID_PROGRAM_MAP_SECTION) {
         g_critical("Table ID in PMT is 0x%02X instead of expected 0x%02X", pms->table_id,
                        TABLE_ID_PROGRAM_MAP_SECTION);
-        SAFE_REPORT_TS_ERR(-40);
-        return 0;
+        goto fail;
     }
 
     int section_start = bs_pos(b);
@@ -335,15 +338,14 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     pms->version_number = bs_read_u(b, 5);
     pms->current_next_indicator = bs_read_u1(b);
     if (!pms->current_next_indicator) {
-        g_warning("This PMT is not yet applicable/n");
+        g_warning("This PMT is not yet applicable");
     }
 
     pms->section_number = bs_read_u8(b);
     pms->last_section_number = bs_read_u8(b);
     if (pms->section_number != 0 || pms->last_section_number != 0) {
-        g_critical("Multi-section PMT is not allowed/n");
-        SAFE_REPORT_TS_ERR(-43);
-        return 0;
+        g_critical("Multi-section PMT is not allowed");
+        goto fail;
     }
 
     // reserved
@@ -352,8 +354,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     pms->pcr_pid = bs_read_u(b, 13);
     if (pms->pcr_pid < GENERAL_PURPOSE_PID_MIN || pms->pcr_pid > GENERAL_PURPOSE_PID_MAX) {
         g_critical("PCR PID has invalid value 0x%02X", pms->pcr_pid);
-        SAFE_REPORT_TS_ERR(-44);
-        return 0;
+        goto fail;
     }
 
     // reserved
@@ -363,8 +364,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     if (pms->program_info_length > MAX_PROGRAM_INFO_LEN) {
         g_critical("PMT program info length is 0x%02X, larger than maximum allowed 0x%02X",
                        pms->program_info_length, MAX_PROGRAM_INFO_LEN);
-        SAFE_REPORT_TS_ERR(-45);
-        return 0;
+        goto fail;
     }
 
     read_descriptor_loop(pms->descriptors, b, pms->program_info_length);
@@ -372,7 +372,7 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     while (pms->section_length - (bs_pos(b) - section_start) > 4) {  // account for CRC
         elementary_stream_info_t* es = es_info_read(b);
         if (es == NULL) {
-            return 0;
+            goto fail;
         }
         g_ptr_array_add(pms->es_info, es);
     }
@@ -385,16 +385,18 @@ int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t bu
     pas_crc = crc_finalize(pas_crc);
     if(pas_crc != pms->crc_32) {
         g_critical("PMT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pms->crc_32, pas_crc);
-        SAFE_REPORT_TS_ERR(-46);
-        return 0;
+        goto fail;
     } else {
         g_debug("PMT CRC_32 checked successfully");
     }
 
-    int bytes_read = bs_pos(b);
+cleanup:
     bs_free(b);
-
-    return bytes_read;
+    return pms;
+fail:
+    program_map_section_free(pms);
+    pms = NULL;
+    goto cleanup;
 }
 
 void program_map_section_print(program_map_section_t* pms)
@@ -429,7 +431,7 @@ void program_map_section_print(program_map_section_t* pms)
     SKIT_LOG_UINT_HEX(1, pms->crc_32);
 }
 
-conditional_access_section_t* conditional_access_section_new(void)
+static conditional_access_section_t* conditional_access_section_new(void)
 {
     conditional_access_section_t* cas = calloc(1, sizeof(*cas));
     cas->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
@@ -446,19 +448,19 @@ void conditional_access_section_free(conditional_access_section_t* cas)
     free(cas);
 }
 
-int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* buf, size_t buf_len)
+conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size_t buf_len)
 {
+    conditional_access_section_t* cas = conditional_access_section_new();
     bs_t* b = bs_new(buf, buf_len);
-    int status = section_header_read((mpeg2ts_section_t*)cas, b);
-    if (!status) {
-        return status;
+
+    if (!section_header_read((mpeg2ts_section_t*)cas, b)) {
+        goto fail;
     }
 
     if (cas->table_id != TABLE_ID_CONDITIONAL_ACCESS_SECTION) {
         g_critical("Table ID in CAT is 0x%02X instead of expected 0x%02X",
                        cas->table_id, TABLE_ID_CONDITIONAL_ACCESS_SECTION);
-        SAFE_REPORT_TS_ERR(-30);
-        return 0;
+        goto fail;
     }
 
     // 18-bits of reserved value
@@ -468,13 +470,14 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     cas->version_number = bs_read_u(b, 5);
     cas->current_next_indicator = bs_read_u1(b);
     if (!cas->current_next_indicator) {
-        g_warning("This CAT is not yet applicable/n");
+        g_warning("This CAT is not yet applicable");
     }
 
     cas->section_number = bs_read_u8(b);
     cas->last_section_number = bs_read_u8(b);
     if (cas->section_number != 0 || cas->last_section_number != 0) {
-        g_warning("Multi-section CAT is not supported yet/n");
+        g_warning("Multi-section CAT is not supported yet");
+        goto fail;
     }
 
     read_descriptor_loop(cas->descriptors, b, cas->section_length - 5 - 4);
@@ -490,12 +493,16 @@ int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* 
     cas_crc = crc_finalize(cas_crc);
     if (cas_crc != cas->crc_32) {
         g_critical("CAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", cas->crc_32, cas_crc);
-        SAFE_REPORT_TS_ERR(-33);
-        return 0;
+        goto fail;
     }
 
+cleanup:
     bs_free(b);
-    return 1;
+    return cas;
+fail:
+    conditional_access_section_free(cas);
+    cas = NULL;
+    goto cleanup;
 }
 
 void conditional_access_section_print(const conditional_access_section_t* cas)

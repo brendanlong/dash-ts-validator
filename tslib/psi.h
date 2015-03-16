@@ -169,19 +169,16 @@ typedef struct {
     uint32_t crc_32;
 } program_map_section_t;
 
-program_association_section_t* program_association_section_new(void);
 void program_association_section_free(program_association_section_t* pas);
-int program_association_section_read(program_association_section_t* pas, uint8_t* buf, size_t buf_len);
+program_association_section_t* program_association_section_read(uint8_t* buf, size_t buf_len);
 void program_association_section_print(const program_association_section_t* pas);
 
-conditional_access_section_t* conditional_access_section_new(void);
 void conditional_access_section_free(conditional_access_section_t* cas);
-int conditional_access_section_read(conditional_access_section_t* cas, uint8_t* buf, size_t buf_len);
+conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size_t buf_len);
 void conditional_access_section_print(const conditional_access_section_t* cas);
 
-program_map_section_t* program_map_section_new(void);
 void program_map_section_free(program_map_section_t* pms);
-int program_map_section_read(program_map_section_t* pms, uint8_t* buf, size_t buf_size);
+program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_size);
 void program_map_section_print(program_map_section_t* pms);
 
 char* stream_desc(uint8_t stream_id);

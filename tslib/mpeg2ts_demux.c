@@ -181,14 +181,10 @@ void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
 static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
     int ret = 0;
-    conditional_access_section_t* new_cas = conditional_access_section_new();
+    conditional_access_section_t* new_cas = conditional_access_section_read(ts->payload.bytes + 1,
+            ts->payload.len - 1);
     if (new_cas == NULL) {
-        g_critical("Failed to construct a conditional_access_section_t.");
-        goto cleanup;
-    }
-
-    if (conditional_access_section_read(new_cas, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
-        conditional_access_section_free(new_cas);
+        ret = 1;
         goto cleanup;
     }
 
@@ -196,7 +192,7 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     if (!m2s->cat || (m2s->cat->version_number != new_cas->version_number
             && new_cas->current_next_indicator == 1)) {
         if (m2s->cat != NULL) {
-            g_warning("New cat section in force, discarding the old one");
+            g_info("New cat section in force, discarding the old one");
             conditional_access_section_free(m2s->cat);
         }
 
@@ -227,9 +223,10 @@ cleanup:
 static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
     int ret = 0;
-    program_association_section_t* new_pas = program_association_section_new();
-    if (program_association_section_read(new_pas, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
-        program_association_section_free(new_pas);
+    program_association_section_t* new_pas = program_association_section_read(ts->payload.bytes + 1,
+            ts->payload.len - 1);
+    if (new_pas == NULL) {
+        ret = 1;
         goto cleanup;
     }
 
@@ -273,14 +270,9 @@ static int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t* m2s, ts_packet_t
 static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
 {
     int ret = 0;
-    program_map_section_t* new_pms = program_map_section_new();
+    program_map_section_t* new_pms = program_map_section_read(ts->payload.bytes + 1, ts->payload.len - 1);
     if (new_pms == NULL) {
-        g_critical("Failed to construct a program_map_section_t.");
-        goto cleanup;
-    }
-
-    if (program_map_section_read(new_pms, ts->payload.bytes + 1, ts->payload.len - 1) == 0) {
-        program_map_section_free(new_pms);
+        ret = 1;
         goto cleanup;
     }
 
