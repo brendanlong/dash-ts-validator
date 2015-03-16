@@ -286,6 +286,68 @@ int main(int argc, char* argv[])
                 dash_validator_free(validator_init_segment);
             }
 
+            if (adaptation_set->bitstream_switching) {
+                for (gsize x = 0; x < adaptation_set->representations->len; ++x) {
+                    representation_t* representation_x = g_ptr_array_index(adaptation_set->representations, x);
+                    const char* file_names[4];
+                    uint64_t byte_starts[4];
+                    uint64_t byte_ends[4];
+                    size_t f_i = 0;
+                    if (representation_x->initialization_file_name) {
+                        file_names[f_i] = representation_x->initialization_file_name;
+                        byte_starts[f_i] = representation_x->initialization_range_start;
+                        byte_ends[f_i] = representation_x->initialization_range_end;
+                        f_i++;
+                    }
+                    for (gsize s_i = 0; s_i + 1 < representation_x->segments->len; ++s_i) {
+                        segment_t* segment_x = g_ptr_array_index(representation_x->segments, s_i);
+                        file_names[f_i] = segment_x->file_name;
+                        byte_starts[f_i] = segment_x->media_range_start;
+                        byte_ends[f_i] =  segment_x->media_range_end;
+                        for (gsize y = 0; y < adaptation_set->representations->len; ++y) {
+                            if (x == y) {
+                                continue;
+                            }
+                            representation_t* representation_y = g_ptr_array_index(adaptation_set->representations, y);
+                            if (representation_y->segments->len != representation_x->segments->len) {
+                                g_critical("Representations %s and %s are in the same adaptation set and have "
+                                        "bitstream switching set, but don't have the same number of segments.",
+                                        representation_x->id, representation_y->id);
+                                adaptation_set_valid = false;
+                                break;
+                            }
+                            g_info("Testing bitstream switching from representation %s segment %"G_GSIZE_FORMAT
+                                    " to %s segment %"G_GSIZE_FORMAT".",
+                                    representation_x->id, s_i, representation_y->id, s_i + 1);
+                            size_t f_j = f_i + 1;
+                            if (representation_y->bitstream_switching_file_name) {
+                                file_names[f_j] = representation_y->bitstream_switching_file_name;
+                                byte_starts[f_j] = representation_y->bitstream_switching_range_start;
+                                byte_ends[f_j] = representation_y->bitstream_switching_range_end;
+                                f_j++;
+                            }
+                            segment_t* segment_y = g_ptr_array_index(representation_y->segments, s_i + 1);
+                            file_names[f_j] = segment_y->file_name;
+                            byte_starts[f_j] = segment_y->media_range_start;
+                            byte_ends[f_j] =  segment_y->media_range_end;
+                            if (!validate_bitstream_switching(file_names, byte_starts, byte_ends, f_j + 1)) {
+                                g_critical("DASH Conformance: Error parsing TS packet in segments. 7.4.3.4 Bitstream "
+                                        "switching: If @bitstreamSwitching flag is set to 'true' the Bitstream Switching Segment "
+                                        "may be present, indicated by BitstreamSwitching in the Segment Information. In this "
+                                        "case, for any two Representations, X and Y, within the same Adaptation Set, "
+                                        "concatenation of Media Segment i of X, Bitstream Switching Segment of Representation Y, "
+                                        "and Media Segment i+1 of Representation Y shall be a MPEG-2 TS conforming to ISO/IEC "
+                                        "13818-1.");
+                                g_critical("Segments concatenated for this test:");
+                                for (size_t i = 0; i < f_j + 1; ++i) {
+                                    g_critical("%s", file_names[i]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
 
             // segment cross checking: check that the gap between all adjacent segments is acceptably small
             adaptation_set_valid &= check_representation_gaps(adaptation_set->representations,

@@ -664,6 +664,8 @@ cleanup:
     return 1; // return code doesn't matter
 }
 
+#define TS_BUFFER_SIZE 4096 * TS_SIZE
+
 int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t byte_range_start,
         uint64_t byte_range_end, dash_validator_t* dash_validator_init)
 {
@@ -765,6 +767,61 @@ cleanup:
 fail:
     dash_validator->status = 0;
     tslib_errno = 1;
+    goto cleanup;
+}
+
+bool validate_bitstream_switching(const char* file_names[], uint64_t byte_starts[], uint64_t byte_ends[], size_t len)
+{
+    g_return_val_if_fail(len > 0, false);
+    bool result = true;
+
+    mpeg2ts_stream_t* m2s = mpeg2ts_stream_new();
+    FILE* infile = NULL;
+    for (size_t f = 0; f < len; ++f) {
+        infile = fopen(file_names[f], "rb");
+        if (infile == NULL) {
+            g_critical("Cannot open file %s - %s", file_names[f], strerror(errno));
+            goto fail;
+        }
+
+        if (byte_starts[f] > 0 && fseek(infile, byte_starts[f], SEEK_SET)) {
+            g_critical("Error seeking to offset %ld in %s - %s", byte_starts[f], file_names[f], strerror(errno));
+            goto fail;
+        }
+
+        uint64_t packets_to_read = UINT64_MAX / TS_SIZE;
+        if (byte_ends[f] > 0) {
+            packets_to_read = (byte_ends[f] - byte_starts[f]) / TS_SIZE;
+        }
+
+        size_t packets_read_total = 0;
+        uint8_t ts_buf[TS_BUFFER_SIZE];
+        size_t packets_read;
+        while ((packets_read = fread(ts_buf, TS_SIZE, MIN(TS_BUFFER_SIZE / TS_SIZE, packets_to_read), infile)) > 0) {
+            for (size_t i = 0; i < packets_read; i++) {
+                ts_packet_t* ts = ts_new();
+                int res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read_total);
+                if (res < TS_SIZE) {
+                    goto fail;
+                }
+                mpeg2ts_stream_read_ts_packet(m2s, ts);
+                packets_read_total++;
+            }
+            packets_to_read -= packets_read;
+        }
+    }
+
+    // need to reset the mpeg stream to be sure to process the last PES packet
+    mpeg2ts_stream_reset(m2s);
+
+cleanup:
+    mpeg2ts_stream_free(m2s);
+    if (infile) {
+        fclose(infile);
+    }
+    return result;
+fail:
+    result = false;
     goto cleanup;
 }
 

@@ -286,7 +286,7 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
 
     // TODO: allow >1 packet PAT
     if (m2p->pmt != NULL) {
-        g_warning("New PMT in force, discarding the old one");
+        g_info("New PMT in force, discarding the old one");
         g_hash_table_remove_all(m2p->pids);
         program_map_section_free(m2p->pmt);
     }
