@@ -517,29 +517,16 @@ bool check_segment_psi_identical(const char* f1, dash_validator_t* v1, const cha
     g_return_val_if_fail(v2 != NULL, false);
 
     bool identical = true;
-    if (v1->video_pid != v2->video_pid) {
-        g_info("Video PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
-                f1, f2, v1->video_pid, v2->video_pid);
+    if (memcmp(v1->pat_bytes, v2->pat_bytes, TS_SIZE)) {
+        g_warning("PAT in segments %s and %s are not identical.", f1, f2);
         identical = false;
     }
-    if (v1->audio_pid != v2->audio_pid) {
-        g_info("Audio PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
-                f1, f2, v1->audio_pid, v2->audio_pid);
+    if (memcmp(v1->pmt_bytes, v2->pmt_bytes, TS_SIZE)) {
+        g_warning("PMT in segments %s and %s are not identical.", f1, f2);
         identical = false;
     }
-    if (v1->pcr_pid != v2->pcr_pid) {
-        g_info("PCR PID's in segments %s and %s do not match. Values are %"PRIu16" and %"PRIu16".",
-                f1, f2, v1->pcr_pid, v2->pcr_pid);
-        identical = false;
-    }
-    if (v1->pmt_program_number != v2->pmt_program_number) {
-        g_info("PMT program number in segments %s and %s do not match. Values are %"PRIu32" and %"PRIu32".",
-                f1, f2, v1->pmt_program_number, v2->pmt_program_number);
-        identical = false;
-    }
-    if (v1->pmt_version_number != v2->pmt_version_number) {
-        g_info("PMT version number in segments %s and %s do not match. Values are %"PRIu32" and %"PRIu32".",
-                f1, f2, v1->pmt_version_number, v2->pmt_version_number);
+    if (memcmp(v1->cat_bytes, v2->cat_bytes, TS_SIZE)) {
+        g_warning("CAT in segments %s and %s are not identical.", f1, f2);
         identical = false;
     }
     return identical;

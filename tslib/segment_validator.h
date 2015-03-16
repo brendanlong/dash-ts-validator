@@ -89,10 +89,9 @@ typedef struct {
     int64_t  last_pcr;
     GPtrArray* pids;
     uint16_t pcr_pid;
-    uint16_t video_pid;
-    uint16_t audio_pid;
-    uint32_t pmt_program_number;
-    uint32_t pmt_version_number;
+    uint8_t pat_bytes[TS_SIZE];
+    uint8_t pmt_bytes[TS_SIZE];
+    uint8_t cat_bytes[TS_SIZE];
     int status; // 0 == fail
     segment_type_t segment_type;
     GPtrArray* initialization_segment_ts;

@@ -32,6 +32,7 @@
 #include <stdbool.h>
 
 #include "bs.h"
+#include "ts.h"
 
 
 typedef enum {
@@ -125,6 +126,8 @@ typedef struct {
     program_info_t* programs;
     size_t num_programs;
     uint32_t crc_32;
+
+    uint8_t bytes[TS_SIZE];
 } program_association_section_t;
 
 typedef struct {
@@ -141,6 +144,8 @@ typedef struct {
     GPtrArray* descriptors;
 
     uint32_t crc_32;
+
+    uint8_t bytes[TS_SIZE];
 } conditional_access_section_t;
 
 // PMT
@@ -167,6 +172,8 @@ typedef struct {
     GPtrArray* descriptors;
     GPtrArray* es_info;
     uint32_t crc_32;
+
+    uint8_t bytes[TS_SIZE];
 } program_map_section_t;
 
 void program_association_section_free(program_association_section_t* pas);

@@ -151,6 +151,8 @@ void dash_validator_free(dash_validator_t* obj)
 static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    memcpy(dash_validator->pat_bytes, m2s->pat->bytes, TS_SIZE);
+
     if (m2s->programs->len != 1) {
         g_critical("DASH Conformance: 6.4.4.2  Media segments shall contain exactly one program (%u found)",
                        m2s->programs->len);
@@ -183,9 +185,9 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
     g_return_val_if_fail(m2p->pmt != NULL, 0);
 
     dash_validator_t* dash_validator = arg;
+    memcpy(dash_validator->pmt_bytes, m2p->pmt->bytes, TS_SIZE);
+
     dash_validator->pcr_pid = m2p->pmt->pcr_pid;
-    dash_validator->pmt_program_number = m2p->pmt->program_number;
-    dash_validator->pmt_version_number = m2p->pmt->version_number;
 
     GHashTableIter i;
     g_hash_table_iter_init(&i, m2p->pids);
@@ -216,7 +218,6 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         case  STREAM_TYPE_S3D_SC_AVC:
             process_pid = 1;
             content_component = VIDEO_CONTENT_COMPONENT;
-            dash_validator->video_pid = pid;
             break;
         case  STREAM_TYPE_MPEG1_AUDIO:
         case  STREAM_TYPE_MPEG2_AUDIO:
@@ -225,7 +226,6 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         case  STREAM_TYPE_MPEG4_AAC:
             process_pid = 1;
             content_component = AUDIO_CONTENT_COMPONENT;
-            dash_validator->audio_pid = pid;
             break;
         default:
             process_pid = 0;

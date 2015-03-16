@@ -70,6 +70,8 @@ struct _mpeg2ts_program_ {
     } pcr_info; // information on STC clock state
 
     program_map_section_t* pmt;      // parsed PMT
+    uint8_t* pmt_bytes;
+    size_t pmt_len;
     pmt_processor_t pmt_processor;   // callback called after PMT was processed
     void* arg;                       // argument for PMT callback
     arg_destructor_t arg_destructor; // destructor for the callback argument
@@ -77,7 +79,11 @@ struct _mpeg2ts_program_ {
 
 struct _mpeg2ts_stream_ {
     program_association_section_t* pat; // PAT
+    uint8_t* pat_bytes;
+    size_t pat_len;
     conditional_access_section_t* cat;  // CAT
+    uint8_t* cat_bytes;
+    size_t cat_len;
     pat_processor_t pat_processor;      // callback called after PAT was processed
     cat_processor_t cat_processor;      // callback called after CAT was processed
     demux_pid_handler_t* emsg_processor; // handler for 'emsg' packets

@@ -149,6 +149,7 @@ void program_association_section_free(program_association_section_t* pas)
 program_association_section_t* program_association_section_read(uint8_t* buf, size_t buf_len)
 {
     program_association_section_t* pas = program_association_section_new();
+    memcpy(pas->bytes, buf, buf_len);
     bs_t* b = bs_new(buf, buf_len);
 
     if (!section_header_read((mpeg2ts_section_t*)pas, b)) {
@@ -313,10 +314,11 @@ void program_map_section_free(program_map_section_t* pms)
     free(pms);
 }
 
-program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_size)
+program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
 {
     program_map_section_t* pms = program_map_section_new();
-    bs_t* b = bs_new(buf, buf_size);
+    memcpy(pms->bytes, buf, buf_len);
+    bs_t* b = bs_new(buf, buf_len);
 
     if (!section_header_read((mpeg2ts_section_t*)pms, b)) {
         goto fail;
@@ -451,6 +453,7 @@ void conditional_access_section_free(conditional_access_section_t* cas)
 conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size_t buf_len)
 {
     conditional_access_section_t* cas = conditional_access_section_new();
+    memcpy(cas->bytes, buf, buf_len);
     bs_t* b = bs_new(buf, buf_len);
 
     if (!section_header_read((mpeg2ts_section_t*)cas, b)) {

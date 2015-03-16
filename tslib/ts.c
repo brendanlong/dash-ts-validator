@@ -192,6 +192,8 @@ int ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num)
         return TS_ERROR_NOT_ENOUGH_DATA;
     }
 
+    memcpy(ts->bytes, buf, TS_SIZE);
+
     bs_t b;
     bs_init(&b, buf, TS_SIZE);
     memset(&(ts->header), 0, sizeof(ts->header));

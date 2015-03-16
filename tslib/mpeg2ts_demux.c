@@ -96,6 +96,7 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
 
     // TODO: if this is a test with an initialization segment, then dont want to free the pmt
     program_map_section_free(m2p->pmt);
+    g_free(m2p->pmt_bytes);
 
     if (m2p->arg_destructor && m2p->arg) {
         m2p->arg_destructor(m2p->arg);
@@ -169,7 +170,10 @@ void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
         return;
     }
     g_ptr_array_free(m2s->programs, true);
+    conditional_access_section_free(m2s->cat);
+    g_free(m2s->cat_bytes);
     program_association_section_free(m2s->pat);
+    g_free(m2s->pat_bytes);
     demux_pid_handler_free(m2s->emsg_processor);
     demux_pid_handler_free(m2s->ts_processor);
     if (m2s->arg_destructor && m2s->arg) {
@@ -190,7 +194,7 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 
     // TODO: allow >1 packet cat
     if (!m2s->cat || (m2s->cat->version_number != new_cas->version_number
-            && new_cas->current_next_indicator == 1)) {
+            && new_cas->current_next_indicator == 1) || memcmp(m2s->cat->bytes, new_cas->bytes, TS_SIZE)) {
         if (m2s->cat != NULL) {
             g_info("New cat section in force, discarding the old one");
             conditional_access_section_free(m2s->cat);
@@ -232,7 +236,7 @@ static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 
     // TODO: allow >1 packet PAT
     if (!m2s->pat || (m2s->pat->version_number != new_pas->version_number
-            && new_pas->current_next_indicator == 1)) {
+            && new_pas->current_next_indicator == 1) || memcmp(m2s->pat->bytes, new_pas->bytes, TS_SIZE)) {
         if (m2s->pat != NULL) {
             g_warning("New PAT section in force, discarding the old one");
             program_association_section_free(m2s->pat);
@@ -277,22 +281,27 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet PAT
-    if (m2p->pmt != NULL) {
-        g_info("New PMT in force, discarding the old one");
-        g_hash_table_remove_all(m2p->pids);
-        program_map_section_free(m2p->pmt);
-    }
-    m2p->pmt = new_pms;
+    if (!m2p->pmt || (m2p->pmt->version_number != new_pms->version_number
+            && new_pms->current_next_indicator == 1) || memcmp(m2p->pmt->bytes, new_pms->bytes, TS_SIZE)) {
+        if (m2p->pmt != NULL) {
+            g_info("New PMT in force, discarding the old one");
+            g_hash_table_remove_all(m2p->pids);
+            program_map_section_free(m2p->pmt);
+        }
+        m2p->pmt = new_pms;
 
-    for (size_t es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
-        elementary_stream_info_t* es = g_ptr_array_index(m2p->pmt->es_info, es_idx);
-        pid_info_t* pi = pid_info_new();
-        pi->es_info = es;
-        g_hash_table_insert(m2p->pids, GINT_TO_POINTER(pi->es_info->elementary_pid), pi);
-    }
+        for (size_t es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
+            elementary_stream_info_t* es = g_ptr_array_index(m2p->pmt->es_info, es_idx);
+            pid_info_t* pi = pid_info_new();
+            pi->es_info = es;
+            g_hash_table_insert(m2p->pids, GINT_TO_POINTER(pi->es_info->elementary_pid), pi);
+        }
 
-    if (m2p->pmt_processor != NULL) {
-        m2p->pmt_processor(m2p, m2p->arg);
+        if (m2p->pmt_processor != NULL) {
+            m2p->pmt_processor(m2p, m2p->arg);
+        }
+    } else {
+        program_map_section_free(new_pms);
     }
 
 cleanup:

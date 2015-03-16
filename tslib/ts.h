@@ -110,6 +110,7 @@ typedef struct {
 typedef struct {
     ts_header_t header;
     ts_adaptation_field_t adaptation_field;
+    uint8_t bytes[TS_SIZE];
     buf_t payload;      /// start of the payload
     uint64_t pcr_int;   /// interpolated PCR
     uint64_t pos_in_stream;  // byte location of payload in transport stream
