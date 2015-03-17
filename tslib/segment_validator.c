@@ -456,14 +456,17 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             pid_validator->earliest_playout_time = pes->header.pts;
             pid_validator->latest_playout_time = pes->header.pts;
         } else if (dash_validator->adaptation_set->segment_alignment.has_int ||
-                dash_validator->adaptation_set->segment_alignment.b) {
+                dash_validator->adaptation_set->segment_alignment.b ||
+                dash_validator->adaptation_set->bitstream_switching) {
             g_critical("DASH Conformance: First PES packet in segment %s does not have PTS and @segmentAlignment is "
                     "not 'false'. 7.4.3.2 Segment alignment: If the @segmentAlignment attribute is not set to 'false' "
-                    "[...] the first PES packet shall contain a PTS timestamp. %s", dash_validator->segment->file_name,
-                    dash_validator->adaptation_set->bitstream_switching ? "7.4.3.4 Bitstream switching: [...] at "
+                    "[...] the first PES packet shall contain a PTS timestamp.", dash_validator->segment->file_name);
+            if (dash_validator->adaptation_set->bitstream_switching) {
+                g_critical("7.4.3.4 Bitstream switching: [...] at "
                     "least the following conditions are satisfied if @bitstreamSwitching flag is set to  'true': The "
                     "conditions required for setting the @segmentAlignment attribute not set to 'false' for the "
-                    "Adaptation Set are fulfilled." : "");
+                    "Adaptation Set are fulfilled.");
+            }
             dash_validator->status = 0;
         }
 
