@@ -255,13 +255,42 @@ int main(int argc, char* argv[])
                                     segment->file_name, pv->pid, content_component_to_string(pv->content_component),
                                     actual_start, actual_end, actual_duration);
 
-                            if (pv->content_component == VIDEO_CONTENT_COMPONENT && representation->start_with_sap != 0) {
+                            uint8_t expected_sap = representation->start_with_sap;
+                            if (adaptation_set->bitstream_switching && (expected_sap == 0 || expected_sap > 2)) {
+                                expected_sap = 3;
+                            }
+                            if (expected_sap != 0 && pv->content_component == VIDEO_CONTENT_COMPONENT) {
+                                bool fail = false;
                                 if (pv->sap == 0) {
-                                    g_critical("%s: FAIL: SAP not set", segment->file_name);
-                                    validator->status = 0;
-                                } else if (pv->sap_type != representation->start_with_sap) {
-                                    g_critical("%s: FAIL: Invalid SAP Type: expected %d, actual %d",
-                                            segment->file_name, representation->start_with_sap, pv->sap_type);
+                                    g_critical("DASH Conformance: Missing SAP in segment %s PID %"PRIu16". "
+                                            "Expected SAP_type <= %d, actual (none). Table 9 - Common Adaptation Set, "
+                                            "Representation and Sub-Representation attributes and elements: "
+                                            "@startWithSAP: when present and greater than 0, specifies that in the "
+                                            "associated Representations, each Media Segment starts with a SAP of "
+                                            "type less than or equal to the value of this attribute value in each "
+                                            "media stream.",
+                                            segment->file_name, pv->pid, expected_sap);
+                                    fail = true;
+                                } else if (pv->sap > expected_sap) {
+                                    g_critical("DASH Conformance: Invalid SAP Type in segment %s PID %"PRIu16". "
+                                            "Expected SAP_type <= %d, actual %d. Table 9 — Common Adaptation Set, "
+                                            "Representation and Sub-Representation attributes and elements: "
+                                            "@startWithSAP: when present and greater than 0, specifies that in the "
+                                            "associated Representations, each Media Segment starts with a SAP of "
+                                            "type less than or equal to the value of this attribute value in each "
+                                            "media stream.",
+                                            segment->file_name, pv->pid, expected_sap, pv->sap_type);
+                                    fail = true;
+                                }
+                                if (fail) {
+                                    if (adaptation_set->bitstream_switching) {
+                                        g_critical("7.3.3.2 Bitstream switching: The conditions required for setting "
+                                                "(i) the @startWithSAP attribute to 2 for the Adaptation Set, or (ii) "
+                                                "the conditions required for all Representations within the "
+                                                "Adaptation Set to share the same value of @mediaStreamStructureId "
+                                                "and setting the @startWithSAP attribute to 3 for the Adaptation Set, "
+                                                "are fulfilled.");
+                                    }
                                     validator->status = 0;
                                 }
                             }
