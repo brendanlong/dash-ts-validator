@@ -375,6 +375,9 @@ cleanup:
 
 static void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_validator_t* dash_validator)
 {
+    assert(ts_queue && ts_queue->length > 0);
+    assert(dash_validator);
+
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT
             || dash_validator->segment_type == BITSTREAM_SWITCHING_SEGMENT) {
         bool is_init = dash_validator->segment_type == INITIALIZATION_SEGMENT;
@@ -385,7 +388,15 @@ static void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash
                 is_init ? "an Initialization" : "a Bitstream Switching");
         dash_validator->status = 0;
     }
+
     if (pes == NULL) {
+        ts_packet_t* ts = g_queue_peek_head(ts_queue);
+        if (ts->adaptation_field.random_access_indicator) {
+            g_critical("DASH Conformance: Found partial PES packet starting with a TS packet with "
+                    "random_access_indicator = 1. 6.4.2.2 Media stream access points: PES packet starting at I_SAU "
+                    "shall contain only an integral number of access units and shall contain a PTS.");
+            dash_validator->status = 0;
+        }
         return;
     }
 

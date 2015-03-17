@@ -60,57 +60,54 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
     pes_demux_t* pdm = arg;
 
     // If we have a new payload, handle the existing PES data in the queue first
-    if (ts == NULL || ts->header.payload_unit_start_indicator) {
-        int packets_in_queue = pdm->ts_queue->length;
-        if (packets_in_queue > 0) {
-            // we have something in the queue
-            // chances are this is a PES packet
-            ts_packet_t* tsp = g_queue_peek_head(pdm->ts_queue);
-            if (tsp->header.payload_unit_start_indicator == 0) {
-                // the queue doesn't start with a complete TS packet
-                g_critical("PES queue does not start from PUSI=1");
-                // we'll do nothing and just clear the queue
-                if (pdm->process_pes_packet != NULL) {
-                    // at this point we don't own the PES packet memory
-                    pdm->process_pes_packet(NULL, es_info, pdm->ts_queue, pdm->pes_arg);
+    if ((ts == NULL || ts->header.payload_unit_start_indicator) && pdm->ts_queue->length > 0) {
+        // we have something in the queue
+        // chances are this is a PES packet
+        ts_packet_t* tsp = g_queue_peek_head(pdm->ts_queue);
+        if (tsp->header.payload_unit_start_indicator == 0) {
+            // the queue doesn't start with a complete TS packet
+            g_critical("PES queue does not start from PUSI=1");
+            // we'll do nothing and just clear the queue
+            if (pdm->process_pes_packet != NULL) {
+                // at this point we don't own the PES packet memory
+                pdm->process_pes_packet(NULL, es_info, pdm->ts_queue, pdm->pes_arg);
+            }
+        } else {
+            GList* current;
+            size_t buf_size = 0;
+            for (current = pdm->ts_queue->head; current; current = current->next) {
+                tsp = current->data;
+                buf_size += tsp->payload.len;
+            }
+            GArray* buf = g_array_sized_new(false, false, 1, buf_size);
+
+            pes_packet_t* pes = pes_new();
+            bool first = true;
+            for (current = pdm->ts_queue->head; current; current = current->next) {
+                tsp = current->data;
+                if (first) {
+                    pes->payload_pos_in_stream = tsp->pos_in_stream;
+                    first = false;
                 }
+
+                if (tsp != NULL && (tsp->header.adaptation_field_control & TS_PAYLOAD)) {
+                    g_array_append_vals(buf, tsp->payload.bytes, tsp->payload.len);
+                }
+            }
+            pes_read(pes, (uint8_t*)buf->data, buf->len);
+
+            if (pdm->process_pes_packet != NULL) {
+                // at this point we don't own the PES packet memory
+                pdm->process_pes_packet(pes, es_info, pdm->ts_queue, pdm->pes_arg);
             } else {
-                GList* current;
-                size_t buf_size = 0;
-                for (current = pdm->ts_queue->head; current; current = current->next) {
-                    tsp = current->data;
-                    buf_size += tsp->payload.len;
-                }
-                GArray* buf = g_array_sized_new(false, false, 1, buf_size);
-
-                pes_packet_t* pes = pes_new();
-                bool first = true;
-                for (current = pdm->ts_queue->head; current; current = current->next) {
-                    tsp = current->data;
-                    if (first) {
-                        pes->payload_pos_in_stream = tsp->pos_in_stream;
-                        first = false;
-                    }
-
-                    if (tsp != NULL && (tsp->header.adaptation_field_control & TS_PAYLOAD)) {
-                        g_array_append_vals(buf, tsp->payload.bytes, tsp->payload.len);
-                    }
-                }
-                pes_read(pes, (uint8_t*)buf->data, buf->len);
-
-                if (pdm->process_pes_packet != NULL) {
-                    // at this point we don't own the PES packet memory
-                    pdm->process_pes_packet(pes, es_info, pdm->ts_queue, pdm->pes_arg);
-                } else {
-                    pes_free(pes);
-                }
-                g_array_free(buf, true);
+                pes_free(pes);
             }
+            g_array_free(buf, true);
+        }
 
-            // Clear the queue
-            while (pdm->ts_queue->length) {
-                ts_free(g_queue_pop_head(pdm->ts_queue));
-            }
+        // Clear the queue
+        while (pdm->ts_queue->length) {
+            ts_free(g_queue_pop_head(pdm->ts_queue));
         }
     }
 
