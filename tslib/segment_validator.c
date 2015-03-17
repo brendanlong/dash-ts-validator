@@ -499,8 +499,8 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
 
     if (dash_validator->current_subsegment && dash_validator->current_subsegment->pes_count == 0
             && !(pes->header.pts_dts_flags & PES_PTS_FLAG)
-            && (dash_validator->adaptation_set->segment_alignment.has_int ||
-                dash_validator->adaptation_set->segment_alignment.b)) {
+            && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
+                dash_validator->adaptation_set->subsegment_alignment.b)) {
         g_critical("DASH Conformance: First PES packet in subsegment %zu of %s does not have PTS and "
                 "@subsegmentAlignment is not 'false'. 7.4.3.3 Subsegment alignment: If the @subsegmentAlignment flag "
                 "is not set to 'false' [...] the first PES packet from each elementary stream shall contain a PTS.",
