@@ -61,6 +61,7 @@ static bool read_adaptation_set(xmlNode*, mpd_t*, period_t*, char* base_url, xml
         xmlNode* segment_list, xmlNode* segment_template);
 static bool read_representation(xmlNode*, adaptation_set_t*, bool saw_mime_type, char* base_url, xmlNode* segment_base,
         xmlNode* segment_list, xmlNode* segment_template);
+static bool read_subrepresentation(xmlNode*, representation_t*);
 static bool read_segment_base(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_base);
 static bool read_segment_list(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_list);
 static GPtrArray* read_segment_timeline(xmlNode*);
@@ -153,7 +154,7 @@ void period_print(const period_t* period, unsigned indent)
     PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(period->bitstream_switching));
     for (size_t i = 0; i < period->adaptation_sets->len; ++i) {
         PRINT_PROPERTY(indent, "adaptation_sets[%zu]:", i);
-        adaptation_set_print(g_ptr_array_index(period->adaptation_sets, i), indent);
+        adaptation_set_print(g_ptr_array_index(period->adaptation_sets, i), indent + 1);
     }
 }
 
@@ -178,7 +179,6 @@ void adaptation_set_free(adaptation_set_t* obj)
 
 void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned indent)
 {
-    ++indent;
     PRINT_PROPERTY(indent, "id: %s", adaptation_set->id);
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(adaptation_set->profile));
     PRINT_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
@@ -188,13 +188,14 @@ void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned inden
     PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(adaptation_set->bitstream_switching));
     for (size_t i = 0; i < adaptation_set->representations->len; ++i) {
         PRINT_PROPERTY(indent, "representations[%zu]:", i);
-        representation_print(g_ptr_array_index(adaptation_set->representations, i), indent);
+        representation_print(g_ptr_array_index(adaptation_set->representations, i), indent + 1);
     }
 }
 
 representation_t* representation_new(void)
 {
     representation_t* obj = calloc(1, sizeof(*obj));
+    obj->subrepresentations = g_ptr_array_new_with_free_func((GDestroyNotify)subrepresentation_free);
     obj->segments = g_ptr_array_new_with_free_func((GDestroyNotify)segment_free);
     return obj;
 }
@@ -209,6 +210,7 @@ void representation_free(representation_t* obj)
     g_free(obj->index_file_name);
     g_free(obj->initialization_file_name);
     g_free(obj->bitstream_switching_file_name);
+    g_ptr_array_free(obj->subrepresentations, true);
     g_ptr_array_free(obj->segments, true);
 
     free(obj);
@@ -216,7 +218,6 @@ void representation_free(representation_t* obj)
 
 void representation_print(const representation_t* representation, unsigned indent)
 {
-    ++indent;
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(representation->profile));
     PRINT_PROPERTY(indent, "id: %s", representation->id);
     PRINT_PROPERTY(indent, "index_file_name: %s", representation->index_file_name);
@@ -227,9 +228,47 @@ void representation_print(const representation_t* representation, unsigned inden
     PRINT_RANGE(indent, representation, bitstream_switching_range);
     PRINT_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
     PRINT_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
+    for (size_t i = 0; i < representation->subrepresentations->len; ++i) {
+        PRINT_PROPERTY(indent, "subrepresentation[%zu]:", i);
+        subrepresentation_print(g_ptr_array_index(representation->subrepresentations, i), indent + 1);
+    }
     for (size_t i = 0; i < representation->segments->len; ++i) {
         PRINT_PROPERTY(indent, "segments[%zu]:", i);
         segment_print(g_ptr_array_index(representation->segments, i), indent + 1);
+    }
+}
+
+subrepresentation_t* subrepresentation_new(void)
+{
+    subrepresentation_t* obj = calloc(1, sizeof(*obj));
+    obj->dependency_level = g_array_new(false, false, sizeof(uint32_t));
+    obj->content_component = g_ptr_array_new_with_free_func(g_free);
+    return obj;
+}
+
+void subrepresentation_free(subrepresentation_t* obj)
+{
+    if(obj == NULL) {
+        return;
+    }
+    g_array_free(obj->dependency_level, true);
+    g_ptr_array_free(obj->content_component, true);
+    free(obj);
+}
+
+void subrepresentation_print(const subrepresentation_t* obj, unsigned indent)
+{
+    PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(obj->profile));
+    PRINT_PROPERTY(indent, "start_with_sap: %"PRIu8, obj->start_with_sap);
+    if (obj->has_level) {
+        PRINT_PROPERTY(indent, "level: %"PRIu32, obj->level);
+    }
+    PRINT_PROPERTY(indent, "bandwidth: %"PRIu32, obj->level);
+    for (size_t i = 0; i < obj->dependency_level->len; ++i) {
+        PRINT_PROPERTY(indent, "dependency_level[%zu]: %"PRIu32, i, g_array_index(obj->dependency_level, uint32_t, i));
+    }
+    for (size_t i = 0; i < obj->content_component->len; ++i) {
+        PRINT_PROPERTY(indent, "content_component[%zu]: %s", i, (char*)g_ptr_array_index(obj->content_component, i));
     }
 }
 
@@ -463,6 +502,10 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
             if (!read_segment_template(cur_node, representation, base_url, parent_segment_template)) {
                 goto fail;
             }
+        } else if (xmlStrEqual(cur_node->name, "SubRepresentation")) {
+            if (!read_subrepresentation(cur_node, representation)) {
+                goto fail;
+            }
         }
     }
 
@@ -470,6 +513,89 @@ cleanup:
     g_free(base_url);
     xmlFree(mime_type);
     xmlFree(start_with_sap);
+    return return_code;
+fail:
+    return_code = false;
+    goto cleanup;
+}
+
+bool read_subrepresentation(xmlNode* node, representation_t* representation)
+{
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(representation, false);
+
+    bool return_code = true;
+    char* start_with_sap = NULL;
+
+    subrepresentation_t* subrepresentation = subrepresentation_new();
+    g_ptr_array_add(representation->subrepresentations, subrepresentation);
+
+    if (xmlHasProp(node, "level")) {
+        subrepresentation->has_level = true;
+        subrepresentation->level = read_uint64(node, "level");
+    }
+    subrepresentation->profile = read_profile(node, representation->profile);
+    subrepresentation->bandwidth = read_uint64(node, "bandwidth");
+
+    char* content_component = xmlGetProp(node, "contentComponent");
+    if (content_component && content_component[0]) {
+        size_t start = 0;
+        for (size_t end = 1; ; ++end) {
+            if (content_component[end] == 0 || content_component[end] == ' ' || content_component[end] == '\t') {
+                g_ptr_array_add(subrepresentation->content_component,
+                        g_strndup(content_component + start, end - start));
+                if (content_component[end] == 0) {
+                    break;
+                }
+                while (content_component[end] == ' ' || content_component[end] == '\t') {
+                    ++end;
+                }
+                start = end;
+            }
+        }
+    }
+
+    char* dependency_level = xmlGetProp(node, "dependencyLevel");
+    if (dependency_level && dependency_level[0]) {
+        size_t start = 0;
+        for (size_t end = 1; ; ++end) {
+            bool last = dependency_level[end] == 0;
+            if (last || dependency_level[end] == ' ' || dependency_level[end] == '\t') {
+                dependency_level[end] = 0;
+                int error = 0;
+                uint64_t cc_int = str_to_uint64(dependency_level + start, &error);
+                if (error || cc_int > UINT32_MAX) {
+                    g_print("SubRepresentation@dependencyLevel %s is not an xs:unsignedInt.",
+                            content_component + start);
+                    goto fail;
+                }
+                g_array_append_val(subrepresentation->dependency_level, cc_int);
+                if (last) {
+                    break;
+                }
+                ++end;
+                while (dependency_level[end] == ' ' || dependency_level[end] == '\t') {
+                    ++end;
+                }
+                start = end;
+            }
+        }
+    }
+
+    start_with_sap = xmlGetProp(node, "startWithSAP");
+    if (start_with_sap) {
+        int tmp = atoi(start_with_sap);
+        if (tmp < 0 || tmp > 6) {
+            g_critical("Invalid startWithSap value of %s. Must be in the range [0-6].", start_with_sap);
+            goto fail;
+        }
+        subrepresentation->start_with_sap = tmp;
+    }
+
+cleanup:
+    xmlFree(start_with_sap);
+    xmlFree(dependency_level);
+    xmlFree(content_component);
     return return_code;
 fail:
     return_code = false;

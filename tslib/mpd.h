@@ -80,6 +80,16 @@ typedef struct {
 
 typedef struct {
     dash_profile_t profile;
+    uint8_t start_with_sap;
+    bool has_level;
+    uint32_t level;
+    uint32_t bandwidth;
+    GArray* dependency_level;
+    GPtrArray* content_component;
+} subrepresentation_t;
+
+typedef struct {
+    dash_profile_t profile;
     char* id;
     char* index_file_name;
     uint64_t index_range_start;
@@ -93,6 +103,7 @@ typedef struct {
     uint8_t start_with_sap;
     uint64_t presentation_time_offset;
     uint32_t bandwidth;
+    GPtrArray* subrepresentations;
     GPtrArray* segments;
 } representation_t;
 
@@ -144,6 +155,10 @@ void adaptation_set_print(const adaptation_set_t*, unsigned indent);
 representation_t* representation_new(void);
 void representation_free(representation_t*);
 void representation_print(const representation_t*, unsigned indent);
+
+subrepresentation_t* subrepresentation_new(void);
+void subrepresentation_free(subrepresentation_t*);
+void subrepresentation_print(const subrepresentation_t*, unsigned indent);
 
 segment_t* segment_new(void);
 void segment_free(segment_t*);
