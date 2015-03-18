@@ -263,7 +263,7 @@ void subrepresentation_print(const subrepresentation_t* obj, unsigned indent)
     if (obj->has_level) {
         PRINT_PROPERTY(indent, "level: %"PRIu32, obj->level);
     }
-    PRINT_PROPERTY(indent, "bandwidth: %"PRIu32, obj->level);
+    PRINT_PROPERTY(indent, "bandwidth: %"PRIu32, obj->bandwidth);
     for (size_t i = 0; i < obj->dependency_level->len; ++i) {
         PRINT_PROPERTY(indent, "dependency_level[%zu]: %"PRIu32, i, g_array_index(obj->dependency_level, uint32_t, i));
     }
@@ -538,46 +538,56 @@ bool read_subrepresentation(xmlNode* node, representation_t* representation)
     subrepresentation->bandwidth = read_uint64(node, "bandwidth");
 
     char* content_component = xmlGetProp(node, "contentComponent");
-    if (content_component && content_component[0]) {
+    if (content_component) {
         size_t start = 0;
-        for (size_t end = 1; ; ++end) {
-            if (content_component[end] == 0 || content_component[end] == ' ' || content_component[end] == '\t') {
-                g_ptr_array_add(subrepresentation->content_component,
-                        g_strndup(content_component + start, end - start));
-                if (content_component[end] == 0) {
-                    break;
+        while (content_component[start] == ' ' || content_component[start] == '\t') {
+            ++start;
+        }
+        if (content_component[start]) {
+            for (size_t end = start + 1; ; ++end) {
+                if (content_component[end] == 0 || content_component[end] == ' ' || content_component[end] == '\t') {
+                    g_ptr_array_add(subrepresentation->content_component,
+                            g_strndup(content_component + start, end - start));
+                    if (content_component[end] == 0) {
+                        break;
+                    }
+                    while (content_component[end] == ' ' || content_component[end] == '\t') {
+                        ++end;
+                    }
+                    start = end;
                 }
-                while (content_component[end] == ' ' || content_component[end] == '\t') {
-                    ++end;
-                }
-                start = end;
             }
         }
     }
 
     char* dependency_level = xmlGetProp(node, "dependencyLevel");
-    if (dependency_level && dependency_level[0]) {
+    if (dependency_level) {
         size_t start = 0;
-        for (size_t end = 1; ; ++end) {
-            bool last = dependency_level[end] == 0;
-            if (last || dependency_level[end] == ' ' || dependency_level[end] == '\t') {
-                dependency_level[end] = 0;
-                int error = 0;
-                uint64_t cc_int = str_to_uint64(dependency_level + start, &error);
-                if (error || cc_int > UINT32_MAX) {
-                    g_print("SubRepresentation@dependencyLevel %s is not an xs:unsignedInt.",
-                            content_component + start);
-                    goto fail;
-                }
-                g_array_append_val(subrepresentation->dependency_level, cc_int);
-                if (last) {
-                    break;
-                }
-                ++end;
-                while (dependency_level[end] == ' ' || dependency_level[end] == '\t') {
+        while (dependency_level[start] == ' ' || dependency_level[start] == '\t') {
+            ++start;
+        }
+        if (dependency_level[start]) {
+            for (size_t end = 1; ; ++end) {
+                bool last = dependency_level[end] == 0;
+                if (last || dependency_level[end] == ' ' || dependency_level[end] == '\t') {
+                    dependency_level[end] = 0;
+                    int error = 0;
+                    uint64_t cc_int = str_to_uint64(dependency_level + start, &error);
+                    if (error || cc_int > UINT32_MAX) {
+                        g_print("SubRepresentation@dependencyLevel %s is not an xs:unsignedInt.",
+                                content_component + start);
+                        goto fail;
+                    }
+                    g_array_append_val(subrepresentation->dependency_level, cc_int);
+                    if (last) {
+                        break;
+                    }
                     ++end;
+                    while (dependency_level[end] == ' ' || dependency_level[end] == '\t') {
+                        ++end;
+                    }
+                    start = end;
                 }
-                start = end;
             }
         }
     }

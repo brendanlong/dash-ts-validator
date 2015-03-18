@@ -209,7 +209,7 @@ int main(int argc, char* argv[])
                         if (index_validator->error) {
                             representation_valid = false;
                         }
-                        g_print("SINGLE SEGMENT INDEX TEST RESULT: %s: %s\n", representation->index_file_name,
+                        g_print("SINGLE SEGMENT INDEX TEST RESULT: %s: %s\n", segment->index_file_name,
                                 index_validator->error ? "FAIL" : "SUCCESS");
                         if (index_validator->segment_subsegments->len != 0) {
                             GPtrArray* subsegments = g_ptr_array_index(index_validator->segment_subsegments, 0);
@@ -230,6 +230,15 @@ int main(int argc, char* argv[])
                             }
                         }
                         index_segment_validator_free(index_validator);
+                    }
+
+                    if (!segment->index_file_name && !representation->index_file_name
+                            && representation->subrepresentations->len > 0) {
+                        g_critical("DASH Conformance: Segment %s has no index segment, but there is a "
+                                "SubRepresentation present. 7.4.4 Sub-Representations: The Subsegment Index box shall contain "
+                                "at least one entry for the value of SubRepresentation@level and for each value provided in "
+                                "the SubRepresentation@dependencyLevel.", segment->file_name);
+                        representation_valid = false;
                     }
 
                     /* Validate Segment */

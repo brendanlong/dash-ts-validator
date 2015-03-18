@@ -1005,6 +1005,13 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         box_t* box = boxes[box_index];
         switch(box->type) {
         case BOX_TYPE_SIDX: {
+            if (box_index != sidx_start && !ssix_present && representation->subrepresentations->len > 0) {
+                g_critical("DASH Conformance: Segment index is missing a 'ssix' box for segment %zu, but there is a "
+                        "SubRepresentation present. 7.4.4 Sub-Representations: The Subsegment Index box shall contain "
+                        "at least one entry for the value of SubRepresentation@level and for each value provided in "
+                        "the SubRepresentation@dependencyLevel.", box_index - sidx_start);
+                validator->error = true;
+            }
             ssix_present = false;
             pcrb_present = false;
 
@@ -1080,6 +1087,35 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                         "follow immediately after the 'sidx' box that documents the same Subsegment.", file_name);
                 validator->error = true;
             }
+            for (size_t sr = 0; sr < representation->subrepresentations->len; ++sr) {
+                subrepresentation_t* subrepresentation = g_ptr_array_index(representation->subrepresentations, sr);
+                /* This loop is messy, going over by 1 and then using that overflow to insert subrepresentation->level.
+                 * Feel free to make it nicer if you can. */
+                for (size_t l = 0; l <= subrepresentation->dependency_level->len; ++l) {
+                    uint32_t level = (l == subrepresentation->dependency_level->len) ? subrepresentation->level : \
+                        g_array_index(subrepresentation->dependency_level, uint32_t, l);
+                    bool found = false;
+                    for (uint32_t ss = 0; ss < ssix->subsegment_count && !found; ++ss) {
+                        data_ssix_subsegment_t* subsegment = &ssix->subsegments[ss];
+                        for (uint32_t r = 0; r < subsegment->ranges_count && !found; ++r) {
+                            data_ssix_subsegment_range_t* range = &subsegment->ranges[r];
+                            if (range->level == level) {
+                                found = true;
+                            }
+                        }
+                    }
+                    if (!found) {
+                        g_critical("DASH Conformance: Index segment %s has 'ssix' which does not contain "
+                                "SubRepresentation@%s %"PRIu32". 7.4.4 Sub-Representations: The "
+                                "Subsegment Index box shall contain at least one entry for the value of "
+                                "SubRepresentation@level and for each value provided in the "
+                                "SubRepresentation@dependencyLevel.",
+                                file_name, l == subrepresentation->dependency_level->len ? "level" : "dependencyLevel",
+                                level);
+                        validator->error = true;
+                    }
+                }
+            }
             break;
         }
         case BOX_TYPE_PCRB: {
@@ -1098,6 +1134,13 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             g_warning("Invalid box type in Index Segment %s: %x.", file_name, box->type);
             break;
         }
+    }
+    if (!ssix_present && representation->subrepresentations->len > 0) {
+        g_critical("DASH Conformance: Segment index is missing a 'ssix' box for segment %zu, but there is a "
+                "SubRepresentation present. 7.4.4 Sub-Representations: The Subsegment Index box shall contain "
+                "at least one entry for the value of SubRepresentation@level and for each value provided in "
+                "the SubRepresentation@dependencyLevel.", box_index - sidx_start);
+        validator->error = true;
     }
 
     // check the last reference size -- the last one is not checked in the above loop
