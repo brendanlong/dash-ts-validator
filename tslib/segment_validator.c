@@ -373,6 +373,21 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         goto cleanup;
     }
 
+    if (ts->header.transport_scrambling_control
+            && !pid_validator->have_key_for_transport_scrambling_control[ts->header.transport_scrambling_control]) {
+        g_critical("DASH Conformance: Segment %s contains TS packet for PID %"PRIu16" with "
+                "transport_scrambling_control = '%d%d', but we have not seen a CETS ECM with that "
+                "transport_scrambling_control value. 6.4.4.3 Content Protection: All information necessary for "
+                "decrypting, or locating information required to decrypt, the encrypted TS packets in a (Sub)Segment "
+                "shall be present before the encrypted packet(s) to which they apply, either in the same (Sub)Segment, "
+                "and/or in the Initialization Segment (if used). As an example, this requires the presence of the ECM "
+                "necessary for decrypting the first encrypted packet of the (Sub)Segment is within the (Sub)Segment "
+                "before such a packet.",
+                (dash_validator->segment ? dash_validator->segment->file_name : "?"), ts->header.pid,
+                ts->header.transport_scrambling_control & 2, ts->header.transport_scrambling_control & 1);
+        dash_validator->status = 0;
+    }
+
     // This is the first TS packet from this PID
     if (pid_validator->ts_count == 0) {
         pid_validator->continuity_counter = ts->header.continuity_counter;
