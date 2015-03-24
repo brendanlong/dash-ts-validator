@@ -74,6 +74,9 @@ void descriptor_free(descriptor_t* desc)
     case ISO_639_LANGUAGE_DESCRIPTOR:
         language_descriptor_free(desc);
         break;
+    case CA_DESCRIPTOR:
+        ca_descriptor_free(desc);
+        break;
     default:
         free(desc);
         break;
