@@ -321,7 +321,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         for (size_t i = 0; i < dash_validator->pids->len; ++i) {
             pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);
             for (size_t j = 1; j < TRANSPORT_SCRAMBLING_CONTROL_BITS; ++j) {
-                pv->have_key_for_transport_scrambling_control[j] = false;
+                pv->au_for_transport_scrambling_control[j] = 0;
             }
         }
     }
@@ -362,7 +362,8 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         /* Ignore keys that don't apply yet */
         if (!cets_ecm->next_key_id_flag) {
             for (size_t s = 0; s < cets_ecm->num_states; ++s) {
-                uint8_t transport_scrambling_control = cets_ecm->states[s].transport_scrambling_control;
+                cets_ecm_state_t* state = &cets_ecm->states[s];
+                uint8_t transport_scrambling_control = state->transport_scrambling_control;
                 if (transport_scrambling_control == 0) {
                     g_warning("Segment %s contains CETS ECM with transport_scrambling_control = '00'. That value is "
                         "reserved for unencrypted TS packets.",
@@ -373,7 +374,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
                 for (gsize i = 0; i < dash_validator->pids->len; ++i) {
                     pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);
                     if (g_hash_table_contains(pv->ecm_pids, GINT_TO_POINTER(ts->header.pid))) {
-                        pv->have_key_for_transport_scrambling_control[transport_scrambling_control] = true;
+                        pv->au_for_transport_scrambling_control[transport_scrambling_control] += state->num_au;
                     }
                 }
             }
@@ -386,19 +387,23 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         goto cleanup;
     }
 
-    if (ts->header.transport_scrambling_control
-            && !pid_validator->have_key_for_transport_scrambling_control[ts->header.transport_scrambling_control]) {
-        g_critical("DASH Conformance: Segment %s contains TS packet for PID %"PRIu16" with "
-                "transport_scrambling_control = '%d%d', but we have not seen a CETS ECM with that "
-                "transport_scrambling_control value. 6.4.4.3 Content Protection: All information necessary for "
-                "decrypting, or locating information required to decrypt, the encrypted TS packets in a (Sub)Segment "
-                "shall be present before the encrypted packet(s) to which they apply, either in the same (Sub)Segment, "
-                "and/or in the Initialization Segment (if used). As an example, this requires the presence of the ECM "
-                "necessary for decrypting the first encrypted packet of the (Sub)Segment is within the (Sub)Segment "
-                "before such a packet.",
-                (dash_validator->segment ? dash_validator->segment->file_name : "?"), ts->header.pid,
-                (bool)(ts->header.transport_scrambling_control & 2), ts->header.transport_scrambling_control & 1);
-        dash_validator->status = 0;
+    if (ts->header.transport_scrambling_control) {
+        if (pid_validator->au_for_transport_scrambling_control[ts->header.transport_scrambling_control]) {
+            --pid_validator->au_for_transport_scrambling_control[ts->header.transport_scrambling_control];
+        } else {
+            g_critical("DASH Conformance: Segment %s contains TS packet for PID %"PRIu16" with "
+                    "transport_scrambling_control = '%d%d', but we have not seen a CETS ECM with that "
+                    "transport_scrambling_control value (or we have, but we used all of its 'au' values already). "
+                    "6.4.4.3 Content Protection: All information necessary for "
+                    "decrypting, or locating information required to decrypt, the encrypted TS packets in a (Sub)Segment "
+                    "shall be present before the encrypted packet(s) to which they apply, either in the same (Sub)Segment, "
+                    "and/or in the Initialization Segment (if used). As an example, this requires the presence of the ECM "
+                    "necessary for decrypting the first encrypted packet of the (Sub)Segment is within the (Sub)Segment "
+                    "before such a packet.",
+                    (dash_validator->segment ? dash_validator->segment->file_name : "?"), ts->header.pid,
+                    (bool)(ts->header.transport_scrambling_control & 2), ts->header.transport_scrambling_control & 1);
+            dash_validator->status = 0;
+        }
     }
 
     // This is the first TS packet from this PID

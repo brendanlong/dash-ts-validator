@@ -69,7 +69,7 @@ typedef struct {
     content_component_t content_component;
     int continuity_counter;
     GHashTable* ecm_pids;
-    bool have_key_for_transport_scrambling_control[TRANSPORT_SCRAMBLING_CONTROL_BITS];
+    long au_for_transport_scrambling_control[TRANSPORT_SCRAMBLING_CONTROL_BITS];
 } pid_validator_t;
 
 typedef struct {
