@@ -242,6 +242,7 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
             for (size_t d = 0; d < pi->es_info->descriptors->len; ++d) {
                 descriptor_t* descriptor = g_ptr_array_index(pi->es_info->descriptors, d);
                 if (descriptor->tag == CA_DESCRIPTOR) {
+                    dash_validator->is_encrypted = true;
                     ca_descriptor_t* ca_descriptor = (ca_descriptor_t*)descriptor;
                     if (ca_descriptor->ca_system_id == 0x6365 /* 'ce' */) {
                         g_hash_table_add(dash_validator->ecm_pids, GINT_TO_POINTER(ca_descriptor->ca_pid));

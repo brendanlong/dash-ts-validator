@@ -433,10 +433,18 @@ int check_representation_gaps(GPtrArray* representations, content_component_t co
         for (gsize r_i = 0; r_i < representations->len; ++r_i) {
             representation_t* representation1 = g_ptr_array_index(representations, r_i);
             segment_t* segment1 = g_ptr_array_index(representation1->segments, s_i - 1);
+            dash_validator_t* dv1 = segment1->arg;
+            if (dv1->is_encrypted) {
+                continue;
+            }
 
             for(gsize r_i2 = 0; r_i2 < representations->len; ++r_i2) {
                 representation_t* representation2 = g_ptr_array_index(representations, r_i2);
                 segment_t* segment2 = g_ptr_array_index(representation2->segments, s_i);
+                dash_validator_t* dv2 = segment1->arg;
+                if (dv2->is_encrypted) {
+                    continue;
+                }
 
                 int64_t pts_delta = segment2->actual_start[content_component] - \
                         (int64_t)segment1->actual_end[content_component];
