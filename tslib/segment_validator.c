@@ -235,24 +235,12 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
         }
 
         if (process_pid) {
-            // hook PES validation to PES demuxer
-            pes_demux_t* pd = pes_demux_new(validate_pes_packet);
-            pd->pes_arg = dash_validator;
-
-            // hook PES demuxer to the PID processor
-            demux_pid_handler_t* demux_handler = demux_pid_handler_new(pes_demux_process_ts_packet);
-            demux_handler->arg = pd;
-            demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
-
-            // hook PID processor to PID
-            mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_pid, demux_handler, NULL);
-
             pid_validator = pid_validator_new(pid, content_component);
             g_ptr_array_add(dash_validator->pids, pid_validator);
 
             // Register callback for TS packets on CA_PID
-            for (size_t d = 0; d < m2p->pmt->descriptors->len; ++d) {
-                descriptor_t* descriptor = g_ptr_array_index(m2p->pmt->descriptors, d);
+            for (size_t d = 0; d < pi->es_info->descriptors->len; ++d) {
+                descriptor_t* descriptor = g_ptr_array_index(pi->es_info->descriptors, d);
                 if (descriptor->tag == CA_DESCRIPTOR) {
                     ca_descriptor_t* ca_descriptor = (ca_descriptor_t*)descriptor;
                     if (ca_descriptor->ca_system_id == 0x6365 /* 'ce' */) {
@@ -264,6 +252,18 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
                     }
                 }
             }
+
+            // hook PES validation to PES demuxer
+            pes_demux_t* pd = pes_demux_new(validate_pes_packet);
+            pd->pes_arg = dash_validator;
+
+            // hook PES demuxer to the PID processor
+            demux_pid_handler_t* demux_handler = demux_pid_handler_new(pes_demux_process_ts_packet);
+            demux_handler->arg = pd;
+            demux_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
+
+            // hook PID processor to PID
+            mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_pid, demux_handler, NULL);
         }
     }
     return 1;
@@ -396,7 +396,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
                 "necessary for decrypting the first encrypted packet of the (Sub)Segment is within the (Sub)Segment "
                 "before such a packet.",
                 (dash_validator->segment ? dash_validator->segment->file_name : "?"), ts->header.pid,
-                ts->header.transport_scrambling_control & 2, ts->header.transport_scrambling_control & 1);
+                (bool)(ts->header.transport_scrambling_control & 2), ts->header.transport_scrambling_control & 1);
         dash_validator->status = 0;
     }
 
