@@ -379,6 +379,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
                 }
             }
         }
+        cets_ecm_free(cets_ecm);
     }
 
     pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.pid, dash_validator);
