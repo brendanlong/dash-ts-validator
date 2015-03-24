@@ -317,6 +317,12 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
                     dash_validator->subsegment_index);
             dash_validator->current_subsegment->pes_count = 0;
         }
+        for (size_t i = 0; i < dash_validator->pids->len; ++i) {
+            pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);
+            for (size_t j = 1; j < TRANSPORT_SCRAMBLING_CONTROL_BITS; ++j) {
+                pv->have_key_for_transport_scrambling_control[j] = false;
+            }
+        }
     }
     subsegment_t* subsegment = dash_validator->current_subsegment;
     if (subsegment) {
@@ -356,6 +362,12 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         if (!cets_ecm->next_key_id_flag) {
             for (size_t s = 0; s < cets_ecm->num_states; ++s) {
                 uint8_t transport_scrambling_control = cets_ecm->states[s].transport_scrambling_control;
+                if (transport_scrambling_control == 0) {
+                    g_warning("Segment %s contains CETS ECM with transport_scrambling_control = '00'. That value is "
+                        "reserved for unencrypted TS packets.",
+                        dash_validator->segment ? dash_validator->segment->file_name : "?");
+                    continue;
+                }
                 /* TODO check number of AU */
                 for (gsize i = 0; i < dash_validator->pids->len; ++i) {
                     pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);

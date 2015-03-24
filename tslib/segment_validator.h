@@ -55,6 +55,8 @@ typedef enum {
     REPRESENTATION_INDEX_SEGMENT
 } segment_type_t;
 
+#define TRANSPORT_SCRAMBLING_CONTROL_BITS 4
+
 typedef struct {
     uint16_t pid;
     uint8_t sap;
@@ -67,7 +69,7 @@ typedef struct {
     content_component_t content_component;
     int continuity_counter;
     GHashTable* ecm_pids;
-    bool have_key_for_transport_scrambling_control[4];
+    bool have_key_for_transport_scrambling_control[TRANSPORT_SCRAMBLING_CONTROL_BITS];
 } pid_validator_t;
 
 typedef struct {
