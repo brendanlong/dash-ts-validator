@@ -107,9 +107,9 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
 int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint16_t pid,
         demux_pid_handler_t* handler, demux_pid_handler_t* validator)
 {
-    if (m2p->pmt == NULL || handler == NULL) {
-        return 0;
-    }
+    g_return_val_if_fail(m2p, 0);
+    g_return_val_if_fail(m2p->pmt, 0);
+    g_return_val_if_fail(handler, 0);
 
     pid_info_t* pi = pid_info_new();
     elementary_stream_info_t* esi = NULL;

@@ -189,7 +189,7 @@ descriptor_t* ca_descriptor_new(descriptor_t* desc)
     ca_descriptor_t* cad = calloc(1, sizeof(*cad));
     cad->descriptor.tag = CA_DESCRIPTOR;
     if (desc != NULL) {
-        cad->descriptor.tag = desc->length;
+        cad->descriptor.length = desc->length;
     }
     free(desc);
     return (descriptor_t*)cad;

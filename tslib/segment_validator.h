@@ -66,7 +66,8 @@ typedef struct {
     uint64_t ts_count;
     content_component_t content_component;
     int continuity_counter;
-    GPtrArray* ecm_pids;
+    GHashTable* ecm_pids;
+    bool have_key_for_transport_scrambling_control[4];
 } pid_validator_t;
 
 typedef struct {
@@ -89,6 +90,7 @@ typedef struct {
     int64_t  last_pcr;
     GPtrArray* pids;
     uint16_t pcr_pid;
+    GHashTable* ecm_pids;
     uint8_t pat_bytes[TS_SIZE];
     uint8_t pmt_bytes[TS_SIZE];
     uint8_t cat_bytes[TS_SIZE];

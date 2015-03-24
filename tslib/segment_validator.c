@@ -31,6 +31,7 @@
 #include <inttypes.h>
 #include <errno.h>
 
+#include "cets_ecm.h"
 #include "h264_stream.h"
 #include "mpeg2ts_demux.h"
 #include "pes_demux.h"
@@ -103,7 +104,7 @@ static pid_validator_t* pid_validator_new(uint16_t pid, content_component_t cont
     pid_validator_t* obj = calloc(1, sizeof(*obj));
     obj->pid = pid;
     obj->content_component = content_component;
-    obj->ecm_pids = g_ptr_array_new();
+    obj->ecm_pids = g_hash_table_new(g_direct_hash, g_direct_equal);
     return obj;
 }
 
@@ -112,7 +113,7 @@ static void pid_validator_free(pid_validator_t* obj)
     if (obj == NULL) {
         return;
     }
-    g_ptr_array_free(obj->ecm_pids, true);
+    g_hash_table_destroy(obj->ecm_pids);
     free(obj);
 }
 
@@ -129,6 +130,7 @@ void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, das
     obj->profile = profile;
     obj->subsegments = g_ptr_array_new_with_free_func((GDestroyNotify)subsegment_free);
     obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
+    obj->ecm_pids = g_hash_table_new(g_direct_hash, g_direct_equal);
     obj->initialization_segment_ts = g_ptr_array_new_with_free_func((GDestroyNotify)ts_free);
 }
 
@@ -139,6 +141,7 @@ void dash_validator_destroy(dash_validator_t* obj)
     }
     g_ptr_array_free(obj->subsegments, true);
     g_ptr_array_free(obj->pids, true);
+    g_hash_table_destroy(obj->ecm_pids);
     g_ptr_array_free(obj->initialization_segment_ts, true);
 }
 
@@ -246,7 +249,21 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 
             pid_validator = pid_validator_new(pid, content_component);
             g_ptr_array_add(dash_validator->pids, pid_validator);
-            // TODO: parse CA descriptors, add ca system and ecm_pid if they don't exist yet
+
+            // Register callback for TS packets on CA_PID
+            for (size_t d = 0; d < m2p->pmt->descriptors->len; ++d) {
+                descriptor_t* descriptor = g_ptr_array_index(m2p->pmt->descriptors, d);
+                if (descriptor->tag == CA_DESCRIPTOR) {
+                    ca_descriptor_t* ca_descriptor = (ca_descriptor_t*)descriptor;
+                    if (ca_descriptor->ca_system_id == 0x6365 /* 'ce' */) {
+                        g_hash_table_add(dash_validator->ecm_pids, GINT_TO_POINTER(ca_descriptor->ca_pid));
+                        g_hash_table_add(pid_validator->ecm_pids, GINT_TO_POINTER(ca_descriptor->ca_pid));
+                    } else {
+                        g_warning("Saw CA_descriptor with unknown system_id = %"PRIu16". Encrypted content must use "
+                                "common encryption to be tested by this utility.", ca_descriptor->ca_system_id);
+                    }
+                }
+            }
         }
     }
     return 1;
@@ -331,6 +348,23 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
             }
         }
         ++dash_validator->current_subsegment->ts_count;
+    }
+
+    if (g_hash_table_contains(dash_validator->ecm_pids, GINT_TO_POINTER(ts->header.pid))) {
+        cets_ecm_t* cets_ecm = cets_ecm_read(ts);
+        /* Ignore keys that don't apply yet */
+        if (!cets_ecm->next_key_id_flag) {
+            for (size_t s = 0; s < cets_ecm->num_states; ++s) {
+                uint8_t transport_scrambling_control = cets_ecm->states[s].transport_scrambling_control;
+                /* TODO check number of AU */
+                for (gsize i = 0; i < dash_validator->pids->len; ++i) {
+                    pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);
+                    if (g_hash_table_contains(pv->ecm_pids, GINT_TO_POINTER(ts->header.pid))) {
+                        pv->have_key_for_transport_scrambling_control[transport_scrambling_control] = true;
+                    }
+                }
+            }
+        }
     }
 
     pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.pid, dash_validator);
