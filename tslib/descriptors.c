@@ -39,6 +39,10 @@ int read_descriptor_loop(GPtrArray* desc_list, bs_t* b, int length)
     int desc_start = bs_pos(b);
 
     while (length > bs_pos(b) - desc_start) {
+        if (bs_eof(b)) {
+            g_critical("Told to read %d bytes of descriptors, but buffer isn't long enough.", length);
+            return -1;
+        }
         descriptor_t* desc = descriptor_new();
         desc = descriptor_read(desc, b);
         g_ptr_array_add(desc_list, desc);

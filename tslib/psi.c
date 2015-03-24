@@ -267,7 +267,9 @@ static elementary_stream_info_t* es_info_read(bs_t* b)
     bs_skip_u(b, 4);
     es->es_info_length = bs_read_u(b, 12);
 
-    read_descriptor_loop(es->descriptors, b, es->es_info_length);
+    if (read_descriptor_loop(es->descriptors, b, es->es_info_length) < 0) {
+        goto cleanup;
+    }
     if (es->es_info_length > MAX_ES_INFO_LEN) {
         g_critical("ES info length is 0x%02X, larger than maximum allowed 0x%02X",
                        es->es_info_length, MAX_ES_INFO_LEN);
