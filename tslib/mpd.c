@@ -64,7 +64,7 @@ static bool read_representation(xmlNode*, adaptation_set_t*, bool saw_mime_type,
 static bool read_subrepresentation(xmlNode*, representation_t*);
 static bool read_segment_base(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_base);
 static bool read_segment_list(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_list);
-static GPtrArray* read_segment_timeline(xmlNode*);
+static GPtrArray* read_segment_timeline(xmlNode*, representation_t*);
 static bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t duration, char* base_url);
 static bool read_segment_template(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_template);
 static char* find_base_url(xmlNode*, char* parent_base_url);
@@ -77,6 +77,7 @@ static uint64_t str_to_uint64(const char*, int* error);
 static dash_profile_t read_profile(xmlNode*, dash_profile_t parent_profile);
 static const char* dash_profile_to_string(dash_profile_t);
 static bool read_range(xmlNode*, const char* property_name, uint64_t* start_out, uint64_t* end_out);
+static uint64_t convert_timescale(uint64_t time, uint64_t timescale);
 
 const char INDENT_BUFFER[] = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
 
@@ -228,6 +229,7 @@ void representation_print(const representation_t* representation, unsigned inden
     PRINT_RANGE(indent, representation, bitstream_switching_range);
     PRINT_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
     PRINT_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
+    PRINT_PROPERTY(indent, "timescale: %"PRIu32, representation->timescale);
     for (size_t i = 0; i < representation->subrepresentations->len; ++i) {
         PRINT_PROPERTY(indent, "subrepresentation[%zu]:", i);
         subrepresentation_print(g_ptr_array_index(representation->subrepresentations, i), indent + 1);
@@ -616,7 +618,17 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
 {
     bool return_code = true;
 
-    representation->presentation_time_offset = read_uint64(node, "presentationTimeOffset");
+    if (xmlHasProp(node, "timescale")) {
+        representation->timescale = read_uint64(node, "timescale");
+    } else if (xmlHasProp(parent_segment_base, "timescale")) {
+        representation->timescale = read_uint64(parent_segment_base, "timescale");
+    } else {
+        g_critical("<%s> has no @timescale!", node->name);
+        return false;
+    }
+
+    representation->presentation_time_offset = convert_timescale(read_uint64(node, "presentationTimeOffset"),
+                                                                 representation->timescale);
 
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
@@ -666,7 +678,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
                 g_critical("Saw multiple <SegmentTimeline> children for one <SegmentList>.");
                 goto fail;
             }
-            segment_timeline = read_segment_timeline(cur_node);
+            segment_timeline = read_segment_timeline(cur_node, representation);
         }
     }
 
@@ -690,6 +702,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
         g_critical("No duration or <SegmentTimeline> found for <SegmentList>.");
         goto fail;
     }
+    duration = convert_timescale(duration, representation->timescale);
 
     if (!xmlHasProp(node, "presentationTimeOffset")) {
         representation->presentation_time_offset = read_uint64(parent_segment_list, "presentationTimeOffset");
@@ -723,7 +736,7 @@ fail:
     goto cleanup;
 }
 
-GPtrArray* read_segment_timeline(xmlNode* node)
+GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation)
 {
     GPtrArray* timeline = g_ptr_array_new_with_free_func(free);
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
@@ -760,8 +773,8 @@ GPtrArray* read_segment_timeline(xmlNode* node)
 
             for (uint64_t i = 0; i < repeat; ++i) {
                 segment_timeline_s_t* s = malloc(sizeof(*s));
-                s->start = start;
-                s->duration = duration;
+                s->start = convert_timescale(start, representation->timescale);
+                s->duration = convert_timescale(duration, representation->timescale);
                 start += duration;
                 g_ptr_array_add(timeline, s);
             }
@@ -779,6 +792,7 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
 {
     segment_t* segment = segment_new();
 
+    /* Don't use convert_timescale here since we already converted in read_segment_timeline and read_segment_list */
     segment->start = start;
     segment->duration = duration;
     /* Might as well calculate this once */
@@ -895,7 +909,7 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
                 g_critical("Saw multiple <SegmentTimeline> children for one <SegmentTemplate>.");
                 goto fail;
             }
-            segment_timeline = read_segment_timeline(cur_node);
+            segment_timeline = read_segment_timeline(cur_node, representation);
         }
     }
 
@@ -942,8 +956,6 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
         }
     }
 
-    /* TODO: Read segmentTimeline */
-
     uint64_t duration = 0;
     duration_str = xmlGetProp(node, "duration");
     if (duration_str == NULL && !segment_timeline) {
@@ -962,21 +974,9 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
             goto fail;
         }
     }
+    duration = convert_timescale(duration, representation->timescale);
 
     uint64_t start_number = 1;
-    duration_str = xmlGetProp(node, "duration");
-    if (!duration_str) {
-        duration_str = xmlGetProp(parent, "duration");
-    }
-    if (duration_str) {
-        int error;
-        duration = str_to_uint64(duration_str, &error);
-        if (error) {
-            g_critical("<SegmentTemplate> duration \"%s\" is not a 64-bit number.", duration_str);
-            goto fail;
-        }
-    }
-
     size_t timeline_i = 0;
     uint64_t start_time = representation->presentation_time_offset;
     for (size_t i = start_number; segment_timeline == NULL || timeline_i < segment_timeline->len; ++i, ++timeline_i) {
@@ -1235,4 +1235,18 @@ fail:
     g_critical("Range %s is not a valid byte range.", property);
     ret = false;
     goto cleanup;
+}
+
+#define MPEG_TS_TIMESCALE 90000
+
+static uint64_t convert_timescale(uint64_t time, uint64_t timescale)
+{
+    // This function is complicated because we want to avoid rounding if an exact result is possible
+    if (time == 0 || timescale == MPEG_TS_TIMESCALE) {
+        return time;
+    } else if (timescale > MPEG_TS_TIMESCALE) {
+        return time / (timescale / MPEG_TS_TIMESCALE);
+    } else {
+        return (MPEG_TS_TIMESCALE / timescale) * time;
+    }
 }

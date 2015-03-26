@@ -103,6 +103,7 @@ typedef struct {
     uint8_t start_with_sap;
     uint64_t presentation_time_offset;
     uint32_t bandwidth;
+    uint32_t timescale;
     GPtrArray* subrepresentations;
     GPtrArray* segments;
 } representation_t;
