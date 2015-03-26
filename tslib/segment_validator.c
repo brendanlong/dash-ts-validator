@@ -1004,6 +1004,20 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         ++box_index;
     }
 
+    for (size_t i = 0; i < num_boxes; ++i) {
+        if (boxes[i]->type != BOX_TYPE_SIDX) {
+            continue;
+        }
+        data_sidx_t* sidx = (data_sidx_t*)boxes[i];
+        if (sidx->timescale != representation->timescale) {
+            g_critical("DASH Conformance: 'sidx' in box %zu of %s has timescale %"PRIu32", but SegmentBase@timescale "
+                    "is %"PRIu32". 5.3.9.6 Segment timeline: the value of @timescale shall be identical to the value "
+                    "of the timescale field in the first 'sidx' box",
+                    i, file_name, sidx->timescale, representation->timescale);
+            validator->error = true;
+        }
+    }
+
     data_sidx_t* master_sidx = NULL;
     uint32_t master_reference_id = 0;
     if (!is_single_index) {
