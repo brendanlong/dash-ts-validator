@@ -28,9 +28,8 @@
 #define TSLIB_CETS_ECM_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
-
-#include "ts.h"
 
 
 typedef struct {
@@ -57,7 +56,7 @@ typedef struct {
     uint8_t next_key_id[16];
 } cets_ecm_t;
 
-cets_ecm_t* cets_ecm_read(ts_packet_t*);
+cets_ecm_t* cets_ecm_read(uint8_t* data, size_t len);
 void cets_ecm_free(cets_ecm_t*);
 void cets_ecm_print(const cets_ecm_t*);
 

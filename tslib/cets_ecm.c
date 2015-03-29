@@ -24,9 +24,10 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <glib.h>
-
 #include "cets_ecm.h"
+
+#include <glib.h>
+#include "bs.h"
 
 
 static cets_ecm_t* cets_ecm_new(void)
@@ -46,13 +47,14 @@ void cets_ecm_free(cets_ecm_t* obj)
     g_free(obj);
 }
 
-cets_ecm_t* cets_ecm_read(ts_packet_t* ts)
+cets_ecm_t* cets_ecm_read(uint8_t* data, size_t len)
 {
-    g_return_val_if_fail(ts, NULL);
+    g_return_val_if_fail(data, NULL);
+    g_return_val_if_fail(len > 0, NULL);
 
     cets_ecm_t* ecm = cets_ecm_new();
-    bs_t* b = bs_new(ts->payload.bytes, ts->payload.len);
 
+    bs_t* b = bs_new(data, len);
     ecm->num_states = bs_read_u(b, 2);
     ecm->next_key_id_flag = bs_read_u1(b);
     bs_skip_u(b, 3); // reserved

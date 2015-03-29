@@ -358,7 +358,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
     }
 
     if (g_hash_table_contains(dash_validator->ecm_pids, GINT_TO_POINTER(ts->header.pid))) {
-        cets_ecm_t* cets_ecm = cets_ecm_read(ts);
+        cets_ecm_t* cets_ecm = cets_ecm_read(ts->payload.bytes, ts->payload.len);
         /* Ignore keys that don't apply yet */
         if (!cets_ecm->next_key_id_flag) {
             for (size_t s = 0; s < cets_ecm->num_states; ++s) {
