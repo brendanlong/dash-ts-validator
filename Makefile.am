@@ -6,7 +6,7 @@ LDFLAGS = $(GLIB_LIBS) $(GIO_LIBS)
 SUBDIRS = h264bitstream
 
 noinst_LIBRARIES = tslib/libts.a
-noinst_PROGRAMS = tslib/apps/ts_validate_mult_segment
+bin_PROGRAMS = tslib/apps/ts_validate_mult_segment
 
 
 tslib_libts_a_SOURCES = tslib/cets_ecm.c tslib/crc32m.c tslib/descriptors.c tslib/isobmff.c tslib/log.c \
