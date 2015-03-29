@@ -9,7 +9,7 @@ noinst_LIBRARIES = tslib/libts.a
 noinst_PROGRAMS = tslib/apps/ts_validate_mult_segment
 
 
-tslib_libts_a_SOURCES = tslib/cas.c tslib/cets_ecm.c tslib/crc32m.c tslib/descriptors.c tslib/isobmff.c tslib/log.c \
+tslib_libts_a_SOURCES = tslib/cets_ecm.c tslib/crc32m.c tslib/descriptors.c tslib/isobmff.c tslib/log.c \
         tslib/mpd.c tslib/mpeg2ts_demux.c tslib/pes.c tslib/pes_demux.c tslib/psi.c tslib/segment_validator.c tslib/ts.c
 tslib_libts_a_CFLAGS = -isystem$(top_srcdir)/h264bitstream $(LIBXML2_CFLAGS) \
         -O -fdiagnostics-color=always \

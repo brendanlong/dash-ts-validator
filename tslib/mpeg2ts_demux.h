@@ -35,7 +35,6 @@
 #include "ts.h"
 #include "pes.h"
 #include "psi.h"
-#include "cas.h"
 #include "descriptors.h"
 
 struct _mpeg2ts_stream_;

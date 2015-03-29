@@ -29,7 +29,6 @@
 
 #include <glib.h>
 #include "libts_common.h"
-#include "cas.h"
 #include "psi.h"
 #include "segment_validator.h"
 
@@ -202,18 +201,6 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 
         m2s->cat = new_cas;
 
-        for (gsize i = 0; i < m2s->cat->descriptors->len; ++i) {
-            ca_descriptor_t* cad = g_ptr_array_index(m2s->cat->descriptors, i);
-
-            // we think it's a ca_descriptor, but we don't really know
-            if (cad->descriptor.tag != CA_DESCRIPTOR) {
-                continue;
-            }
-
-            ca_system_process_ca_descriptor(m2s->ca_systems, NULL, cad);
-
-            // TODO: do something intelligent for EMM PIDs
-        }
         if (m2s->cat_processor != NULL) {
             m2s->cat_processor(m2s, m2s->arg);
         }
