@@ -92,6 +92,10 @@ cets_ecm_t* cets_ecm_read(uint8_t* data, size_t len)
         }
     }
 
+    if (bs_overrun(b)) {
+        cets_ecm_free(ecm);
+        ecm = NULL;
+    }
     bs_free(b);
     return ecm;
 }

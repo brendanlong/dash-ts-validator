@@ -22,6 +22,9 @@ PKG_CHECK_MODULES(GLIB, [glib-2.0])
 PKG_CHECK_MODULES(GIO, [gio-2.0])
 PKG_CHECK_MODULES(LIBXML2, [libxml-2.0])
 
+# Needed to run tests
+PKG_CHECK_MODULES([CHECK], [check])
+
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h inttypes.h stddef.h stdint.h stdlib.h string.h strings.h sys/time.h unistd.h])
 

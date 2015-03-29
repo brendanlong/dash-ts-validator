@@ -3,7 +3,9 @@
 *.anjuta
 *.la
 *.lo
+*.log
 *.o
+*.trs
 
 config.*
 
@@ -23,6 +25,7 @@ Makefile
 Makefile.in
 missing
 stamp-h1
+test-driver
 
 /h264bitstream/h264_analyze
 /h264bitstream/libh264bitstream.pc
@@ -30,3 +33,5 @@ stamp-h1
 /h264bitstream/libh264bitstream-uninstalled.sh
 
 /tslib/apps/ts_validate_mult_segment
+
+/tests/check_tslib
