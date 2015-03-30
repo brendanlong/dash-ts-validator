@@ -377,7 +377,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // if we are here, we have no clue what this PID is
-    g_info("Unknown PID 0x%02X", ts->header.pid);
+    g_debug("Unknown PID 0x%02X", ts->header.pid);
     ts_free(ts);
     return 0;
 }
