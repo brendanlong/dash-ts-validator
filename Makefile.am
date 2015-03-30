@@ -6,7 +6,7 @@ CFLAGS = -std=c99 -g -isystem$(top_srcdir)/h264bitstream -I$(top_srcdir)/tslib \
     -Wall -Winit-self -Wstrict-overflow=3 -Wfloat-equal -Wshadow \
     -Wpointer-arith -Wtype-limits -Wbad-function-cast -Wcast-qual \
     -Wstrict-prototypes -Wold-style-definition -Wmissing-prototypes -Wno-multichar \
-    -Wredundant-decls -Wvla -Wformat-security $(GLIB_CFLAGS) $(GIO_CFLAGS) $(LIBXML2_CFLAGS)
+    -Wredundant-decls -Wvla -Wformat-security -Wno-format-zero-length $(GLIB_CFLAGS) $(GIO_CFLAGS) $(LIBXML2_CFLAGS)
 LDFLAGS = h264bitstream/libh264bitstream.la $(GLIB_LIBS) $(GIO_LIBS) $(LIBXML2_LIBS)
 
 SUBDIRS = h264bitstream

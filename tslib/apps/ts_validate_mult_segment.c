@@ -61,8 +61,6 @@ static void usage(char* name)
 int main(int argc, char* argv[])
 {
     int c, long_options_index;
-    extern char* optarg;
-    extern int optind;
 
     if(argc < 2) {
         usage(argv[0]);
@@ -181,7 +179,7 @@ int main(int argc, char* argv[])
                             index_validator->segment_subsegments->len != representation->segments->len) {
                         g_error("PROGRAMMING ERROR: index_segment_validator_t->segment_subsegments returned from "
                                 "validate_index_segment()  should have on subsegments GPtrArray* per segment, but we have "
-                                "%zu segments and %zu segment_subsegments", representation->segments->len,
+                                "%u segments and %u segment_subsegments", representation->segments->len,
                                 index_validator->segment_subsegments->len);
                         /* g_error asserts */
                     }
@@ -584,18 +582,17 @@ bool check_psi_identical(GPtrArray* representations)
 
     g_info("Validating that PSI info is identical in each segment\n");
     bool identical = true;
-    segment_t* reference;
+    segment_t* reference = g_ptr_array_index(((representation_t*)g_ptr_array_index(representations, 0))->segments, 0);
     for (gsize r_i = 0; r_i < representations->len; ++r_i) {
         representation_t* representation = g_ptr_array_index(representations, r_i);
         for (gsize s_i = 0; s_i < representation->segments->len; ++s_i) {
+            if (r_i == 0 && s_i == 0) {
+                continue;
+            }
             segment_t* current = g_ptr_array_index(representation->segments, s_i);
 
-            if (r_i == 0 && s_i == 0) {
-                reference = current;
-            } else {
-                if (!check_segment_psi_identical(reference->file_name, reference->arg, current->file_name, current->arg)) {
-                    identical = false;
-                }
+            if (!check_segment_psi_identical(reference->file_name, reference->arg, current->file_name, current->arg)) {
+                identical = false;
             }
         }
     }
