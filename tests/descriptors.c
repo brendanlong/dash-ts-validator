@@ -40,6 +40,8 @@ START_TEST(test_descriptor_read_no_data)
     ck_assert_ptr_ne(desc, NULL);
     ck_assert_int_eq(desc->tag, bytes[0]);
     ck_assert_int_eq(desc->data_len, 0);
+
+    descriptor_free(desc);
 END_TEST
 
 START_TEST(test_descriptor_read_no_data_extra_data)
@@ -50,6 +52,8 @@ START_TEST(test_descriptor_read_no_data_extra_data)
     ck_assert_ptr_ne(desc, NULL);
     ck_assert_int_eq(desc->tag, bytes[0]);
     ck_assert_int_eq(desc->data_len, 0);
+
+    descriptor_free(desc);
 END_TEST
 
 START_TEST(test_descriptor_read_data)
@@ -60,6 +64,8 @@ START_TEST(test_descriptor_read_data)
     ck_assert_ptr_ne(desc, NULL);
     ck_assert_int_eq(desc->tag, bytes[0]);
     assert_bytes_eq(desc->data, desc->data_len, bytes + 2, sizeof(bytes) - 2);
+
+    descriptor_free(desc);
 END_TEST
 
 START_TEST(test_descriptor_read_data_length_too_long)
@@ -86,6 +92,8 @@ START_TEST(test_descriptor_read_too_much_data)
     ck_assert_ptr_ne(desc, NULL);
     ck_assert_int_eq(desc->tag, bytes[0]);
     assert_bytes_eq(desc->data, desc->data_len, bytes + 2, bytes[1]);
+
+    descriptor_free(desc);
 END_TEST
 
 START_TEST(test_ca_descriptor_read_no_systems)
@@ -102,6 +110,8 @@ START_TEST(test_ca_descriptor_read_no_systems)
     ck_assert_int_eq(cad->ca_pid, 300);
 
     assert_bytes_eq(cad->private_data, cad->private_data_len, bytes + 6, sizeof(bytes) - 6);
+
+    descriptor_free(desc);
 END_TEST
 
 START_TEST(test_ca_descriptor_read_not_enough_data)
@@ -126,6 +136,8 @@ START_TEST(test_ca_descriptor_read_too_much_data)
     ck_assert_int_eq(cad->ca_pid, 300);
 
     assert_bytes_eq(cad->private_data, cad->private_data_len, bytes + 6, sizeof(bytes) - 6);
+
+    descriptor_free(desc);
 END_TEST
 
 static Suite *descriptors_suite(void)

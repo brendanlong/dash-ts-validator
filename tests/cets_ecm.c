@@ -43,6 +43,7 @@ START_TEST(test_cets_ecm_read_no_states_no_next_key_id)
 
     uint8_t default_key_id[] = {78, 39, 171, 136, 189, 243, 49, 126, 70, 43, 176, 109, 145, 22, 208, 168};
     assert_bytes_eq(cets_ecm->default_key_id, 16, default_key_id, 16);
+    cets_ecm_free(cets_ecm);
 END_TEST
 
 START_TEST(test_cets_ecm_read_one_state_one_au)
@@ -158,7 +159,6 @@ START_TEST(test_cets_ecm_read_too_few_states)
     cets_ecm_t* cets_ecm = cets_ecm_read(ecm_bytes, sizeof(ecm_bytes));
 
     ck_assert_ptr_eq(cets_ecm, NULL);
-    cets_ecm_free(cets_ecm);
 END_TEST
 
 START_TEST(test_cets_ecm_read_too_many_states)
@@ -167,7 +167,6 @@ START_TEST(test_cets_ecm_read_too_many_states)
     cets_ecm_t* cets_ecm = cets_ecm_read(ecm_bytes, sizeof(ecm_bytes));
 
     ck_assert_ptr_eq(cets_ecm, NULL);
-    cets_ecm_free(cets_ecm);
 END_TEST
 
 START_TEST(test_cets_ecm_too_few_au)
@@ -178,7 +177,6 @@ START_TEST(test_cets_ecm_too_few_au)
     cets_ecm_t* cets_ecm = cets_ecm_read(ecm_bytes, sizeof(ecm_bytes));
 
     ck_assert_ptr_eq(cets_ecm, NULL);
-    cets_ecm_free(cets_ecm);
 END_TEST
 
 START_TEST(test_cets_ecm_too_many_au)
@@ -189,7 +187,6 @@ START_TEST(test_cets_ecm_too_many_au)
     cets_ecm_t* cets_ecm = cets_ecm_read(ecm_bytes, sizeof(ecm_bytes));
 
     ck_assert_ptr_eq(cets_ecm, NULL);
-    cets_ecm_free(cets_ecm);
 END_TEST
 
 static Suite *cets_ecm_suite(void)
