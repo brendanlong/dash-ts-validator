@@ -59,6 +59,15 @@ START_TEST(test_cets_ecm_read)
     cets_ecm_free(cets_ecm);
 END_TEST
 
+START_TEST(test_cets_ecm_read_bad_length)
+    uint8_t example_bytes[] = {64, 64, 196, 200, 204, 208, 212, 216, 220, 224, 228, 192, 196, 200, 204, 208, 212, 218,
+                               4, 1};
+    cets_ecm_t* cets_ecm = cets_ecm_read(example_bytes, sizeof(example_bytes));
+
+    ck_assert_ptr_eq(cets_ecm, NULL);
+    cets_ecm_free(cets_ecm);
+END_TEST
+
 Suite *cets_ecm_suite(void)
 {
     Suite *s;
@@ -70,6 +79,7 @@ Suite *cets_ecm_suite(void)
     tc_core = tcase_create("Core");
 
     tcase_add_test(tc_core, test_cets_ecm_read);
+    tcase_add_test(tc_core, test_cets_ecm_read_bad_length);
     suite_add_tcase(s, tc_core);
 
     return s;

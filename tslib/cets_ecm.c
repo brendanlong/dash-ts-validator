@@ -27,7 +27,7 @@
 #include "cets_ecm.h"
 
 #include <glib.h>
-#include "bs.h"
+#include "bitreader.h"
 
 
 static cets_ecm_t* cets_ecm_new(void)
@@ -50,54 +50,62 @@ void cets_ecm_free(cets_ecm_t* obj)
 cets_ecm_t* cets_ecm_read(uint8_t* data, size_t len)
 {
     g_return_val_if_fail(data, NULL);
-    g_return_val_if_fail(len > 0, NULL);
 
     cets_ecm_t* ecm = cets_ecm_new();
+    bitreader_t* b = bitreader_new(data, len);
 
-    bs_t* b = bs_new(data, len);
-    ecm->num_states = bs_read_u(b, 2);
-    ecm->next_key_id_flag = bs_read_u1(b);
-    bs_skip_u(b, 3); // reserved
+    ecm->num_states = bitreader_read_bits(b, 2);
+    ecm->next_key_id_flag = bitreader_read_bit(b);
+    bitreader_skip_bits(b, 3); // reserved
     /* Note: Everything after this isn't byte aligned (off by 2 bits). Will notify MPEG since this is presumably a bug */
-    ecm->iv_size = bs_read_u8(b);
+    ecm->iv_size = bitreader_read_uint8(b);
     for (size_t i = 0; i < 16; ++i) {
-        ecm->default_key_id[i] = bs_read_u8(b);
+        ecm->default_key_id[i] = bitreader_read_uint8(b);
     }
     for (size_t i = 0; i < ecm->num_states; ++i) {
         cets_ecm_state_t* state = &ecm->states[i];
-        state->transport_scrambling_control = bs_read_u(b, 2);
-        state->num_au = bs_read_u(b, 6);
+        state->transport_scrambling_control = bitreader_read_bits(b, 2);
+        state->num_au = bitreader_read_bits(b, 6);
         state->au = g_new0(cets_ecm_au_t, state->num_au);
         for (size_t j = 0; j < state->num_au; ++j) {
             cets_ecm_au_t* au = &state->au[j];
-            au->key_id_flag = bs_read_u1(b);
-            bs_skip_u(b, 3); // reserved
-            au->byte_offset_size = bs_read_u(b, 4);
+            au->key_id_flag = bitreader_read_bit(b);
+            bitreader_skip_bits(b, 3); // reserved
+            au->byte_offset_size = bitreader_read_bits(b, 4);
             for (size_t k = 0; k < 16 && au->key_id_flag; ++k) {
-                au->key_id[k] = bs_read_u8(b);
+                au->key_id[k] = bitreader_read_uint8(b);
             }
             for (size_t k = 0; k < au->byte_offset_size; ++k) {
-                au->byte_offset[k] = bs_read_u8(b);
+                au->byte_offset[k] = bitreader_read_uint8(b);
             }
             for (size_t k = 0; k < ecm->iv_size; ++k) {
-                au->initialization_vector[k] = bs_read_u8(b);
+                au->initialization_vector[k] = bitreader_read_uint8(b);
             }
         }
     }
     if (ecm->next_key_id_flag) {
-        ecm->countdown_sec = bs_read_u(b, 4);
-        bs_skip_u(b, 4); // reserved
+        ecm->countdown_sec = bitreader_read_bits(b, 4);
+        bitreader_skip_bits(b, 4); // reserved
         for (size_t i = 0; i < 16; ++i) {
-            ecm->next_key_id[i] = bs_read_u8(b);
+            ecm->next_key_id[i] = bitreader_read_uint8(b);
         }
     }
 
-    if (bs_overrun(b)) {
-        cets_ecm_free(ecm);
-        ecm = NULL;
+    /* TODO: Remove this skip if MPEG fixes the spec to be byte aligned */
+    bitreader_skip_bits(b, 2);
+
+    if (b->error || !bitreader_eof(b)) {
+        /* Adaptation field stuffing shall be used for smaller cets_ecm sizes. */
+        goto fail;
     }
-    bs_free(b);
+
+cleanup:
+    bitreader_free(b);
     return ecm;
+fail:
+    cets_ecm_free(ecm);
+    ecm = NULL;
+goto cleanup;
 }
 
 void cets_ecm_print(const cets_ecm_t* obj)
