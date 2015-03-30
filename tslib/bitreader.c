@@ -155,5 +155,5 @@ uint32_t bitreader_read_uint32(bitreader_t* b)
 
 uint64_t bitreader_read_uint64(bitreader_t* b)
 {
-    return (uint32_t)bitreader_read_uint(b, 64);
+    return (uint64_t)bitreader_read_uint(b, 64);
 }

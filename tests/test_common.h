@@ -31,7 +31,7 @@
 
 #include <check.h>
 
-static void assert_bytes_eq(uint8_t* x, size_t x_len, uint8_t* y, size_t y_len)
+inline void assert_bytes_eq(uint8_t* x, size_t x_len, uint8_t* y, size_t y_len)
 {
     ck_assert_int_eq(x_len, y_len);
     for (size_t i = 0; i < x_len; ++i) {

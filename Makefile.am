@@ -13,8 +13,8 @@ SUBDIRS = h264bitstream
 
 noinst_LIBRARIES = tslib/libts.a
 bin_PROGRAMS = tslib/apps/ts_validate_mult_segment
-noinst_PROGRAMS = tests/check_cets_ecm tests/check_descriptors
-TESTS = tests/check_cets_ecm tests/check_descriptors
+noinst_PROGRAMS = tests/check_bitreader tests/check_cets_ecm tests/check_descriptors
+TESTS = tests/check_bitreader tests/check_cets_ecm tests/check_descriptors
 
 tslib_libts_a_SOURCES = tslib/bitreader.c tslib/cets_ecm.c tslib/crc32m.c tslib/descriptors.c tslib/isobmff.c \
         tslib/log.c tslib/mpd.c tslib/mpeg2ts_demux.c tslib/pes.c tslib/pes_demux.c tslib/psi.c \
@@ -22,6 +22,10 @@ tslib_libts_a_SOURCES = tslib/bitreader.c tslib/cets_ecm.c tslib/crc32m.c tslib/
 
 tslib_apps_ts_validate_mult_segment_SOURCES = tslib/apps/ts_validate_mult_segment.c
 tslib_apps_ts_validate_mult_segment_LDADD = tslib/libts.a
+
+tests_check_bitreader_SOURCES = tests/bitreader.c
+tests_check_bitreader_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
+tests_check_bitreader_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
 
 tests_check_cets_ecm_SOURCES = tests/cets_ecm.c
 tests_check_cets_ecm_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
