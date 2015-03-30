@@ -36,6 +36,10 @@ extern "C" {
 
 typedef enum {
     SKIT_LOG_TYPE_UINT,
+    SKIT_LOG_TYPE_UINT8,
+    SKIT_LOG_TYPE_UINT16,
+    SKIT_LOG_TYPE_UINT32,
+    SKIT_LOG_TYPE_UINT64,
     SKIT_LOG_TYPE_UINT_HEX,
     SKIT_LOG_TYPE_STR,
 
@@ -49,6 +53,10 @@ typedef enum {
 #define SKIT_LOG_UINT64_DBG(prefix, arg)  fprintf(stdout, "DEBUG: %s%s=%"PRIu64"\n", prefix, #arg, (arg));
 
 #define SKIT_LOG_UINT(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT, NULL);
+#define SKIT_LOG_UINT8(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT8, NULL);
+#define SKIT_LOG_UINT16(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT16, NULL);
+#define SKIT_LOG_UINT32(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT32, NULL);
+#define SKIT_LOG_UINT64(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT64, NULL);
 #define SKIT_LOG_UINT_DBG(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT_DBG, NULL);
 #define SKIT_LOG_UINT_HEX(level, arg) skit_log_struct(level, #arg, &arg, SKIT_LOG_TYPE_UINT_HEX, NULL);
 #define SKIT_LOG_UINT_HEX_DBG(level, arg) skit_log_struct(level, #arg,  &arg, SKIT_LOG_TYPE_UINT_HEX_DBG, NULL);

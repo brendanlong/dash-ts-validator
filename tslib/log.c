@@ -68,10 +68,22 @@ void skit_log_struct(size_t num_indents, char* name, const void* value, skit_log
 
     switch(type) {
     case SKIT_LOG_TYPE_UINT:
-        g_info("%.*s%s=%"PRId64"", (int)num_indents, IDENT, real_name, *(const uint64_t*)value);
+        g_info("%.*s%s=%u", (int)num_indents, IDENT, real_name, *(const unsigned*)value);
+        break;
+    case SKIT_LOG_TYPE_UINT8:
+        g_info("%.*s%s=%"PRIu8"", (int)num_indents, IDENT, real_name, *(const uint8_t*)value);
+        break;
+    case SKIT_LOG_TYPE_UINT16:
+        g_info("%.*s%s=%"PRIu16"", (int)num_indents, IDENT, real_name, *(const uint16_t*)value);
+        break;
+    case SKIT_LOG_TYPE_UINT32:
+        g_info("%.*s%s=%"PRIu32"", (int)num_indents, IDENT, real_name, *(const uint32_t*)value);
+        break;
+    case SKIT_LOG_TYPE_UINT64:
+        g_info("%.*s%s=%"PRIu64"", (int)num_indents, IDENT, real_name, *(const uint64_t*)value);
         break;
     case SKIT_LOG_TYPE_UINT_DBG:
-        g_debug("%.*s%s=%"PRId64"", (int)num_indents, IDENT, real_name, *(const uint64_t*)value);
+        g_debug("%.*s%s=%u", (int)num_indents, IDENT, real_name, *(const unsigned*)value);
         break;
     case SKIT_LOG_TYPE_UINT_HEX:
         g_info("%.*s%s=0x%"PRIX64"", (int)num_indents, IDENT, real_name, *(const uint64_t*)value);
