@@ -29,12 +29,14 @@
 #ifndef TEST_COMMON_H
 #define TEST_COMMON_H
 
-#define assert_array_eq(x, x_len, y, y_len) \
-ck_assert_int_eq(x_len, y_len); \
-if (x_len == y_len) { \
-    for (size_t i = 0; i < x_len; ++i) { \
-        ck_assert(x[i] == y[i]); \
-    } \
+#include <check.h>
+
+static void assert_bytes_eq(uint8_t* x, size_t x_len, uint8_t* y, size_t y_len)
+{
+    ck_assert_int_eq(x_len, y_len);
+    for (size_t i = 0; i < x_len; ++i) {
+        ck_assert(x[i] == y[i]);
+    }
 }
 
 #endif

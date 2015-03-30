@@ -42,7 +42,7 @@ START_TEST(test_cets_ecm_read_no_states_no_next_key_id)
     ck_assert_int_eq(cets_ecm->num_states, 0);
 
     uint8_t default_key_id[] = {78, 39, 171, 136, 189, 243, 49, 126, 70, 43, 176, 109, 145, 22, 208, 168};
-    assert_array_eq(cets_ecm->default_key_id, 16, default_key_id, 16);
+    assert_bytes_eq(cets_ecm->default_key_id, 16, default_key_id, 16);
 END_TEST
 
 START_TEST(test_cets_ecm_read_one_state_one_au)
@@ -57,7 +57,7 @@ START_TEST(test_cets_ecm_read_one_state_one_au)
     ck_assert_int_eq(cets_ecm->next_key_id_flag, 0);
     ck_assert_int_eq(cets_ecm->iv_size, 16);
     ck_assert_int_eq(cets_ecm->num_states, 1);
-    assert_array_eq(cets_ecm->default_key_id, 16, default_key_id, sizeof(default_key_id));
+    assert_bytes_eq(cets_ecm->default_key_id, 16, default_key_id, sizeof(default_key_id));
     if (cets_ecm->num_states > 0) {
         cets_ecm_state_t* state = &cets_ecm->states[0];
         ck_assert_int_eq(state->transport_scrambling_control, 1);
@@ -68,7 +68,7 @@ START_TEST(test_cets_ecm_read_one_state_one_au)
             ck_assert_int_eq(au->byte_offset_size, 0);
             // key_id undefined if key_id_flag == 0
             // byte_offset undefined if byte_offset_size == 0
-            assert_array_eq(au->initialization_vector, cets_ecm->iv_size, iv, sizeof(iv));
+            assert_bytes_eq(au->initialization_vector, cets_ecm->iv_size, iv, sizeof(iv));
         }
     }
     // countdown_sec and next_key_id undefined if countdown_sec == 0
@@ -85,7 +85,7 @@ START_TEST(test_cets_ecm_read_two_states_no_au)
     ck_assert_int_eq(cets_ecm->next_key_id_flag, 0);
     ck_assert_int_eq(cets_ecm->iv_size, 0);
     ck_assert_int_eq(cets_ecm->num_states, 2);
-    assert_array_eq(cets_ecm->default_key_id, 16, default_key_id, sizeof(default_key_id));
+    assert_bytes_eq(cets_ecm->default_key_id, 16, default_key_id, sizeof(default_key_id));
     if (cets_ecm->num_states > 0) {
         cets_ecm_state_t* state = &cets_ecm->states[0];
         ck_assert_int_eq(state->transport_scrambling_control, 1);
@@ -118,7 +118,7 @@ START_TEST(test_cets_ecm_read_one_state_two_au)
     ck_assert_int_eq(cets_ecm->next_key_id_flag, 1);
     ck_assert_int_eq(cets_ecm->iv_size, 16);
     ck_assert_int_eq(cets_ecm->num_states, 1);
-    assert_array_eq(cets_ecm->default_key_id, 16, default_key_id, sizeof(default_key_id));
+    assert_bytes_eq(cets_ecm->default_key_id, 16, default_key_id, sizeof(default_key_id));
     if (cets_ecm->num_states > 0) {
         cets_ecm_state_t* state = &cets_ecm->states[0];
         ck_assert_int_eq(state->transport_scrambling_control, 2);
@@ -129,18 +129,18 @@ START_TEST(test_cets_ecm_read_one_state_two_au)
             ck_assert_int_eq(au->byte_offset_size, 0);
             // key_id undefined if key_id_flag == 0
             // byte_offset undefined if byte_offset_size == 0
-            assert_array_eq(au->initialization_vector, cets_ecm->iv_size, iv_au_1, sizeof(iv_au_1));
+            assert_bytes_eq(au->initialization_vector, cets_ecm->iv_size, iv_au_1, sizeof(iv_au_1));
         }
         if (state->num_au > 1) {
             cets_ecm_au_t* au = &state->au[1];
             ck_assert_int_eq(au->key_id_flag, 1);
-            assert_array_eq(au->key_id, 16, key_id_au_2, sizeof(key_id_au_2));
-            assert_array_eq(au->byte_offset, au->byte_offset_size, byte_offset_au_2, sizeof(byte_offset_au_2));
-            assert_array_eq(au->initialization_vector, cets_ecm->iv_size, iv_au_2, sizeof(iv_au_2));
+            assert_bytes_eq(au->key_id, 16, key_id_au_2, sizeof(key_id_au_2));
+            assert_bytes_eq(au->byte_offset, au->byte_offset_size, byte_offset_au_2, sizeof(byte_offset_au_2));
+            assert_bytes_eq(au->initialization_vector, cets_ecm->iv_size, iv_au_2, sizeof(iv_au_2));
         }
     }
     ck_assert_int_eq(cets_ecm->countdown_sec, 5);
-    assert_array_eq(cets_ecm->next_key_id, 16, next_key_id, sizeof(next_key_id));
+    assert_bytes_eq(cets_ecm->next_key_id, 16, next_key_id, sizeof(next_key_id));
     cets_ecm_free(cets_ecm);
 END_TEST
 
@@ -192,7 +192,7 @@ START_TEST(test_cets_ecm_too_many_au)
     cets_ecm_free(cets_ecm);
 END_TEST
 
-Suite *cets_ecm_suite(void)
+static Suite *cets_ecm_suite(void)
 {
     Suite *s;
     TCase *tc_core;
