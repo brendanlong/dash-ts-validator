@@ -83,6 +83,36 @@ static char* STREAM_DESC_RESERVED  = "ISO/IEC 13818-1 Reserved"; // 0x24-0x7E
 static char* STREAM_DESC_IPMP = "IPMP Stream"; // 0x7F
 static char* STREAM_DESC_USER_PRIVATE = "User Private"; // 0x80-0xFF
 
+static bool read_descriptors(GPtrArray* descriptors, bs_t* b, size_t len)
+{
+    g_return_val_if_fail(descriptors, false);
+    g_return_val_if_fail(b, false);
+
+    bool ret = true;
+    uint8_t* descriptor_bytes = malloc(len);
+    bs_read_bytes(b, descriptor_bytes, len);
+
+    size_t start = 0;
+    while (start < len) {
+        descriptor_t* desc = descriptor_read(descriptor_bytes + start, len - start);
+        if (!desc) {
+            goto fail;
+        }
+        g_ptr_array_add(descriptors, desc);
+        start += desc->data_len + 2;
+    }
+    if (start > len) {
+        g_critical("descriptors have invalid length");
+        goto fail;
+    }
+
+cleanup:
+    free(descriptor_bytes);
+    return ret;
+fail:
+    ret = false;
+    goto cleanup;
+}
 
 char* stream_desc(uint8_t stream_id)
 {
@@ -267,18 +297,18 @@ static elementary_stream_info_t* es_info_read(bs_t* b)
     bs_skip_u(b, 4);
     es->es_info_length = bs_read_u(b, 12);
 
-    if (read_descriptor_loop(es->descriptors, b, es->es_info_length) < 0) {
-        goto cleanup;
-    }
     if (es->es_info_length > MAX_ES_INFO_LEN) {
         g_critical("ES info length is 0x%02X, larger than maximum allowed 0x%02X",
                        es->es_info_length, MAX_ES_INFO_LEN);
-        SAFE_REPORT_TS_ERR(-60);
-        goto cleanup;
+        goto fail;
+    }
+
+    if (!read_descriptors(es->descriptors, b, es->es_info_length)) {
+        goto fail;
     }
 
     return es;
-cleanup:
+fail:
     es_info_free(es);
     return NULL;
 }
@@ -293,7 +323,9 @@ static void es_info_print(elementary_stream_info_t* es, int level)
     SKIT_LOG_UINT_HEX(level, es->elementary_pid);
     SKIT_LOG_UINT(level, es->es_info_length);
 
-    print_descriptor_loop(es->descriptors, level + 1);
+    for (size_t i = 0; i < es->descriptors->len; ++i) {
+        descriptor_print(g_ptr_array_index(es->descriptors, i), level + 1);
+    }
 }
 
 static program_map_section_t* program_map_section_new(void)
@@ -371,7 +403,7 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
         goto fail;
     }
 
-    read_descriptor_loop(pms->descriptors, b, pms->program_info_length);
+    read_descriptors(pms->descriptors, b, pms->program_info_length);
 
     while (pms->section_length - (bs_pos(b) - section_start) > 4) {  // account for CRC
         elementary_stream_info_t* es = es_info_read(b);
@@ -425,7 +457,9 @@ void program_map_section_print(program_map_section_t* pms)
 
     SKIT_LOG_UINT(1, pms->program_info_length);
 
-    print_descriptor_loop(pms->descriptors, 2);
+    for (size_t i = 0; i < pms->descriptors->len; ++i) {
+        descriptor_print(g_ptr_array_index(pms->descriptors, i), 2);
+    }
 
     for (gsize i = 0; i < pms->es_info->len; ++i) {
         elementary_stream_info_t* es = g_ptr_array_index(pms->es_info, i);
@@ -485,7 +519,7 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
         goto fail;
     }
 
-    read_descriptor_loop(cas->descriptors, b, cas->section_length - 5 - 4);
+    read_descriptors(cas->descriptors, b, cas->section_length - 5 - 4);
 
     // explanation: section_length gives us the length from the end of section_length
     // we used 5 bytes for the mandatory section fields, and will use another 4 bytes for CRC
@@ -525,7 +559,9 @@ void conditional_access_section_print(const conditional_access_section_t* cas)
     SKIT_LOG_UINT(0, cas->section_number);
     SKIT_LOG_UINT(0, cas->last_section_number);
 
-    print_descriptor_loop(cas->descriptors, 2);
+    for (size_t i = 0; i < cas->descriptors->len; ++i) {
+        descriptor_print(g_ptr_array_index(cas->descriptors, i), 2);
+    }
 
     SKIT_LOG_UINT_HEX(0, cas->crc_32);
 }

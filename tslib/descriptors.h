@@ -28,10 +28,8 @@
 #ifndef TSLIB_DESCRIPTORS_H
 #define TSLIB_DESCRIPTORS_H
 
-#include <glib.h>
-
-#include "bs.h"
-
+#include <stddef.h>
+#include <stdint.h>
 
 typedef enum {
     DESCRIPTOR_TAG_RESERVED = 0,
@@ -85,44 +83,14 @@ typedef enum {
 
 typedef struct {
     uint8_t tag;
-    uint8_t length;
+    uint8_t* data;
+    uint8_t data_len;
 } descriptor_t;
-
-typedef descriptor_t* (*descriptor_reader_t)(void*, uint32_t, uint32_t, bs_t*);
-typedef int (*descriptor_printer_t)(const descriptor_t*, int, char*, size_t);
-typedef void (*descriptor_destructor_t)(descriptor_t*);
-
-typedef struct {
-    uint8_t tag;
-    descriptor_reader_t read_descriptor;
-    descriptor_printer_t print_descriptor;
-    descriptor_destructor_t free_descriptor;
-} descriptor_table_entry_t;
-
-// "factory methods"
-int read_descriptor_loop(GPtrArray* desc_list, bs_t* b, int length);
-void print_descriptor_loop(GPtrArray* desc_list, int level);
 
 descriptor_t* descriptor_new(void);
 void descriptor_free(descriptor_t* desc);
-descriptor_t* descriptor_read(descriptor_t* desc, bs_t* b);
+descriptor_t* descriptor_read(uint8_t* data, size_t len);
 void descriptor_print(const descriptor_t* desc, int level);
-
-typedef struct {
-    char iso_639_language_code[4];
-    uint8_t audio_type;
-} iso639_lang_t;
-
-typedef struct {
-    descriptor_t descriptor;
-    iso639_lang_t* languages;
-    size_t num_languages;
-} language_descriptor_t;
-
-descriptor_t* language_descriptor_new(descriptor_t* desc);
-void language_descriptor_free(descriptor_t* desc);
-descriptor_t* language_descriptor_read(descriptor_t* desc, bs_t* b);
-void language_descriptor_print(const descriptor_t* desc, int level);
 
 typedef struct {
     descriptor_t descriptor;
@@ -132,9 +100,6 @@ typedef struct {
     size_t private_data_len;
 } ca_descriptor_t;
 
-descriptor_t* ca_descriptor_new(descriptor_t* desc);
-void ca_descriptor_free(descriptor_t* desc);
-descriptor_t* ca_descriptor_read(descriptor_t* desc, bs_t* b);
 void ca_descriptor_print(const descriptor_t* desc, int level);
 
 #endif
