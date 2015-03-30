@@ -31,7 +31,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-
 typedef struct {
     bool key_id_flag;
     uint8_t key_id[16];

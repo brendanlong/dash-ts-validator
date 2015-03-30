@@ -359,8 +359,11 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
 
     if (g_hash_table_contains(dash_validator->ecm_pids, GINT_TO_POINTER(ts->header.pid))) {
         cets_ecm_t* cets_ecm = cets_ecm_read(ts->payload.bytes, ts->payload.len);
+        if (!cets_ecm) {
+            g_critical("Invalid CETS ECM found on PID %"PRIu16, ts->header.pid);
+        }
         /* Ignore keys that don't apply yet */
-        if (!cets_ecm->next_key_id_flag) {
+        else if (!cets_ecm->next_key_id_flag) {
             for (size_t s = 0; s < cets_ecm->num_states; ++s) {
                 cets_ecm_state_t* state = &cets_ecm->states[s];
                 uint8_t transport_scrambling_control = state->transport_scrambling_control;
