@@ -34,4 +34,5 @@ test-driver
 
 /tslib/apps/ts_validate_mult_segment
 
-/tests/check_tslib
+/tests/check_cets_ecm
+/tests/check_descriptors

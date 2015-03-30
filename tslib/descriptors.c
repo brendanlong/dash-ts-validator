@@ -75,7 +75,6 @@ descriptor_t* descriptor_read(uint8_t* data, size_t data_len)
     }
 
     if (b->error) {
-        g_critical("descriptor is invalid");
         goto fail;
     }
 
@@ -147,14 +146,15 @@ descriptor_t* ca_descriptor_read(descriptor_t* desc)
     cad->ca_system_id = bitreader_read_uint16(b);
     bitreader_skip_bits(b, 3);
     cad->ca_pid = bitreader_read_uint(b, 13);
+    if (b->error) {
+        goto fail;
+    }
     cad->private_data_len = cad->descriptor.data_len - 4; // we just read 4 bytes
     cad->private_data = malloc(cad->private_data_len);
     for (size_t i = 0; i < cad->private_data_len; ++i) {
         cad->private_data[i] = bitreader_read_uint8(b);
     }
     if (b->error) {
-        ca_descriptor_print((descriptor_t*)cad, 0);
-        g_critical("CA_descriptor is invalid.");
         goto fail;
     }
 

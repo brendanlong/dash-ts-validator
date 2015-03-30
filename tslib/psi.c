@@ -96,6 +96,7 @@ static bool read_descriptors(GPtrArray* descriptors, bs_t* b, size_t len)
     while (start < len) {
         descriptor_t* desc = descriptor_read(descriptor_bytes + start, len - start);
         if (!desc) {
+            g_critical("descriptor in PSI is invalid");
             goto fail;
         }
         g_ptr_array_add(descriptors, desc);
