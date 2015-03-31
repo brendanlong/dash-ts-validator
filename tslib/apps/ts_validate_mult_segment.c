@@ -106,8 +106,10 @@ int main(int argc, char* argv[])
         period_t* period = g_ptr_array_index(mpd->periods, p_i);
         for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
             adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
-            if (adaptation_set->mime_type && strcmp(adaptation_set->mime_type, "video/mp2t")) {
-                g_warning("Ignoring Adaptation Set %"PRIu32" because it has MIME type \"%s\".",
+            if (adaptation_set->mime_type && strcmp(adaptation_set->mime_type, "video/mp2t")
+                    && strcmp(adaptation_set->mime_type, "audio/mp2t")) {
+                g_warning("Ignoring Adaptation Set %"PRIu32" because MIME type \"%s\" does not match \"video/mp2t\" "
+                        "or \"audio/mp2t\".",
                         adaptation_set->id, adaptation_set->mime_type);
                 continue;
             }
@@ -116,8 +118,10 @@ int main(int argc, char* argv[])
             g_print("VALIDATING ADAPTATION SET: %"PRIu32"\n", adaptation_set->id);
             for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
                 representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
-                if (adaptation_set->mime_type && strcmp(adaptation_set->mime_type, "video/mp2t")) {
-                    g_warning("Ignoring Representation %s because it has MIME type \"%s\".",
+                if (representation->mime_type && strcmp(representation->mime_type, "video/mp2t")
+                        && strcmp(representation->mime_type, "audio/mp2t")) {
+                    g_warning("Ignoring Representation %s because because MIME type \"%s\" does not match "
+                            "\"video/mp2t\" or \"audio/mp2t\".",
                             representation->id, representation->mime_type);
                     continue;
                 }
