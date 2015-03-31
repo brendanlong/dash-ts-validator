@@ -20,6 +20,7 @@ AC_CHECK_LIB([m], [cos])
 
 PKG_CHECK_MODULES(GLIB, [glib-2.0])
 PKG_CHECK_MODULES(GIO, [gio-2.0])
+PKG_CHECK_MODULES(LIBPCRE, [libpcre >= 7.2])
 PKG_CHECK_MODULES(LIBXML2, [libxml-2.0])
 
 # Needed to run tests

@@ -59,7 +59,13 @@ typedef struct {
     uint32_t i;
 } optional_uint32_t;
 
+struct _representation_t;
+struct _adaptation_set_t;
+struct _period_t;
+struct _mpd_t;
+
 typedef struct {
+    struct _representation_t* representation;
     char* file_name;
     uint64_t media_range_start;
     uint64_t media_range_end;
@@ -79,6 +85,7 @@ typedef struct {
 } segment_t;
 
 typedef struct {
+    struct _representation_t* representation;
     dash_profile_t profile;
     uint8_t start_with_sap;
     bool has_level;
@@ -88,7 +95,8 @@ typedef struct {
     GPtrArray* content_component;
 } subrepresentation_t;
 
-typedef struct {
+typedef struct _representation_t {
+    struct _adaptation_set_t* adaptation_set;
     dash_profile_t profile;
     char* id;
     char* mime_type;
@@ -109,7 +117,8 @@ typedef struct {
     GPtrArray* segments;
 } representation_t;
 
-typedef struct {
+typedef struct _adaptation_set_t {
+    struct _period_t* period;
     uint32_t id;
     char* mime_type;
     dash_profile_t profile;
@@ -121,8 +130,10 @@ typedef struct {
     GPtrArray* representations;
 } adaptation_set_t;
 
-typedef struct {
+typedef struct _period_t {
+    struct _mpd_t* mpd;
     bool bitstream_switching;
+    uint64_t duration;
     GPtrArray* adaptation_sets;
 } period_t;
 
@@ -131,9 +142,10 @@ typedef enum {
     MPD_PRESENTATION_DYNAMIC
 } mpd_presentation_t;
 
-typedef struct {
+typedef struct _mpd_t {
     dash_profile_t profile;
     mpd_presentation_t presentation_type;
+    uint64_t duration;
     GPtrArray* periods;
 } mpd_t;
 
@@ -143,23 +155,23 @@ mpd_t* mpd_read_file(char* file_name);
 mpd_t* mpd_read_doc(char* mpd_xml, char* base_url);
 void mpd_print(const mpd_t*);
 
-period_t* period_new(void);
+period_t* period_new(mpd_t*);
 void period_free(period_t*);
 void period_print(const period_t*, unsigned indent);
 
-adaptation_set_t* adaptation_set_new(void);
+adaptation_set_t* adaptation_set_new(period_t*);
 void adaptation_set_free(adaptation_set_t*);
 void adaptation_set_print(const adaptation_set_t*, unsigned indent);
 
-representation_t* representation_new(void);
+representation_t* representation_new(adaptation_set_t*);
 void representation_free(representation_t*);
 void representation_print(const representation_t*, unsigned indent);
 
-subrepresentation_t* subrepresentation_new(void);
+subrepresentation_t* subrepresentation_new(representation_t*);
 void subrepresentation_free(subrepresentation_t*);
 void subrepresentation_print(const subrepresentation_t*, unsigned indent);
 
-segment_t* segment_new(void);
+segment_t* segment_new(representation_t*);
 void segment_free(segment_t*);
 void segment_print(const segment_t*, unsigned indent);
 

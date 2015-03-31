@@ -30,9 +30,10 @@
 
 #include <gio/gio.h>
 #include <inttypes.h>
+#include <libxml/tree.h>
+#include <pcre.h>
 #include <stdlib.h>
 #include <string.h>
-#include <libxml/tree.h>
 #include "log.h"
 
 
@@ -57,7 +58,7 @@ typedef struct {
 
 
 static bool read_period(xmlNode*, mpd_t*, char* base_url);
-static bool read_adaptation_set(xmlNode*, mpd_t*, period_t*, char* base_url, xmlNode* segment_base,
+static bool read_adaptation_set(xmlNode*, period_t*, char* base_url, xmlNode* segment_base,
         xmlNode* segment_list, xmlNode* segment_template);
 static bool read_representation(xmlNode*, adaptation_set_t*, char* base_url, xmlNode* segment_base,
         xmlNode* segment_list, xmlNode* segment_template);
@@ -73,11 +74,12 @@ static void print_optional_uint32(int indent, const char* name, optional_uint32_
 static uint32_t read_uint64(xmlNode*, const char* property_name);
 static bool read_bool(xmlNode*, const char* property_name);
 static char* read_filename(xmlNode*, const char* property_name, const char* base_url);
-static uint64_t str_to_uint64(const char*, int* error);
+static uint64_t str_to_uint64(const char*, size_t length, int* error);
 static dash_profile_t read_profile(xmlNode*, dash_profile_t parent_profile);
 static const char* dash_profile_to_string(dash_profile_t);
 static bool read_range(xmlNode*, const char* property_name, uint64_t* start_out, uint64_t* end_out);
 static uint64_t convert_timescale(uint64_t time, uint64_t timescale);
+static uint64_t read_duration(xmlNode*, const char* property_name);
 
 const char INDENT_BUFFER[] = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
 
@@ -123,6 +125,7 @@ void mpd_print(const mpd_t* mpd)
         PRINT_PROPERTY(indent, "presentation_type: %d", mpd->presentation_type);
     }
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(mpd->profile));
+    PRINT_PROPERTY(indent, "duration: %"PRIu64, mpd->duration);
 
     for (size_t i = 0; i < mpd->periods->len; ++i) {
         PRINT_PROPERTY(indent, "periods[%zu]:", i);
@@ -130,9 +133,10 @@ void mpd_print(const mpd_t* mpd)
     }
 }
 
-period_t* period_new(void)
+period_t* period_new(mpd_t* mpd)
 {
     period_t* obj = calloc(1, sizeof(*obj));
+    obj->mpd = mpd;
     obj->adaptation_sets = g_ptr_array_new_with_free_func((GDestroyNotify)adaptation_set_free);
     return obj;
 }
@@ -152,15 +156,17 @@ void period_print(const period_t* period, unsigned indent)
 {
     ++indent;
     PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(period->bitstream_switching));
+    PRINT_PROPERTY(indent, "duration: %"PRIu64, period->duration);
     for (size_t i = 0; i < period->adaptation_sets->len; ++i) {
         PRINT_PROPERTY(indent, "adaptation_sets[%zu]:", i);
         adaptation_set_print(g_ptr_array_index(period->adaptation_sets, i), indent + 1);
     }
 }
 
-adaptation_set_t* adaptation_set_new(void)
+adaptation_set_t* adaptation_set_new(period_t* period)
 {
     adaptation_set_t* obj = calloc(1, sizeof(*obj));
+    obj->period = period;
     obj->representations = g_ptr_array_new_with_free_func((GDestroyNotify)representation_free);
     return obj;
 }
@@ -193,9 +199,10 @@ void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned inden
     }
 }
 
-representation_t* representation_new(void)
+representation_t* representation_new(adaptation_set_t* adaptation_set)
 {
     representation_t* obj = calloc(1, sizeof(*obj));
+    obj->adaptation_set = adaptation_set;
     obj->subrepresentations = g_ptr_array_new_with_free_func((GDestroyNotify)subrepresentation_free);
     obj->segments = g_ptr_array_new_with_free_func((GDestroyNotify)segment_free);
     return obj;
@@ -242,9 +249,10 @@ void representation_print(const representation_t* representation, unsigned inden
     }
 }
 
-subrepresentation_t* subrepresentation_new(void)
+subrepresentation_t* subrepresentation_new(representation_t* representation)
 {
     subrepresentation_t* obj = calloc(1, sizeof(*obj));
+    obj->representation = representation;
     obj->dependency_level = g_array_new(false, false, sizeof(uint32_t));
     obj->content_component = g_ptr_array_new_with_free_func(g_free);
     return obj;
@@ -276,9 +284,10 @@ void subrepresentation_print(const subrepresentation_t* obj, unsigned indent)
     }
 }
 
-segment_t* segment_new(void)
+segment_t* segment_new(representation_t* representation)
 {
     segment_t* obj = calloc(1, sizeof(*obj));
+    obj->representation = representation;
     return obj;
 }
 
@@ -332,6 +341,7 @@ static mpd_t* mpd_read(xmlDoc* doc, char* base_url)
         mpd->presentation_type = MPD_PRESENTATION_DYNAMIC;
     }
     xmlFree(type);
+    mpd->duration = read_duration(root, "mediaPresentationDuration");
 
     for (xmlNode* cur_node = root->children; cur_node; cur_node = cur_node->next) {
         if (xmlStrEqual(cur_node->name, "Period")) {
@@ -391,11 +401,15 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
 {
     bool return_code = true;
 
-    period_t* period = period_new();
+    period_t* period = period_new(mpd);
     g_ptr_array_add(mpd->periods, period);
 
     char* base_url = find_base_url(node, parent_base_url);
     period->bitstream_switching = read_bool(node, "bitstreamSwitching");
+    period->duration = read_duration(node, "duration");
+    if (period->duration == 0) {
+        period->duration = mpd->duration;
+    }
 
     xmlNode* segment_base = NULL;
     xmlNode* segment_list = NULL;
@@ -415,7 +429,7 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
 
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (xmlStrEqual(cur_node->name, "AdaptationSet")) {
-            if(!read_adaptation_set(cur_node, mpd, period, base_url, segment_base, segment_list, segment_template)) {
+            if(!read_adaptation_set(cur_node, period, base_url, segment_base, segment_list, segment_template)) {
                 goto fail;
             }
         }
@@ -429,17 +443,17 @@ fail:
     goto cleanup;
 }
 
-bool read_adaptation_set(xmlNode* node, mpd_t* mpd, period_t* period, char* parent_base_url,
+bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url,
         xmlNode* parent_segment_base, xmlNode* parent_segment_list, xmlNode* parent_segment_template)
 {
     bool return_code = true;
 
-    adaptation_set_t* adaptation_set = adaptation_set_new();
+    adaptation_set_t* adaptation_set = adaptation_set_new(period);
     g_ptr_array_add(period->adaptation_sets, adaptation_set);
 
     adaptation_set->id = read_uint64(node, "id");
     adaptation_set->mime_type = xmlGetProp(node, "mimeType");
-    adaptation_set->profile = read_profile(node, mpd->profile);
+    adaptation_set->profile = read_profile(node, period->mpd->profile);
     adaptation_set->segment_alignment = read_optional_uint32(node, "segmentAlignment");
     adaptation_set->subsegment_alignment = read_optional_uint32(node, "subsegmentAlignment");
     adaptation_set->bitstream_switching = period->bitstream_switching || read_bool(node, "bitstreamSwitching");
@@ -482,7 +496,7 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
     bool return_code = true;
     char* base_url =  NULL;
 
-    representation_t* representation = representation_new();
+    representation_t* representation = representation_new(adaptation_set);
     g_ptr_array_add(adaptation_set->representations, representation);
 
     representation->profile = read_profile(node, adaptation_set->profile);
@@ -511,9 +525,10 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
             if (!read_segment_base(cur_node, representation, base_url, parent_segment_base)) {
                 goto fail;
             }
-            segment_t* segment = segment_new();
+            segment_t* segment = segment_new(representation);
             segment->file_name = g_strdup(base_url);
             segment->start = representation->presentation_time_offset;
+            segment->duration = representation->adaptation_set->period->duration * representation->timescale;
             g_ptr_array_add(representation->segments, segment);
         }  else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
             if (!read_segment_template(cur_node, representation, base_url, parent_segment_template)) {
@@ -543,7 +558,7 @@ bool read_subrepresentation(xmlNode* node, representation_t* representation)
     bool return_code = true;
     char* start_with_sap = NULL;
 
-    subrepresentation_t* subrepresentation = subrepresentation_new();
+    subrepresentation_t* subrepresentation = subrepresentation_new(representation);
     g_ptr_array_add(representation->subrepresentations, subrepresentation);
 
     if (xmlHasProp(node, "level")) {
@@ -588,7 +603,7 @@ bool read_subrepresentation(xmlNode* node, representation_t* representation)
                 if (last || dependency_level[end] == ' ' || dependency_level[end] == '\t') {
                     dependency_level[end] = 0;
                     int error = 0;
-                    uint64_t cc_int = str_to_uint64(dependency_level + start, &error);
+                    uint64_t cc_int = str_to_uint64(dependency_level + start, 0, &error);
                     if (error || cc_int > UINT32_MAX) {
                         g_print("SubRepresentation@dependencyLevel %s is not an xs:unsignedInt.",
                                 content_component + start);
@@ -706,7 +721,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
             goto fail;
         }
         int error;
-        duration = str_to_uint64(duration_str, &error);
+        duration = str_to_uint64(duration_str, 0, &error);
         if (error) {
             g_critical("<SegmentList> duration \"%s\" is not a 64-bit number.", duration_str);
             goto fail;
@@ -762,17 +777,17 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
             char* r = xmlGetProp(cur_node, "r");
             int error;
             bool failed = false;
-            uint64_t start = str_to_uint64(t, &error);
+            uint64_t start = str_to_uint64(t, 0, &error);
             if (error) {
                 g_critical("<S>'s @t value (%s) is not a number.", t);
                 failed = true;
             }
-            uint64_t duration = str_to_uint64(d, &error);
+            uint64_t duration = str_to_uint64(d, 0, &error);
             if (error) {
                 g_critical("<S>'s @d value (%s) is not a number.", d);
                 failed = true;
             }
-            uint64_t repeat = str_to_uint64(r, &error);
+            uint64_t repeat = str_to_uint64(r, 0, &error);
             if (error) {
                 g_critical("<S>'s @r value (%s) is not a number.", r);
                 failed = true;
@@ -803,7 +818,7 @@ fail:
 
 bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t start, uint64_t duration, char* base_url)
 {
-    segment_t* segment = segment_new();
+    segment_t* segment = segment_new(representation);
 
     /* Don't use convert_timescale here since we already converted in read_segment_timeline and read_segment_list */
     segment->start = start;
@@ -981,7 +996,7 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
             goto fail;
         }
         int error;
-        duration = str_to_uint64(duration_str, &error);
+        duration = str_to_uint64(duration_str, 0, &error);
         if (error) {
             g_critical("<SegmentTemplate> duration \"%s\" is not a 64-bit number.", duration_str);
             goto fail;
@@ -1010,7 +1025,7 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
             break;
         }
 
-        segment_t* segment = segment_new();
+        segment_t* segment = segment_new(representation);
         segment->file_name = media;
         if (segment_timeline) {
             segment_timeline_s_t* s = g_ptr_array_index(segment_timeline, timeline_i);
@@ -1076,7 +1091,7 @@ optional_uint32_t read_optional_uint32(xmlNode* node, const char* property_name)
         result.b = true;
     } else {
         int error;
-        uint32_t tmp = str_to_uint64(value, &error);
+        uint32_t tmp = str_to_uint64(value, 0, &error);
         if (error) {
             g_warning("Got invalid ConditionalUintType for property %s: %s", property_name, value);
         } else {
@@ -1104,7 +1119,7 @@ uint32_t read_uint64(xmlNode* node, const char* property_name)
         return 0;
     }
     int error;
-    uint64_t result = str_to_uint64(value, &error);
+    uint64_t result = str_to_uint64(value, 0, &error);
     if (error) {
         g_warning("Got invalid unsignedLong for property %s: %s", property_name, value);
     }
@@ -1141,10 +1156,10 @@ char* read_filename(xmlNode* node, const char* property_name, const char* base_u
     return filename;
 }
 
-uint64_t str_to_uint64(const char* str, int* error)
+uint64_t str_to_uint64(const char* str, size_t length, int* error)
 {
     uint64_t result = 0;
-    for (size_t i = 0; str[i]; ++i) {
+    for (size_t i = 0; (!length || i < length) && str[i]; ++i) {
         char c = str[i];
         if (c < '0' || c > '9') {
             g_warning("Invalid non-digit in string to parse: %s.", str);
@@ -1227,11 +1242,11 @@ static bool read_range(xmlNode* node, const char* property_name, uint64_t* start
     }
 
     int error;
-    uint64_t start = str_to_uint64(split[0], &error);
+    uint64_t start = str_to_uint64(split[0], 0, &error);
     if (error) {
         goto fail;
     }
-    uint64_t end = str_to_uint64(split[1], &error);
+    uint64_t end = str_to_uint64(split[1], 0, &error);
     if (error) {
         goto fail;
     }
@@ -1262,4 +1277,110 @@ static uint64_t convert_timescale(uint64_t time, uint64_t timescale)
     } else {
         return (MPEG_TS_TIMESCALE / timescale) * time;
     }
+}
+
+uint64_t read_duration(xmlNode* node, const char* property_name)
+{
+    g_return_val_if_fail(node, 0);
+    g_return_val_if_fail(property_name, 0);
+
+    uint64_t result = 0;
+    pcre* re = NULL;
+    char* value = xmlGetProp(node, property_name);
+    if (value == NULL) {
+        goto fail;
+    }
+
+    const char* error;
+    int error_offset;
+    re = pcre_compile("P((?<year>[0-9]+)Y)?((?<month>[0-9]+)M)?((?<day>[0-9]+)D)?(T((?<hour>[0-9]+)H)?((?<minute>[0-9]+)M)?((?<second>[0-9]+)(\\.[0-9]+)?S)?)?", 0, &error, &error_offset, NULL);
+    if (re == NULL) {
+        g_critical("PCRE compilation error %s at offset %d.", error, error_offset);
+        goto fail;
+    }
+
+    int output_vector[15 * 3];
+    int output_length = 15 * 3;
+
+    int return_code = pcre_exec(re, NULL, value, xmlStrlen(value), 0, 0, output_vector, output_length);
+    if (return_code < 0) {
+        switch(return_code) {
+        case PCRE_ERROR_NOMATCH:
+            g_warning("Duration %s does not match duration regex.", value);
+            goto fail;
+        default:
+            g_critical("Duration %s caused PCRE matching error: %d.", value, return_code);
+            goto fail;
+        }
+    }
+    if (return_code == 0) {
+        g_critical("PCRE output vector size of %d is not big enough.", output_length / 3);
+        goto fail;
+    }
+
+    int namecount;
+    int name_entry_size;
+    unsigned char* name_table;
+    pcre_fullinfo(re, NULL, PCRE_INFO_NAMECOUNT, &namecount);
+
+    if (namecount <= 0) {
+        g_critical("No named substrings. PCRE might be broken?");
+        goto fail;
+    }
+
+    unsigned char *tabptr;
+    pcre_fullinfo( re, NULL, PCRE_INFO_NAMETABLE, &name_table);
+    pcre_fullinfo(re, NULL, PCRE_INFO_NAMEENTRYSIZE, &name_entry_size);
+
+    /* Now we can scan the table and, for each entry, print the number, the name,
+    and the substring itself. */
+
+    tabptr = name_table;
+    for (int i = 0; i < namecount; i++) {
+        int n = (tabptr[0] << 8) | tabptr[1];
+
+        char* field_name = tabptr + 2;
+        int field_name_length = name_entry_size - 3;
+
+        char* field_value = value + output_vector[2*n];
+        int field_value_length = output_vector[2*n+1] - output_vector[2*n];
+        if (field_value_length != 0) {
+            int errorNum = 0;
+            uint64_t field_value_int = str_to_uint64(field_value, field_value_length, &errorNum);
+            if (errorNum) {
+                g_critical("Failed to convert %.*s in xs:duration to an integer.", field_value_length, field_value);
+                goto fail;
+            }
+            if (strncmp(field_name, "second", field_name_length) == 0) {
+                result += field_value_int;
+            } else if (strncmp(field_name, "minute", field_name_length) == 0) {
+                result += field_value_int * 60;
+            } else if (strncmp(field_name, "hour", field_name_length) == 0) {
+                result += field_value_int * 3600;
+            } else if (strncmp(field_name, "day", field_name_length) == 0) {
+                result += field_value_int * 86400;
+            } else if (strncmp(field_name, "month", field_name_length) == 0) {
+                g_warning("xs:duration in property %s uses months field, but the number of seconds in a month is "
+                        "undefined. Using an approximation of 30.6 days per month.", property_name);
+                result += field_value_int * 2643840;
+            } else if (strncmp(field_name, "year", field_name_length) == 0) {
+                g_warning("xs:duration in property %s uses years field, but the number of seconds in a year is "
+                        "undefined. Using an approximation of 365.25 days per year.", property_name);
+                result += field_value_int * 31557600;
+            } else {
+                g_critical("Unknown field: %.*s = %.*s.", field_name_length,
+                        field_name, field_value_length, field_value);
+                goto fail;
+            }
+        }
+        tabptr += name_entry_size;
+    }
+
+cleanup:
+    pcre_free(re);
+    xmlFree(value);
+    return result;
+fail:
+    result = 0;
+    goto cleanup;
 }
