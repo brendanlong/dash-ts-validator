@@ -1013,16 +1013,18 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
             goto fail;
         }
 
-        /* Figure out if this file exists */
-        GFile* file = g_file_new_for_path(media);
-        GError* error = NULL;
-        GFileInputStream* in = g_file_read(file, NULL, &error);
-        if (in) {
-            g_object_unref(in);
-        }
-        g_object_unref(file);
-        if (error) {
-            break;
+        if (!segment_timeline) {
+            /* Figure out if this file exists */
+            GFile* file = g_file_new_for_path(media);
+            GError* error = NULL;
+            GFileInputStream* in = g_file_read(file, NULL, &error);
+            if (in) {
+                g_object_unref(in);
+            }
+            g_object_unref(file);
+            if (error) {
+                break;
+            }
         }
 
         segment_t* segment = segment_new(representation);
