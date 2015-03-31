@@ -51,6 +51,8 @@ if (owner->property_name##_start != 0 || owner->property_name##_end != 0) { \
             owner->property_name##_end); \
 }
 
+#define MPEG_TS_TIMESCALE 90000
+
 typedef struct {
     uint64_t start;
     uint64_t duration;
@@ -528,7 +530,8 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
             segment_t* segment = segment_new(representation);
             segment->file_name = g_strdup(base_url);
             segment->start = representation->presentation_time_offset;
-            segment->duration = representation->adaptation_set->period->duration * representation->timescale;
+            segment->duration = representation->adaptation_set->period->duration * MPEG_TS_TIMESCALE;
+            segment->end = segment->start + segment->duration;
             g_ptr_array_add(representation->segments, segment);
         }  else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
             if (!read_segment_template(cur_node, representation, base_url, parent_segment_template)) {
@@ -1258,8 +1261,6 @@ fail:
     ret = false;
     goto cleanup;
 }
-
-#define MPEG_TS_TIMESCALE 90000
 
 static uint64_t convert_timescale(uint64_t time, uint64_t timescale)
 {
