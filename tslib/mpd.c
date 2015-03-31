@@ -835,6 +835,8 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
     }
     if (xmlHasProp(node, "index")) {
         segment->index_file_name = read_filename(node, "index", base_url);
+    } else if (xmlHasProp(node, "indexRange")) {
+        segment->index_file_name = segment->file_name;
     }
     if(!read_range(node, "indexRange", &segment->index_range_start, &segment->index_range_end)) {
         goto fail;

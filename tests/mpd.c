@@ -160,8 +160,8 @@ START_TEST(test_full_mpd)
                     ck_assert_uint_eq(segment->media_range_start, 0);
                     ck_assert_uint_eq(segment->media_range_end, 0);
                     ck_assert_uint_eq(segment->start, 0);
-                    ck_assert_uint_eq(segment->duration, 30);
-                    ck_assert_uint_eq(segment->end, 0);
+                    ck_assert_uint_eq(segment->duration, 2700000);
+                    ck_assert_uint_eq(segment->end, 2700000);
                     ck_assert_ptr_eq(segment->index_file_name, NULL);
                     ck_assert_uint_eq(segment->index_range_start, 0);
                     ck_assert_uint_eq(segment->index_range_end, 0);
@@ -201,8 +201,8 @@ START_TEST(test_full_mpd)
                     ck_assert_uint_eq(segment->media_range_start, 0);
                     ck_assert_uint_eq(segment->media_range_end, 0);
                     ck_assert_uint_eq(segment->start, 0);
-                    ck_assert_uint_eq(segment->duration, 30);
-                    ck_assert_uint_eq(segment->end, 0);
+                    ck_assert_uint_eq(segment->duration, 2700000);
+                    ck_assert_uint_eq(segment->end, 2700000);
                     ck_assert_ptr_eq(segment->index_file_name, NULL);
                     ck_assert_uint_eq(segment->index_range_start, 0);
                     ck_assert_uint_eq(segment->index_range_end, 0);
@@ -565,7 +565,7 @@ END_TEST
 START_TEST(test_segment_base_in_representation)
     char* xml_doc = "<?xml version='1.0'?> \
             <MPD xmlns='urn:mpeg:dash:schema:mpd:2011'> \
-                <Period> \
+                <Period duration='PT34S'> \
                     <BaseURL>period/</BaseURL> \
                     <AdaptationSet> \
                         <BaseURL>set/</BaseURL> \
@@ -607,6 +607,75 @@ START_TEST(test_segment_base_in_representation)
     segment_t* segment = g_ptr_array_index(representation->segments, 0);
     ck_assert_ptr_ne(segment, NULL);
     ck_assert_ptr_eq(segment->representation, representation);
+    ck_assert_str_eq(segment->file_name, "/period/set/rep/segment.ts");
+    ck_assert_uint_eq(segment->start, representation->presentation_time_offset);
+    ck_assert_uint_eq(segment->duration, 34 * 90000);
+    ck_assert_uint_eq(segment->end, segment->start + segment->duration);
+    ck_assert_str_eq(segment->index_file_name, segment->file_name);
+    ck_assert_uint_eq(segment->index_range_start, 32);
+    ck_assert_uint_eq(segment->index_range_end, 74);
+
+    mpd_free(mpd);
+END_TEST
+
+START_TEST(test_segment_list_in_representation)
+    char* xml_doc = "<?xml version='1.0'?> \
+            <MPD xmlns='urn:mpeg:dash:schema:mpd:2011'> \
+                <Period duration='PT34S'> \
+                    <BaseURL>period/</BaseURL> \
+                    <AdaptationSet> \
+                        <BaseURL>set/</BaseURL> \
+                        <Representation> \
+                            <BaseURL>rep/segment.ts</BaseURL> \
+                            <SegmentList timescale='9' presentationTimeOffset='27' indexRange='32-74' duration='18'> \
+                                <Initialization sourceURL='subfolder/init.ts' range='14092-3032409' /> \
+                                <RepresentationIndex sourceURL='index.sidx' range='99238-1789433' /> \
+                                <BitstreamSwitching sourceURL='bitswitch.ts' range='234-3248' /> \
+                                <SegmentURL media='s1.ts' mediaRange='2-309' index='s1.sidx' indexRange='290-9292' /> \
+                                <SegmentURL media='segment-2.ts' mediaRange='3-339' indexRange='3290-39292' /> \
+                                <SegmentURL media='segment-3.ts' /> \
+                            </SegmentList> \
+                        </Representation> \
+                    </AdaptationSet> \
+                </Period> \
+            </MPD>";
+    mpd_t* mpd = mpd_read_doc(xml_doc, "/");
+    ck_assert_ptr_ne(mpd, NULL);
+    ck_assert_int_eq(mpd->periods->len, 1);
+
+    period_t* period = g_ptr_array_index(mpd->periods, 0);
+    ck_assert_ptr_ne(period, NULL);
+    ck_assert_int_eq(period->adaptation_sets->len, 1);
+
+    adaptation_set_t* set = g_ptr_array_index(period->adaptation_sets, 0);
+    ck_assert_ptr_ne(set, NULL);
+    ck_assert_int_eq(set->representations->len, 1);
+
+    representation_t* representation = g_ptr_array_index(set->representations, 0);
+    ck_assert_ptr_ne(representation, NULL);
+    ck_assert_int_eq(representation->segments->len, 3);
+
+    ck_assert_str_eq(representation->index_file_name, "/period/set/rep/index.sidx");
+    ck_assert_uint_eq(representation->index_range_start, 99238);
+    ck_assert_uint_eq(representation->index_range_end, 1789433);
+    ck_assert_str_eq(representation->initialization_file_name, "/period/set/rep/subfolder/init.ts");
+    ck_assert_uint_eq(representation->initialization_range_start, 14092);
+    ck_assert_uint_eq(representation->initialization_range_end, 3032409);
+    ck_assert_uint_eq(representation->timescale, 9);
+    ck_assert_uint_eq(representation->presentation_time_offset, 270000);
+
+    segment_t* segment = g_ptr_array_index(representation->segments, 0);
+    ck_assert_ptr_ne(segment, NULL);
+    ck_assert_ptr_eq(segment->representation, representation);
+    ck_assert_str_eq(segment->file_name, "/period/set/rep/s1.ts");
+    ck_assert_uint_eq(segment->media_range_start, 2);
+    ck_assert_uint_eq(segment->media_range_end, 309);
+    ck_assert_uint_eq(segment->start, 270000);
+    ck_assert_uint_eq(segment->duration, 2 * 90000);
+    ck_assert_uint_eq(segment->end, segment->start + segment->duration);
+    ck_assert_str_eq(segment->index_file_name, "/period/set/rep/s1.sidx");
+    ck_assert_uint_eq(segment->index_range_start, 290);
+    ck_assert_uint_eq(segment->index_range_end, 9292);
 
     mpd_free(mpd);
 END_TEST
@@ -628,8 +697,8 @@ static Suite *mpd_suite(void)
     tcase_add_test(tc_core, test_representation);
     tcase_add_test(tc_core, test_subrepresentation);
     tcase_add_test(tc_core, test_segment_base_in_representation);
-    /*
     tcase_add_test(tc_core, test_segment_list_in_representation);
+    /*
     tcase_add_test(tc_core, test_segment_template_in_representation);
     */
 
