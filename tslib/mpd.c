@@ -652,19 +652,27 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
                 goto fail;
             }
             representation->index_file_name = read_filename(cur_node, "sourceURL", base_url);
+            if(!read_range(cur_node, "range", &representation->index_range_start,
+                    &representation->index_range_end)) {
+                goto fail;
+            }
         } else if (xmlStrEqual(cur_node->name, "Initialization")) {
             if (representation->initialization_file_name != NULL) {
                 g_critical("Ignoring duplicate initialization segment in <%s>.", node->name);
                 goto fail;
             }
             representation->initialization_file_name = read_filename(cur_node, "sourceURL", base_url);
+            if(!read_range(cur_node, "range", &representation->initialization_range_start,
+                    &representation->initialization_range_end)) {
+                goto fail;
+            }
         } else if (xmlStrEqual(cur_node->name, "BitstreamSwitching")) {
             if (representation->bitstream_switching_file_name != NULL) {
                 g_critical("Duplicate <BitstreamSwitching> segment in <%s>.", node->name);
                 goto fail;
             }
             representation->bitstream_switching_file_name = read_filename(cur_node, "sourceURL", base_url);
-            if(!read_range(node, "range", &representation->bitstream_switching_range_start,
+            if(!read_range(cur_node, "range", &representation->bitstream_switching_range_start,
                     &representation->bitstream_switching_range_end)) {
                 goto fail;
             }
