@@ -95,7 +95,7 @@ int main(int argc, char* argv[])
         usage(argv[0]);
         return 1;
     }
-    mpd_t* mpd = read_mpd(file_name);
+    mpd_t* mpd = mpd_read_file(file_name);
     if (mpd == NULL) {
         g_critical("Error: Failed to read MPD.");
         goto cleanup;

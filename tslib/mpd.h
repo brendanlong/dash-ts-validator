@@ -142,7 +142,8 @@ typedef struct {
 
 mpd_t* mpd_new(void);
 void mpd_free(mpd_t*);
-mpd_t* read_mpd(char* file_name);
+mpd_t* mpd_read_file(char* file_name);
+mpd_t* mpd_read_doc(char* mpd_xml, char* base_url);
 void mpd_print(const mpd_t*);
 
 period_t* period_new(void);

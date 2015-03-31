@@ -305,17 +305,12 @@ void segment_print(const segment_t* segment, unsigned indent)
     PRINT_RANGE(indent, segment, index_range);
 }
 
-mpd_t* read_mpd(char* file_name)
+static mpd_t* mpd_read(xmlDoc* doc, char* base_url)
 {
-    mpd_t* mpd = NULL;
-    char* base_url = NULL;
-    xmlDoc* doc = xmlReadFile(file_name, NULL, 0);
-    if (doc == NULL) {
-        g_critical("Could not parse MPD %s.", file_name);
-        goto fail;
-    }
+    g_return_val_if_fail(doc, NULL);
+    g_return_val_if_fail(base_url, NULL);
 
-    mpd = mpd_new();
+    mpd_t* mpd = mpd_new();
     xmlNode* root = xmlDocGetRootElement(doc);
     if (root->type != XML_ELEMENT_NODE) {
         g_critical("MPD error, toplevel element is not an element.");
@@ -336,10 +331,6 @@ mpd_t* read_mpd(char* file_name)
     }
     xmlFree(type);
 
-    /* Ignore BaseURL here because we want a local path */
-    //char* base_url = find_base_url(root, NULL);
-    base_url = g_path_get_dirname(file_name);
-
     for (xmlNode* cur_node = root->children; cur_node; cur_node = cur_node->next) {
         if (xmlStrEqual(cur_node->name, "Period")) {
             if(!read_period(cur_node, mpd, base_url)) {
@@ -349,13 +340,49 @@ mpd_t* read_mpd(char* file_name)
     }
 
 cleanup:
-    g_free(base_url);
-    xmlFreeDoc(doc);
     return mpd;
 fail:
     mpd_free(mpd);
     mpd = NULL;
     goto cleanup;
+}
+
+mpd_t* mpd_read_file(char* file_name)
+{
+    char* base_url = NULL;
+    mpd_t* mpd = NULL;
+    xmlDoc* doc = xmlReadFile(file_name, NULL, 0);
+    if (doc == NULL) {
+        g_critical("Could not parse MPD file: %s.", file_name);
+        goto cleanup;
+    }
+    base_url = g_path_get_dirname(file_name);
+
+    mpd = mpd_read(doc, base_url);
+
+cleanup:
+    g_free(base_url);
+    xmlFreeDoc(doc);
+    return mpd;
+}
+
+mpd_t* mpd_read_doc(char* xml_doc, char* base_url)
+{
+    g_return_val_if_fail(xml_doc, NULL);
+    g_return_val_if_fail(base_url, NULL);
+
+    mpd_t* mpd = NULL;
+    xmlDoc* doc = xmlReadDoc(xml_doc, base_url, NULL, 0);
+    if (doc == NULL) {
+        g_critical("Could not parse MPD document: %s.", xml_doc);
+        goto cleanup;
+    }
+
+    mpd = mpd_read(doc, base_url);
+
+cleanup:
+    xmlFreeDoc(doc);
+    return mpd;
 }
 
 bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
@@ -623,8 +650,7 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
     } else if (xmlHasProp(parent_segment_base, "timescale")) {
         representation->timescale = read_uint64(parent_segment_base, "timescale");
     } else {
-        g_critical("<%s> has no @timescale!", node->name);
-        return false;
+        representation->timescale = 1;
     }
 
     representation->presentation_time_offset = convert_timescale(read_uint64(node, "presentationTimeOffset"),
