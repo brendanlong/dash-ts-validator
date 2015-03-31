@@ -135,10 +135,6 @@ typedef enum {
 typedef struct {
     dash_profile_t profile;
     mpd_presentation_t presentation_type;
-    int max_video_gap_pts_ticks;
-    int max_audio_gap_pts_ticks;
-    char* initialization_segment;
-    int presentation_time_offset;
     GPtrArray* periods;
 } mpd_t;
 

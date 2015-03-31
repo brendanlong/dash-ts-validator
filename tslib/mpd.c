@@ -95,7 +95,6 @@ void mpd_free(mpd_t* obj)
         return;
     }
 
-    free(obj->initialization_segment);
     g_ptr_array_free(obj->periods, true);
 
     free(obj);
