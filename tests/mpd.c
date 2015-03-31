@@ -31,8 +31,9 @@
 #include <libxml/parser.h>
 
 #include "mpd.h"
+#include "test_common.h"
 
-START_TEST(test_mpd_simple)
+START_TEST(test_full_mpd)
     char* xml_doc = "<?xml version='1.0'?> \
             <MPD xmlns='urn:mpeg:dash:schema:mpd:2011' profiles='urn:mpeg:dash:profile:full:2011' minBufferTime='PT1.5S'> \
                 <Period duration='PT30S'> \
@@ -385,6 +386,181 @@ START_TEST(test_mpd_simple)
     mpd_free(mpd);
 END_TEST
 
+START_TEST(test_mpd)
+    char* xml_doc = "<?xml version='1.0'?> \
+            <MPD xmlns='urn:mpeg:dash:schema:mpd:2011' profiles='urn:mpeg:dash:profile:mp2t-simple:2011' \
+                type='dynamic' mediaPresentationDuration='PT4H20M34.20S' minBufferTime='PT1.5S'/>";
+    mpd_t* mpd = mpd_read_doc(xml_doc, "/");
+
+    ck_assert_ptr_ne(mpd, NULL);
+
+    ck_assert_int_eq(mpd->profile, DASH_PROFILE_MPEG2TS_SIMPLE);
+    ck_assert_int_eq(mpd->presentation_type, MPD_PRESENTATION_DYNAMIC);
+    ck_assert_uint_eq(mpd->duration, 15634);
+    ck_assert_int_eq(mpd->periods->len, 0);
+
+    mpd_free(mpd);
+END_TEST
+
+START_TEST(test_period)
+    char* xml_doc = "<?xml version='1.0'?> \
+            <MPD xmlns='urn:mpeg:dash:schema:mpd:2011' profiles='urn:mpeg:dash:profile:full:2011' \
+                minBufferTime='PT1.5S'> \
+                <Period duration='PT42S' bitstreamSwitching='true'> \
+                </Period> \
+            </MPD>";
+    mpd_t* mpd = mpd_read_doc(xml_doc, "/");
+
+    ck_assert_ptr_ne(mpd, NULL);
+    ck_assert_int_eq(mpd->periods->len, 1);
+
+    period_t* period = g_ptr_array_index(mpd->periods, 0);
+
+    ck_assert_ptr_ne(period, NULL);
+    ck_assert_ptr_eq(period->mpd, mpd);
+    ck_assert_uint_eq(period->duration, 42);
+    ck_assert(period->bitstream_switching);
+    ck_assert_int_eq(period->adaptation_sets->len, 0);
+
+    mpd_free(mpd);
+END_TEST
+
+START_TEST(test_adaptation_set)
+    char* xml_doc = "<?xml version='1.0'?> \
+            <MPD xmlns='urn:mpeg:dash:schema:mpd:2011'> \
+                <Period> \
+                    <AdaptationSet id='55' mimeType='audio/mp4' segmentAlignment='5' subsegmentAlignment='true' \
+                        profiles='urn:mpeg:dash:profile:full:2011,urn:mpeg:dash:profile:mp2t-main:2011' \
+                        bitstreamSwitching='true'> \
+                        <ContentComponent id='123' contentType='audio'/> \
+                        <ContentComponent id='444' contentType='video'/> \
+                    </AdaptationSet> \
+                </Period> \
+            </MPD>";
+    mpd_t* mpd = mpd_read_doc(xml_doc, "/");
+    ck_assert_ptr_ne(mpd, NULL);
+    ck_assert_int_eq(mpd->periods->len, 1);
+
+    period_t* period = g_ptr_array_index(mpd->periods, 0);
+    ck_assert_ptr_ne(period, NULL);
+    ck_assert_int_eq(period->adaptation_sets->len, 1);
+
+    adaptation_set_t* set = g_ptr_array_index(period->adaptation_sets, 0);
+
+    ck_assert_ptr_ne(set, NULL);
+    ck_assert_ptr_eq(set->period, period);
+    ck_assert_uint_eq(set->id, 55);
+    ck_assert_str_eq(set->mime_type, "audio/mp4");
+    ck_assert_int_eq(set->profile, DASH_PROFILE_MPEG2TS_MAIN);
+    ck_assert_uint_eq(set->audio_pid, 123);
+    ck_assert_uint_eq(set->video_pid, 444);
+    ck_assert(set->segment_alignment.has_int);
+    ck_assert_uint_eq(set->segment_alignment.i, 5);
+    ck_assert(!set->subsegment_alignment.has_int);
+    ck_assert(set->subsegment_alignment.b);
+    ck_assert(set->bitstream_switching);
+    ck_assert_int_eq(set->representations->len, 0);
+
+    mpd_free(mpd);
+END_TEST
+
+START_TEST(test_representation)
+    char* xml_doc = "<?xml version='1.0'?> \
+            <MPD xmlns='urn:mpeg:dash:schema:mpd:2011'> \
+                <Period> \
+                    <AdaptationSet> \
+                        <Representation mimeType='video/mp2t' startWithSAP='4' bandwidth='409940' \
+                            profiles='urn:mpeg:dash:profile:mp2t-main:2011, urn:mpeg:dash:profile:full:2011'> \
+                        </Representation> \
+                    </AdaptationSet> \
+                </Period> \
+            </MPD>";
+    mpd_t* mpd = mpd_read_doc(xml_doc, "/");
+    ck_assert_ptr_ne(mpd, NULL);
+    ck_assert_int_eq(mpd->periods->len, 1);
+
+    period_t* period = g_ptr_array_index(mpd->periods, 0);
+    ck_assert_ptr_ne(period, NULL);
+    ck_assert_int_eq(period->adaptation_sets->len, 1);
+
+    adaptation_set_t* set = g_ptr_array_index(period->adaptation_sets, 0);
+    ck_assert_ptr_ne(set, NULL);
+    ck_assert_int_eq(set->representations->len, 1);
+
+    representation_t* representation = g_ptr_array_index(set->representations, 0);
+    ck_assert_ptr_ne(representation, NULL);
+    ck_assert_ptr_eq(representation->adaptation_set, set);
+    ck_assert_int_eq(representation->profile, DASH_PROFILE_MPEG2TS_MAIN);
+    ck_assert_str_eq(representation->mime_type, "video/mp2t");
+    ck_assert_ptr_eq(representation->index_file_name, NULL);
+    ck_assert_uint_eq(representation->index_range_start, 0);
+    ck_assert_uint_eq(representation->index_range_end, 0);
+    ck_assert_ptr_eq(representation->initialization_file_name, NULL);
+    ck_assert_uint_eq(representation->initialization_range_start, 0);
+    ck_assert_uint_eq(representation->initialization_range_end, 0);
+    ck_assert_ptr_eq(representation->bitstream_switching_file_name, NULL);
+    ck_assert_uint_eq(representation->bitstream_switching_range_start, 0);
+    ck_assert_uint_eq(representation->bitstream_switching_range_end, 0);
+    ck_assert_uint_eq(representation->start_with_sap, 4);
+    ck_assert_uint_eq(representation->presentation_time_offset, 0);
+    ck_assert_uint_eq(representation->bandwidth, 409940);
+    ck_assert_uint_eq(representation->timescale, 0);
+    ck_assert_int_eq(representation->subrepresentations->len, 0);
+    ck_assert_int_eq(representation->segments->len, 0);
+
+    mpd_free(mpd);
+END_TEST
+
+START_TEST(test_subrepresentation)
+    char* xml_doc = "<?xml version='1.0'?> \
+            <MPD xmlns='urn:mpeg:dash:schema:mpd:2011'> \
+                <Period> \
+                    <AdaptationSet> \
+                        <Representation> \
+                            <SubRepresentation startWithSAP='5' level='4' bandwidth='80983' \
+                                dependencyLevel='1 234\t999999' contentComponent='256 5\ta' \
+                                profiles='urn:mpeg:dash:profile:mp2t-simple:2011'> \
+                            </SubRepresentation> \
+                        </Representation> \
+                    </AdaptationSet> \
+                </Period> \
+            </MPD>";
+    mpd_t* mpd = mpd_read_doc(xml_doc, "/");
+    ck_assert_ptr_ne(mpd, NULL);
+    ck_assert_int_eq(mpd->periods->len, 1);
+
+    period_t* period = g_ptr_array_index(mpd->periods, 0);
+    ck_assert_ptr_ne(period, NULL);
+    ck_assert_int_eq(period->adaptation_sets->len, 1);
+
+    adaptation_set_t* set = g_ptr_array_index(period->adaptation_sets, 0);
+    ck_assert_ptr_ne(set, NULL);
+    ck_assert_int_eq(set->representations->len, 1);
+
+    representation_t* representation = g_ptr_array_index(set->representations, 0);
+    ck_assert_ptr_ne(representation, NULL);
+    ck_assert_int_eq(representation->subrepresentations->len, 1);
+
+    subrepresentation_t* subrepresentation = g_ptr_array_index(representation->subrepresentations, 0);
+    ck_assert_ptr_ne(subrepresentation, NULL);
+    ck_assert_ptr_eq(subrepresentation->representation, representation);
+    ck_assert_int_eq(subrepresentation->profile, DASH_PROFILE_MPEG2TS_SIMPLE);
+    ck_assert_uint_eq(subrepresentation->start_with_sap, 5);
+    ck_assert(subrepresentation->has_level);
+    ck_assert_uint_eq(subrepresentation->level, 4);
+    ck_assert_uint_eq(subrepresentation->bandwidth, 80983);
+
+    uint32_t dependency_levels[] = {1, 234, 999999};
+    assert_arrays_eq(ck_assert_uint_eq, (uint32_t*)subrepresentation->dependency_level->data,
+            subrepresentation->dependency_level->len, dependency_levels, 3);
+
+    char* content_components[] = {"256", "5", "a"};
+    assert_arrays_eq(ck_assert_str_eq, subrepresentation->content_component->pdata,
+            subrepresentation->content_component->len, content_components, 3);
+
+    mpd_free(mpd);
+END_TEST
+
 static Suite *mpd_suite(void)
 {
     Suite *s;
@@ -395,7 +571,17 @@ static Suite *mpd_suite(void)
     /* Core test case */
     tc_core = tcase_create("Core");
 
-    tcase_add_test(tc_core, test_mpd_simple);
+    tcase_add_test(tc_core, test_full_mpd);
+    tcase_add_test(tc_core, test_mpd);
+    tcase_add_test(tc_core, test_period);
+    tcase_add_test(tc_core, test_adaptation_set);
+    tcase_add_test(tc_core, test_representation);
+    tcase_add_test(tc_core, test_subrepresentation);
+    /*
+    tcase_add_test(tc_core, test_segment_base);
+    tcase_add_test(tc_core, test_segment_list);
+    tcase_add_test(tc_core, test_segment_template);
+    */
 
     suite_add_tcase(s, tc_core);
 

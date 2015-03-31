@@ -592,34 +592,17 @@ bool read_subrepresentation(xmlNode* node, representation_t* representation)
     }
 
     char* dependency_level = xmlGetProp(node, "dependencyLevel");
+    char** dependency_split = NULL;
     if (dependency_level) {
-        size_t start = 0;
-        while (dependency_level[start] == ' ' || dependency_level[start] == '\t') {
-            ++start;
-        }
-        if (dependency_level[start]) {
-            for (size_t end = 1; ; ++end) {
-                bool last = dependency_level[end] == 0;
-                if (last || dependency_level[end] == ' ' || dependency_level[end] == '\t') {
-                    dependency_level[end] = 0;
-                    int error = 0;
-                    uint64_t cc_int = str_to_uint64(dependency_level + start, 0, &error);
-                    if (error || cc_int > UINT32_MAX) {
-                        g_print("SubRepresentation@dependencyLevel %s is not an xs:unsignedInt.",
-                                content_component + start);
-                        goto fail;
-                    }
-                    g_array_append_val(subrepresentation->dependency_level, cc_int);
-                    if (last) {
-                        break;
-                    }
-                    ++end;
-                    while (dependency_level[end] == ' ' || dependency_level[end] == '\t') {
-                        ++end;
-                    }
-                    start = end;
-                }
+        dependency_split = g_strsplit_set(dependency_level, " \t", -1);
+        for (size_t i = 0; dependency_split[i]; ++i) {
+            int error = 0;
+            uint64_t cc_int = str_to_uint64(dependency_split[i], 0, &error);
+            if (error || cc_int > UINT32_MAX) {
+                g_critical("SubRepresentation@dependencyLevel %s is not an xs:unsignedInt.", dependency_split[i]);
+                goto fail;
             }
+            g_array_append_val(subrepresentation->dependency_level, cc_int);
         }
     }
 
@@ -634,6 +617,7 @@ bool read_subrepresentation(xmlNode* node, representation_t* representation)
     }
 
 cleanup:
+    g_strfreev(dependency_split);
     xmlFree(start_with_sap);
     xmlFree(dependency_level);
     xmlFree(content_component);

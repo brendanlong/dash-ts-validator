@@ -31,12 +31,12 @@
 
 #include <check.h>
 
-inline void assert_bytes_eq(uint8_t* x, size_t x_len, uint8_t* y, size_t y_len)
-{
-    ck_assert_int_eq(x_len, y_len);
-    for (size_t i = 0; i < x_len; ++i) {
-        ck_assert(x[i] == y[i]);
-    }
+#define assert_arrays_eq(check, x, x_len, y, y_len) \
+ck_assert_int_eq(x_len, y_len); \
+for (size_t _q = 0; _q < x_len; ++_q) { \
+    check((x)[_q], (y)[_q]); \
 }
+
+#define assert_bytes_eq(x, x_len, y, y_len) assert_arrays_eq(ck_assert_uint_eq, x, x_len, y, y_len)
 
 #endif
