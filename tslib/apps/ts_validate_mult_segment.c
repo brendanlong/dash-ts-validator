@@ -106,11 +106,22 @@ int main(int argc, char* argv[])
         period_t* period = g_ptr_array_index(mpd->periods, p_i);
         for (size_t a_i = 0; a_i < period->adaptation_sets->len; ++a_i) {
             adaptation_set_t* adaptation_set = g_ptr_array_index(period->adaptation_sets, a_i);
+            if (adaptation_set->mime_type && strcmp(adaptation_set->mime_type, "video/mp2t")) {
+                g_warning("Ignoring Adaptation Set %"PRIu32" because it has MIME type \"%s\".",
+                        adaptation_set->id, adaptation_set->mime_type);
+                continue;
+            }
             bool adaptation_set_valid = true;
 
-            g_print("VALIDATING ADAPTATION SET: %s\n", adaptation_set->id);
+            g_print("VALIDATING ADAPTATION SET: %"PRIu32"\n", adaptation_set->id);
             for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
                 representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
+                if (adaptation_set->mime_type && strcmp(adaptation_set->mime_type, "video/mp2t")) {
+                    g_warning("Ignoring Representation %s because it has MIME type \"%s\".",
+                            representation->id, representation->mime_type);
+                    continue;
+                }
+
                 bool representation_valid = true;
                 g_print("\nVALIDATING REPRESENTATION: %s\n", representation->id);
 
@@ -402,7 +413,7 @@ int main(int argc, char* argv[])
                 adaptation_set_valid &= check_psi_identical(adaptation_set->representations);
             }
 
-            g_print("ADAPTATION SET TEST RESULT: %s: %s\n", adaptation_set->id,
+            g_print("ADAPTATION SET TEST RESULT: %"PRIu32": %s\n", adaptation_set->id,
                     adaptation_set_valid ? "SUCCESS" : "FAIL");
             g_info("");
             overall_status &= adaptation_set_valid;

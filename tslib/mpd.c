@@ -59,7 +59,7 @@ typedef struct {
 static bool read_period(xmlNode*, mpd_t*, char* base_url);
 static bool read_adaptation_set(xmlNode*, mpd_t*, period_t*, char* base_url, xmlNode* segment_base,
         xmlNode* segment_list, xmlNode* segment_template);
-static bool read_representation(xmlNode*, adaptation_set_t*, bool saw_mime_type, char* base_url, xmlNode* segment_base,
+static bool read_representation(xmlNode*, adaptation_set_t*, char* base_url, xmlNode* segment_base,
         xmlNode* segment_list, xmlNode* segment_template);
 static bool read_subrepresentation(xmlNode*, representation_t*);
 static bool read_segment_base(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_base);
@@ -172,7 +172,7 @@ void adaptation_set_free(adaptation_set_t* obj)
         return;
     }
 
-    xmlFree(obj->id);
+    xmlFree(obj->mime_type);
     g_ptr_array_free(obj->representations, true);
 
     free(obj);
@@ -180,7 +180,8 @@ void adaptation_set_free(adaptation_set_t* obj)
 
 void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned indent)
 {
-    PRINT_PROPERTY(indent, "id: %s", adaptation_set->id);
+    PRINT_PROPERTY(indent, "id: %"PRIu32, adaptation_set->id);
+    PRINT_PROPERTY(indent, "mime_type: %s", adaptation_set->mime_type);
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(adaptation_set->profile));
     PRINT_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
     PRINT_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
@@ -208,6 +209,7 @@ void representation_free(representation_t* obj)
     }
 
     xmlFree(obj->id);
+    xmlFree(obj->mime_type);
     g_free(obj->index_file_name);
     g_free(obj->initialization_file_name);
     g_free(obj->bitstream_switching_file_name);
@@ -221,6 +223,7 @@ void representation_print(const representation_t* representation, unsigned inden
 {
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(representation->profile));
     PRINT_PROPERTY(indent, "id: %s", representation->id);
+    PRINT_PROPERTY(indent, "mime_type: %s", representation->mime_type);
     PRINT_PROPERTY(indent, "index_file_name: %s", representation->index_file_name);
     PRINT_RANGE(indent, representation, index_range);
     PRINT_PROPERTY(indent, "initialization_file_name: %s", representation->initialization_file_name);
@@ -435,16 +438,8 @@ bool read_adaptation_set(xmlNode* node, mpd_t* mpd, period_t* period, char* pare
     adaptation_set_t* adaptation_set = adaptation_set_new();
     g_ptr_array_add(period->adaptation_sets, adaptation_set);
 
-    bool saw_mime_type = false;
-    char* mime_type = xmlGetProp(node, "mimeType");
-    if (mime_type) {
-        if (xmlStrEqual (mime_type, "video/mp2t")) {
-            saw_mime_type = true;
-        }
-        xmlFree(mime_type);
-    }
-
-    adaptation_set->id = xmlGetProp(node, "id");
+    adaptation_set->id = read_uint64(node, "id");
+    adaptation_set->mime_type = xmlGetProp(node, "mimeType");
     adaptation_set->profile = read_profile(node, mpd->profile);
     adaptation_set->segment_alignment = read_optional_uint32(node, "segmentAlignment");
     adaptation_set->subsegment_alignment = read_optional_uint32(node, "subsegmentAlignment");
@@ -458,7 +453,7 @@ bool read_adaptation_set(xmlNode* node, mpd_t* mpd, period_t* period, char* pare
             continue;
         }
         if (xmlStrEqual(cur_node->name, "Representation")) {
-            if(!read_representation(cur_node, adaptation_set, saw_mime_type, base_url, parent_segment_base,
+            if(!read_representation(cur_node, adaptation_set, base_url, parent_segment_base,
                     parent_segment_list, parent_segment_template)) {
                 goto fail;
             }
@@ -481,25 +476,19 @@ fail:
     goto cleanup;
 }
 
-bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool saw_mime_type, char* parent_base_url,
+bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* parent_base_url,
         xmlNode* parent_segment_base, xmlNode* parent_segment_list, xmlNode* parent_segment_template)
 {
     char* start_with_sap = NULL;
-    char* mime_type = NULL;
     bool return_code = true;
     char* base_url =  NULL;
-
-    mime_type = xmlGetProp(node, "mimeType");
-    if (!saw_mime_type && (!mime_type || !xmlStrEqual (mime_type, "video/mp2t"))) {
-        g_warning("Ignoring <Representation> with mimeType=\"%s\".", mime_type ? mime_type : "(null)");
-        goto cleanup;
-    }
 
     representation_t* representation = representation_new();
     g_ptr_array_add(adaptation_set->representations, representation);
 
     representation->profile = read_profile(node, adaptation_set->profile);
     representation->id = xmlGetProp(node, "id");
+    representation->mime_type = xmlGetProp(node, "mimeType");
     representation->bandwidth = read_uint64(node, "bandwidth");
 
     start_with_sap = xmlGetProp(node, "startWithSAP");
@@ -540,7 +529,6 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, bool s
 
 cleanup:
     g_free(base_url);
-    xmlFree(mime_type);
     xmlFree(start_with_sap);
     return return_code;
 fail:

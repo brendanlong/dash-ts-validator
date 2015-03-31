@@ -91,6 +91,7 @@ typedef struct {
 typedef struct {
     dash_profile_t profile;
     char* id;
+    char* mime_type;
     char* index_file_name;
     uint64_t index_range_start;
     uint64_t index_range_end;
@@ -109,7 +110,8 @@ typedef struct {
 } representation_t;
 
 typedef struct {
-    char* id;
+    uint32_t id;
+    char* mime_type;
     dash_profile_t profile;
     uint32_t audio_pid;
     uint32_t video_pid;
