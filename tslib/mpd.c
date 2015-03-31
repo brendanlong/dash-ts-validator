@@ -300,7 +300,9 @@ void segment_free(segment_t* obj)
     }
 
     g_free(obj->file_name);
-    g_free(obj->index_file_name);
+    if (obj->file_name != obj->index_file_name) {
+        g_free(obj->index_file_name);
+    }
 
     if (obj->arg_free && obj->arg) {
         obj->arg_free(obj->arg);
@@ -532,6 +534,12 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
             segment->start = representation->presentation_time_offset;
             segment->duration = representation->adaptation_set->period->duration * MPEG_TS_TIMESCALE;
             segment->end = segment->start + segment->duration;
+            if (xmlHasProp(cur_node, "indexRange")) {
+                if (!read_range(cur_node, "indexRange", &segment->index_range_start, &segment->index_range_end)) {
+                    goto fail;
+                }
+                segment->index_file_name = segment->file_name;
+            }
             g_ptr_array_add(representation->segments, segment);
         }  else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
             if (!read_segment_template(cur_node, representation, base_url, parent_segment_template)) {
