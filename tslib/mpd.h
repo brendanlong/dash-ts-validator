@@ -127,8 +127,7 @@ typedef struct {
 } period_t;
 
 typedef enum {
-    MPD_PRESENTATION_UNKNOWN = 0,
-    MPD_PRESENTATION_STATIC,
+    MPD_PRESENTATION_STATIC = 0,
     MPD_PRESENTATION_DYNAMIC
 } mpd_presentation_t;
 
