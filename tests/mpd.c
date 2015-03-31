@@ -469,7 +469,7 @@ START_TEST(test_representation)
             <MPD xmlns='urn:mpeg:dash:schema:mpd:2011'> \
                 <Period> \
                     <AdaptationSet> \
-                        <Representation mimeType='video/mp2t' startWithSAP='4' bandwidth='409940' \
+                        <Representation id='asdf' mimeType='video/mp2t' startWithSAP='4' bandwidth='409940' \
                             profiles='urn:mpeg:dash:profile:mp2t-main:2011, urn:mpeg:dash:profile:full:2011'> \
                         </Representation> \
                     </AdaptationSet> \
@@ -490,6 +490,7 @@ START_TEST(test_representation)
     representation_t* representation = g_ptr_array_index(set->representations, 0);
     ck_assert_ptr_ne(representation, NULL);
     ck_assert_ptr_eq(representation->adaptation_set, set);
+    ck_assert_str_eq(representation->id, "asdf");
     ck_assert_int_eq(representation->profile, DASH_PROFILE_MPEG2TS_MAIN);
     ck_assert_str_eq(representation->mime_type, "video/mp2t");
     ck_assert_ptr_eq(representation->index_file_name, NULL);
@@ -561,6 +562,55 @@ START_TEST(test_subrepresentation)
     mpd_free(mpd);
 END_TEST
 
+START_TEST(test_segment_base_in_representation)
+    char* xml_doc = "<?xml version='1.0'?> \
+            <MPD xmlns='urn:mpeg:dash:schema:mpd:2011'> \
+                <Period> \
+                    <BaseURL>period/</BaseURL> \
+                    <AdaptationSet> \
+                        <BaseURL>set/</BaseURL> \
+                        <Representation> \
+                            <BaseURL>rep/segment.ts</BaseURL> \
+                            <SegmentBase timescale='12' presentationTimeOffset='528' indexRange='32-74'> \
+                                <Initialization sourceURL='subfolder/init.ts' range='4092-302409' /> \
+                                <RepresentationIndex sourceURL='index.sidx' range='9938-178933' /> \
+                            </SegmentBase> \
+                        </Representation> \
+                    </AdaptationSet> \
+                </Period> \
+            </MPD>";
+    mpd_t* mpd = mpd_read_doc(xml_doc, "/");
+    ck_assert_ptr_ne(mpd, NULL);
+    ck_assert_int_eq(mpd->periods->len, 1);
+
+    period_t* period = g_ptr_array_index(mpd->periods, 0);
+    ck_assert_ptr_ne(period, NULL);
+    ck_assert_int_eq(period->adaptation_sets->len, 1);
+
+    adaptation_set_t* set = g_ptr_array_index(period->adaptation_sets, 0);
+    ck_assert_ptr_ne(set, NULL);
+    ck_assert_int_eq(set->representations->len, 1);
+
+    representation_t* representation = g_ptr_array_index(set->representations, 0);
+    ck_assert_ptr_ne(representation, NULL);
+    ck_assert_int_eq(representation->segments->len, 1);
+
+    ck_assert_str_eq(representation->index_file_name, "/period/set/rep/index.sidx");
+    ck_assert_uint_eq(representation->index_range_start, 9938);
+    ck_assert_uint_eq(representation->index_range_end, 178933);
+    ck_assert_str_eq(representation->initialization_file_name, "/period/set/rep/subfolder/init.ts");
+    ck_assert_uint_eq(representation->initialization_range_start, 4092);
+    ck_assert_uint_eq(representation->initialization_range_end, 302409);
+    ck_assert_uint_eq(representation->timescale, 12);
+    ck_assert_uint_eq(representation->presentation_time_offset, 3960000);
+
+    segment_t* segment = g_ptr_array_index(representation->segments, 0);
+    ck_assert_ptr_ne(segment, NULL);
+    ck_assert_ptr_eq(segment->representation, representation);
+
+    mpd_free(mpd);
+END_TEST
+
 static Suite *mpd_suite(void)
 {
     Suite *s;
@@ -577,10 +627,10 @@ static Suite *mpd_suite(void)
     tcase_add_test(tc_core, test_adaptation_set);
     tcase_add_test(tc_core, test_representation);
     tcase_add_test(tc_core, test_subrepresentation);
+    tcase_add_test(tc_core, test_segment_base_in_representation);
     /*
-    tcase_add_test(tc_core, test_segment_base);
-    tcase_add_test(tc_core, test_segment_list);
-    tcase_add_test(tc_core, test_segment_template);
+    tcase_add_test(tc_core, test_segment_list_in_representation);
+    tcase_add_test(tc_core, test_segment_template_in_representation);
     */
 
     suite_add_tcase(s, tc_core);
