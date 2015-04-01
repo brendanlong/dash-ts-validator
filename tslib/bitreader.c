@@ -26,6 +26,7 @@
  */
 #include "bitreader.h"
 
+#include <assert.h>
 #include <stdlib.h>
 
 bitreader_t* bitreader_new(uint8_t* data, size_t len)
@@ -34,12 +35,18 @@ bitreader_t* bitreader_new(uint8_t* data, size_t len)
         return NULL;
     }
     bitreader_t* b = malloc(sizeof(*b));
+    bitreader_init(b, data, len);
+    return b;
+}
+
+void bitreader_init(bitreader_t* b, uint8_t* data, size_t len)
+{
+    assert(data);
     b->data = data;
     b->len = len;
     b->bytes_read = 0;
     b->bits_read = 0;
     b->error = false;
-    return b;
 }
 
 void bitreader_free(bitreader_t* b)
@@ -49,7 +56,15 @@ void bitreader_free(bitreader_t* b)
 
 bool bitreader_eof(const bitreader_t* b)
 {
-    return !b || b->bytes_read >= b->len;
+    return bitreader_bytes_left(b) == 0;
+}
+
+size_t bitreader_bytes_left(const bitreader_t* b)
+{
+    if (!b || !b->data || b->bytes_read > b->len) {
+        return 0;
+    }
+    return b->len - b->bytes_read;
 }
 
 uint8_t bitreader_read_bit(bitreader_t* b)

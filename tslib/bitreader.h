@@ -40,8 +40,10 @@ typedef struct {
 } bitreader_t;
 
 bitreader_t* bitreader_new(uint8_t* data, size_t len);
+void bitreader_init(bitreader_t*, uint8_t* data, size_t len);
 void bitreader_free(bitreader_t*);
 bool bitreader_eof(const bitreader_t*);
+size_t bitreader_bytes_left(const bitreader_t*);
 uint8_t bitreader_read_bit(bitreader_t*);
 void bitreader_skip_bits(bitreader_t*, size_t bits);
 uint64_t bitreader_read_bits(bitreader_t*, size_t bits);

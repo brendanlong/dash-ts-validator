@@ -64,7 +64,7 @@ typedef enum {
 #define SKIT_LOG_STR(level, arg) skit_log_struct(level, #arg, arg, SKIT_LOG_TYPE_STR, NULL);
 #define SKIT_LOG_STR_DBG(level, arg) skit_log_struct(level, #arg, arg, SKIT_LOG_TYPE_STR_DBG, NULL);
 
-void skit_log_struct(size_t level, char* name, const void* value, skit_log_type_t type, char* str);
+void skit_log_struct(size_t level, const char* name, const void* value, skit_log_type_t type, const char* str);
 
 // More traditional debug logging
 // tslib-global loglevel: error > warn (default) > info > debug

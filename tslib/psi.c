@@ -27,18 +27,14 @@
  */
 #include "psi.h"
 
+#include <inttypes.h>
 #include <glib.h>
-#include <stdbool.h>
-#include "bs.h"
-#include "libts_common.h"
-#include "ts.h"
-#include "descriptors.h"
-#include "log.h"
+#include <string.h>
+#include "bitreader.h"
 #include "crc32m.h"
-
+#include "log.h"
 
 #define ARRAYSIZE(x)   ((sizeof(x))/(sizeof((x)[0])))
-
 
 static char* first_stream_types[] = { // 0x00 - 0x23
     "ITU-T | ISO/IEC Reserved",
@@ -83,39 +79,67 @@ static char* STREAM_DESC_RESERVED  = "ISO/IEC 13818-1 Reserved"; // 0x24-0x7E
 static char* STREAM_DESC_IPMP = "IPMP Stream"; // 0x7F
 static char* STREAM_DESC_USER_PRIVATE = "User Private"; // 0x80-0xFF
 
-static bool read_descriptors(GPtrArray* descriptors, bs_t* b, size_t len)
+bool mpeg2ts_sections_equal(const mpeg2ts_section_t* a, const mpeg2ts_section_t* b)
 {
-    g_return_val_if_fail(descriptors, false);
+    if (a == b) {
+        return true;
+    }
+    if (!a || !b) {
+        return false;
+    }
+    return a->bytes_len == b->bytes_len
+        && !memcmp(a->bytes, b->bytes, a->bytes_len);
+}
+
+static bool read_descriptors(bitreader_t* b, size_t len, descriptor_t*** descriptors_out, size_t* descriptors_len)
+{
     g_return_val_if_fail(b, false);
+    g_return_val_if_fail(descriptors_out, false);
+    g_return_val_if_fail(descriptors_len, false);
+    if (len == 0) {
+        *descriptors_out = NULL;
+        *descriptors_len = 0;
+        return true;
+    }
 
     bool ret = true;
-    uint8_t* descriptor_bytes = malloc(len);
-    bs_read_bytes(b, descriptor_bytes, len);
+    GPtrArray* descriptors = g_ptr_array_new();
+
+    uint8_t* bytes = malloc(len);
+    for (size_t i = 0; i < len; ++i) {
+        bytes[i] = bitreader_read_uint8(b);
+    }
+    if (b->error) {
+        goto fail;
+    }
 
     size_t start = 0;
     while (start < len) {
-        descriptor_t* desc = descriptor_read(descriptor_bytes + start, len - start);
+        descriptor_t* desc = descriptor_read(bytes + start, len - start);
         if (!desc) {
-            g_critical("descriptor in PSI is invalid");
             goto fail;
         }
         g_ptr_array_add(descriptors, desc);
         start += desc->data_len + 2;
     }
-    if (start > len) {
+    if (start != len) {
         g_critical("descriptors have invalid length");
         goto fail;
     }
+    *descriptors_len = descriptors->len;
+    *descriptors_out = (descriptor_t**)g_ptr_array_free(descriptors, false);
 
 cleanup:
-    free(descriptor_bytes);
+    free(bytes);
     return ret;
 fail:
+    g_ptr_array_set_free_func(descriptors, (GDestroyNotify)descriptor_free);
+    g_ptr_array_free(descriptors, true);
     ret = false;
     goto cleanup;
 }
 
-char* stream_desc(uint8_t stream_id)
+const char* stream_desc(uint8_t stream_id)
 {
     if(stream_id < ARRAYSIZE(first_stream_types)) {
         return first_stream_types[stream_id];
@@ -128,20 +152,29 @@ char* stream_desc(uint8_t stream_id)
     }
 }
 
-static int section_header_read(mpeg2ts_section_t* section, bs_t* b)
+static bool section_header_read(mpeg2ts_section_t* section, bitreader_t* b)
 {
-    section->table_id = bs_read_u8(b);
-    section->section_syntax_indicator = bs_read_u1(b);
-    section->private_indicator = bs_read_u1(b);
+    g_return_val_if_fail(section, false);
+    g_return_val_if_fail(b, false);
+
+    section->table_id = bitreader_read_uint8(b);
+    section->section_syntax_indicator = bitreader_read_bit(b);
+    section->private_indicator = bitreader_read_bit(b);
     if ((section->table_id < 0x40 || section->table_id > 0xFE) && section->private_indicator) {
         g_critical("Private indicator set to 0x%x in table 0x%02x, but this is not in the private range 0x40-0xFE.",
                 section->private_indicator, section->table_id);
-        return 0;
+        return false;
     }
 
     // reserved
-    bs_skip_u(b, 2);
-    section->section_length = bs_read_u(b, 12);
+    bitreader_skip_bits(b, 2);
+    section->section_length = bitreader_read_bits(b, 12);
+    if (b->error) {
+        g_critical("Invalid section header!");
+        return false;
+    }
+    section->bytes_len = section->section_length + 3;
+    b->len = section->bytes_len;
 
     switch (section->table_id) {
     case TABLE_ID_PROGRAM_ASSOCIATION_SECTION:
@@ -149,21 +182,25 @@ static int section_header_read(mpeg2ts_section_t* section, bs_t* b)
     case TABLE_ID_PROGRAM_MAP_SECTION:
         if (!section->section_syntax_indicator) {
             g_critical("section_syntax_indicator not set in table with table_id 0x%02x.", section->table_id);
-            return 0;
+            return false;
         }
         if (section->section_length > MAX_SECTION_LEN) {
             g_critical("section length is 0x%02X, larger than maximum allowed 0x%02X",
                     section->section_length, MAX_SECTION_LEN);
-            return 0;
+            return false;
         }
         break;
     }
-    return 1;
+    return true;
 }
 
-static program_association_section_t* program_association_section_new(void)
+static program_association_section_t* program_association_section_new(uint8_t* data, size_t len)
 {
+    g_return_val_if_fail(data, NULL);
+
     program_association_section_t* pas = calloc(1, sizeof(*pas));
+    pas->bytes = g_memdup(data, len);
+    pas->bytes_len = len;
     return pas;
 }
 
@@ -173,15 +210,27 @@ void program_association_section_free(program_association_section_t* pas)
         return;
     }
 
+    g_free(pas->bytes);
     free(pas->programs);
     free(pas);
 }
 
 program_association_section_t* program_association_section_read(uint8_t* buf, size_t buf_len)
 {
-    program_association_section_t* pas = program_association_section_new();
-    memcpy(pas->bytes, buf, buf_len);
-    bs_t* b = bs_new(buf, buf_len);
+    g_return_val_if_fail(buf, NULL);
+    if (!buf_len) {
+        g_critical("Buffer for program association section is empty.");
+        return NULL;
+    }
+
+    uint8_t offset = buf[0] + 1;
+    if (offset > buf_len) {
+        g_critical("Invalid pointer field %"PRIu8" in PAT", offset - 1);
+        return NULL;
+    }
+
+    program_association_section_t* pas = program_association_section_new(buf + offset, buf_len - offset);
+    bitreader_t* b = bitreader_new(pas->bytes, pas->bytes_len);
 
     if (!section_header_read((mpeg2ts_section_t*)pas, b)) {
         goto fail;
@@ -193,19 +242,19 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
         goto fail;
     }
 
-    pas->transport_stream_id = bs_read_u16(b);
+    pas->transport_stream_id = bitreader_read_uint16(b);
 
     // Reserved bits
-    bs_skip_u(b, 2);
+    bitreader_skip_bits(b, 2);
 
-    pas->version_number = bs_read_u(b, 5);
-    pas->current_next_indicator = bs_read_u1(b);
+    pas->version_number = bitreader_read_bits(b, 5);
+    pas->current_next_indicator = bitreader_read_bit(b);
     if (!pas->current_next_indicator) {
         g_warning("This PAT is not yet applicable");
     }
 
-    pas->section_number = bs_read_u8(b);
-    pas->last_section_number = bs_read_u8(b);
+    pas->section_number = bitreader_read_uint8(b);
+    pas->last_section_number = bitreader_read_uint8(b);
     if(pas->section_number != 0 || pas->last_section_number != 0) {
         g_warning("Multi-section PAT is not supported yet");
         goto fail;
@@ -224,24 +273,29 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
 
     pas->programs = malloc(pas->num_programs * sizeof(program_info_t));
     for (size_t i = 0; i < pas->num_programs; ++i) {
-        pas->programs[i].program_number = bs_read_u16(b);
-        bs_skip_u(b, 3); // reserved
-        pas->programs[i].program_map_pid = bs_read_u(b, 13);
+        pas->programs[i].program_number = bitreader_read_uint16(b);
+        bitreader_skip_bits(b, 3); // reserved
+        pas->programs[i].program_map_pid = bitreader_read_bits(b, 13);
     }
 
-    pas->crc_32 = bs_read_u32(b);
+    pas->crc_32 = bitreader_read_uint32(b);
 
     // check CRC
     crc_t pas_crc = crc_init();
-    pas_crc = crc_update(pas_crc, buf, bs_pos(b) - 4);
+    pas_crc = crc_update(pas_crc, pas->bytes, pas->section_length + 3);
     pas_crc = crc_finalize(pas_crc);
-    if (pas_crc != pas->crc_32) {
-        g_critical("PAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pas->crc_32, pas_crc);
+    if (pas_crc != 0) {
+        g_critical("PAT CRC_32 should be 0, but calculated as 0x%08X", pas_crc);
+        goto fail;
+    }
+
+    if (b->error) {
+        g_critical("Invalid Program Association Section length.");
         goto fail;
     }
 
 cleanup:
-    bs_free(b);
+    bitreader_free(b);
     return pas;
 fail:
     program_association_section_free(pas);
@@ -251,30 +305,30 @@ fail:
 
 void program_association_section_print(const program_association_section_t* pas)
 {
-    if (pas == NULL || tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
+    g_return_if_fail(pas);
+    if (tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
 
     g_info("Program Association Section");
-    SKIT_LOG_UINT(0, pas->table_id);
-    SKIT_LOG_UINT(0, pas->section_length);
-    SKIT_LOG_UINT_HEX(0, pas->transport_stream_id);
-    SKIT_LOG_UINT(0, pas->version_number);
-    SKIT_LOG_UINT(0, pas->current_next_indicator);
-    SKIT_LOG_UINT(0, pas->section_number);
-    SKIT_LOG_UINT(0, pas->last_section_number);
+    SKIT_LOG_UINT8(0, pas->table_id);
+    SKIT_LOG_UINT16(0, pas->section_length);
+    SKIT_LOG_UINT16(0, pas->transport_stream_id);
+    SKIT_LOG_UINT8(0, pas->version_number);
+    SKIT_LOG_UINT8(0, pas->current_next_indicator);
+    SKIT_LOG_UINT8(0, pas->section_number);
+    SKIT_LOG_UINT8(0, pas->last_section_number);
 
     for (size_t i = 0; i < pas->num_programs; i++) {
-        SKIT_LOG_UINT(1, pas->programs[i].program_number);
-        SKIT_LOG_UINT_HEX(1, pas->programs[i].program_map_pid);
+        SKIT_LOG_UINT16(1, pas->programs[i].program_number);
+        SKIT_LOG_UINT16(1, pas->programs[i].program_map_pid);
     }
-    SKIT_LOG_UINT_HEX(0, pas->crc_32);
+    SKIT_LOG_UINT32(0, pas->crc_32);
 }
 
 static elementary_stream_info_t* es_info_new(void)
 {
     elementary_stream_info_t* es = calloc(1, sizeof(*es));
-    es->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
     return es;
 }
 
@@ -284,56 +338,66 @@ static void es_info_free(elementary_stream_info_t* es)
         return;
     }
 
-    g_ptr_array_free(es->descriptors, true);
+    for (size_t i = 0; i < es->descriptors_len; ++i) {
+        descriptor_free(es->descriptors[i]);
+    }
+    g_free(es->descriptors);
     free(es);
 }
 
-static elementary_stream_info_t* es_info_read(bs_t* b)
+static elementary_stream_info_t* es_info_read(bitreader_t* b)
 {
+    g_return_val_if_fail(b, NULL);
+
     elementary_stream_info_t* es = es_info_new();
 
-    es->stream_type = bs_read_u8(b);
-    bs_skip_u(b, 3);
-    es->elementary_pid = bs_read_u(b, 13);
-    bs_skip_u(b, 4);
-    es->es_info_length = bs_read_u(b, 12);
+    es->stream_type = bitreader_read_uint8(b);
+    bitreader_skip_bits(b, 3);
+    es->elementary_pid = bitreader_read_bits(b, 13);
+    bitreader_skip_bits(b, 4);
 
-    if (es->es_info_length > MAX_ES_INFO_LEN) {
+    uint16_t es_info_length = bitreader_read_bits(b, 12);
+
+    if (es_info_length > MAX_ES_INFO_LEN) {
         g_critical("ES info length is 0x%02X, larger than maximum allowed 0x%02X",
-                       es->es_info_length, MAX_ES_INFO_LEN);
+                       es_info_length, MAX_ES_INFO_LEN);
         goto fail;
     }
 
-    if (!read_descriptors(es->descriptors, b, es->es_info_length)) {
+    if (!read_descriptors(b, es_info_length, &es->descriptors, &es->descriptors_len)) {
         goto fail;
     }
 
+cleanup:
     return es;
 fail:
     es_info_free(es);
-    return NULL;
+    es = NULL;
+    goto cleanup;
 }
 
-static void es_info_print(elementary_stream_info_t* es, int level)
+static void es_info_print(const elementary_stream_info_t* es, int level)
 {
+    g_return_if_fail(es);
     if (tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
 
-    SKIT_LOG_UINT_VERBOSE(level, es->stream_type, stream_desc(es->stream_type));
-    SKIT_LOG_UINT_HEX(level, es->elementary_pid);
-    SKIT_LOG_UINT(level, es->es_info_length);
+    SKIT_LOG_UINT16(level, es->stream_type);
+    SKIT_LOG_UINT16(level, es->elementary_pid);
 
-    for (size_t i = 0; i < es->descriptors->len; ++i) {
-        descriptor_print(g_ptr_array_index(es->descriptors, i), level + 1);
+    for (size_t i = 0; i < es->descriptors_len; ++i) {
+        descriptor_print(es->descriptors[i], level + 1);
     }
 }
 
-static program_map_section_t* program_map_section_new(void)
+static program_map_section_t* program_map_section_new(uint8_t* data, size_t len)
 {
+    g_return_val_if_fail(data, NULL);
+
     program_map_section_t* pms = calloc(1, sizeof(*pms));
-    pms->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
-    pms->es_info = g_ptr_array_new_with_free_func((GDestroyNotify)es_info_free);
+    pms->bytes = g_memdup(data, len);
+    pms->bytes_len = len;
     return pms;
 }
 
@@ -343,17 +407,36 @@ void program_map_section_free(program_map_section_t* pms)
         return;
     }
 
-    g_ptr_array_free(pms->descriptors, true);
-    g_ptr_array_free(pms->es_info, true);
+    g_free(pms->bytes);
+    for (size_t i = 0; i < pms->descriptors_len; ++i) {
+        descriptor_free(pms->descriptors[i]);
+    }
+    free(pms->descriptors);
+    for (size_t i = 0; i < pms->es_info_len; ++i) {
+        es_info_free(pms->es_info[i]);
+    }
+    free(pms->es_info);
 
     free(pms);
 }
 
 program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
 {
-    program_map_section_t* pms = program_map_section_new();
-    memcpy(pms->bytes, buf, buf_len);
-    bs_t* b = bs_new(buf, buf_len);
+    g_return_val_if_fail(buf, NULL);
+    if (!buf_len) {
+        g_critical("Buffer for program map section is empty.");
+        return NULL;
+    }
+
+    uint8_t offset = buf[0] + 1;
+    if (offset > buf_len) {
+        g_critical("Invalid pointer field %"PRIu8" in PMT", offset - 1);
+        return NULL;
+    }
+
+    program_map_section_t* pms = program_map_section_new(buf + offset, buf_len - offset);
+    bitreader_t* b = bitreader_new(pms->bytes, pms->bytes_len);
+    GPtrArray* es_info = NULL;
 
     if (!section_header_read((mpeg2ts_section_t*)pms, b)) {
         goto fail;
@@ -365,115 +448,131 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
         goto fail;
     }
 
-    int section_start = bs_pos(b);
-
-    pms->program_number = bs_read_u16(b);
+    pms->program_number = bitreader_read_uint16(b);
 
     // reserved
-    bs_skip_u(b, 2);
+    bitreader_skip_bits(b, 2);
 
-    pms->version_number = bs_read_u(b, 5);
-    pms->current_next_indicator = bs_read_u1(b);
+    pms->version_number = bitreader_read_bits(b, 5);
+    pms->current_next_indicator = bitreader_read_bit(b);
     if (!pms->current_next_indicator) {
         g_warning("This PMT is not yet applicable");
     }
 
-    pms->section_number = bs_read_u8(b);
-    pms->last_section_number = bs_read_u8(b);
+    pms->section_number = bitreader_read_uint8(b);
+    pms->last_section_number = bitreader_read_uint8(b);
     if (pms->section_number != 0 || pms->last_section_number != 0) {
         g_critical("Multi-section PMT is not allowed");
         goto fail;
     }
 
     // reserved
-    bs_skip_u(b, 3);
+    bitreader_skip_bits(b, 3);
 
-    pms->pcr_pid = bs_read_u(b, 13);
+    pms->pcr_pid = bitreader_read_bits(b, 13);
     if (pms->pcr_pid < GENERAL_PURPOSE_PID_MIN || pms->pcr_pid > GENERAL_PURPOSE_PID_MAX) {
         g_critical("PCR PID has invalid value 0x%02X", pms->pcr_pid);
         goto fail;
     }
 
     // reserved
-    bs_skip_u(b, 4);
+    bitreader_skip_bits(b, 4);
 
-    pms->program_info_length = bs_read_u(b, 12);
-    if (pms->program_info_length > MAX_PROGRAM_INFO_LEN) {
+    uint16_t program_info_length = bitreader_read_bits(b, 12);
+    if (program_info_length > MAX_PROGRAM_INFO_LEN) {
         g_critical("PMT program info length is 0x%02X, larger than maximum allowed 0x%02X",
-                       pms->program_info_length, MAX_PROGRAM_INFO_LEN);
+                       program_info_length, MAX_PROGRAM_INFO_LEN);
         goto fail;
     }
 
-    read_descriptors(pms->descriptors, b, pms->program_info_length);
-
-    while (pms->section_length - (bs_pos(b) - section_start) > 4) {  // account for CRC
-        elementary_stream_info_t* es = es_info_read(b);
-        if (es == NULL) {
-            goto fail;
-        }
-        g_ptr_array_add(pms->es_info, es);
+    if (!read_descriptors(b, program_info_length, &pms->descriptors, &pms->descriptors_len)) {
+        goto fail;
     }
 
-    pms->crc_32 = bs_read_u32(b);
+    es_info = g_ptr_array_new();
+    while (bitreader_bytes_left(b) > 4) {  // account for CRC
+        elementary_stream_info_t* es = es_info_read(b);
+        if (!es) {
+            goto fail;
+        }
+        g_ptr_array_add(es_info, es);
+    }
+    if (bitreader_bytes_left(b) != 4) {
+        g_critical("CRC missing in PMT");
+        goto fail;
+    }
+    pms->es_info_len = es_info->len;
+    pms->es_info = (elementary_stream_info_t**)g_ptr_array_free(es_info, false);
+    es_info = NULL;
+
+    pms->crc_32 = bitreader_read_uint32(b);
 
     // check CRC
     crc_t pas_crc = crc_init();
-    pas_crc = crc_update(pas_crc, buf, bs_pos(b) - 4);
+    pas_crc = crc_update(pas_crc, pms->bytes, pms->bytes_len);
     pas_crc = crc_finalize(pas_crc);
-    if(pas_crc != pms->crc_32) {
-        g_critical("PMT CRC_32 specified as 0x%08X, but calculated as 0x%08X", pms->crc_32, pas_crc);
+    if(pas_crc != 0) {
+        g_critical("PMT CRC_32 should be 0, but is 0x%08X", pas_crc);
         goto fail;
-    } else {
-        g_debug("PMT CRC_32 checked successfully");
+    }
+
+    if (b->error) {
+        g_critical("Invalid Program Map Section length.");
+        goto fail;
     }
 
 cleanup:
-    bs_free(b);
+    bitreader_free(b);
     return pms;
 fail:
     program_map_section_free(pms);
+    if (es_info) {
+        g_ptr_array_set_free_func(es_info, (GDestroyNotify)es_info_free);
+        g_ptr_array_free(es_info, true);
+    }
     pms = NULL;
     goto cleanup;
 }
 
 void program_map_section_print(program_map_section_t* pms)
 {
+    g_return_if_fail(pms);
     if (tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
 
     g_info("Program Map Section");
-    SKIT_LOG_UINT(1, pms->table_id);
+    SKIT_LOG_UINT8(1, pms->table_id);
 
-    SKIT_LOG_UINT(1, pms->section_length);
-    SKIT_LOG_UINT(1, pms->program_number);
+    SKIT_LOG_UINT16(1, pms->section_length);
+    SKIT_LOG_UINT16(1, pms->program_number);
 
-    SKIT_LOG_UINT(1, pms->version_number);
-    SKIT_LOG_UINT(1, pms->current_next_indicator);
+    SKIT_LOG_UINT8(1, pms->version_number);
+    SKIT_LOG_UINT8(1, pms->current_next_indicator);
 
-    SKIT_LOG_UINT(1, pms->section_number);
-    SKIT_LOG_UINT(1, pms->last_section_number);
+    SKIT_LOG_UINT8(1, pms->section_number);
+    SKIT_LOG_UINT8(1, pms->last_section_number);
 
-    SKIT_LOG_UINT_HEX(1, pms->pcr_pid);
+    SKIT_LOG_UINT16(1, pms->pcr_pid);
 
-    SKIT_LOG_UINT(1, pms->program_info_length);
-
-    for (size_t i = 0; i < pms->descriptors->len; ++i) {
-        descriptor_print(g_ptr_array_index(pms->descriptors, i), 2);
+    for (size_t i = 0; i < pms->descriptors_len; ++i) {
+        descriptor_print(pms->descriptors[i], 2);
     }
 
-    for (gsize i = 0; i < pms->es_info->len; ++i) {
-        elementary_stream_info_t* es = g_ptr_array_index(pms->es_info, i);
-        es_info_print(es, 2);
+    for (size_t i = 0; i < pms->es_info_len; ++i) {
+        es_info_print(pms->es_info[i], 2);
     }
 
-    SKIT_LOG_UINT_HEX(1, pms->crc_32);
+    SKIT_LOG_UINT32(1, pms->crc_32);
 }
 
-static conditional_access_section_t* conditional_access_section_new(void)
+static conditional_access_section_t* conditional_access_section_new(uint8_t* data, size_t len)
 {
+    g_return_val_if_fail(data, NULL);
+
     conditional_access_section_t* cas = calloc(1, sizeof(*cas));
-    cas->descriptors = g_ptr_array_new_with_free_func((GDestroyNotify)descriptor_free);
+    cas->bytes = g_memdup(data, len);
+    cas->bytes_len = len;
     return cas;
 }
 
@@ -483,15 +582,30 @@ void conditional_access_section_free(conditional_access_section_t* cas)
         return;
     }
 
-    g_ptr_array_free(cas->descriptors, true);
+    g_free(cas->bytes);
+    for (size_t i = 0; i < cas->descriptors_len; ++i) {
+        descriptor_free(cas->descriptors[i]);
+    }
+    free(cas->descriptors);
     free(cas);
 }
 
 conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size_t buf_len)
 {
-    conditional_access_section_t* cas = conditional_access_section_new();
-    memcpy(cas->bytes, buf, buf_len);
-    bs_t* b = bs_new(buf, buf_len);
+    g_return_val_if_fail(buf, NULL);
+    if (!buf_len) {
+        g_critical("Buffer for program association section is empty.");
+        return NULL;
+    }
+
+    uint8_t offset = buf[0] + 1;
+    if (offset > buf_len) {
+        g_critical("Invalid pointer field %"PRIu8" in PAT", offset - 1);
+        return NULL;
+    }
+
+    conditional_access_section_t* cas = conditional_access_section_new(buf + offset, buf_len - offset);
+    bitreader_t* b = bitreader_new(cas->bytes, cas->bytes_len);
 
     if (!section_header_read((mpeg2ts_section_t*)cas, b)) {
         goto fail;
@@ -504,40 +618,47 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
     }
 
     // 18-bits of reserved value
-    bs_read_u16(b);
-    bs_skip_u(b, 2);
+    bitreader_read_uint16(b);
+    bitreader_skip_bits(b, 2);
 
-    cas->version_number = bs_read_u(b, 5);
-    cas->current_next_indicator = bs_read_u1(b);
+    cas->version_number = bitreader_read_bits(b, 5);
+    cas->current_next_indicator = bitreader_read_bit(b);
     if (!cas->current_next_indicator) {
         g_warning("This CAT is not yet applicable");
     }
 
-    cas->section_number = bs_read_u8(b);
-    cas->last_section_number = bs_read_u8(b);
+    cas->section_number = bitreader_read_uint8(b);
+    cas->last_section_number = bitreader_read_uint8(b);
     if (cas->section_number != 0 || cas->last_section_number != 0) {
         g_warning("Multi-section CAT is not supported yet");
         goto fail;
     }
 
-    read_descriptors(cas->descriptors, b, cas->section_length - 5 - 4);
+    if (!read_descriptors(b, cas->section_length - 5 - 4, &cas->descriptors, &cas->descriptors_len)) {
+        goto fail;
+    }
 
     // explanation: section_length gives us the length from the end of section_length
     // we used 5 bytes for the mandatory section fields, and will use another 4 bytes for CRC
     // the remaining bytes contain descriptors, most probably only one
-    cas->crc_32 = bs_read_u32(b);
+    cas->crc_32 = bitreader_read_uint32(b);
 
     // check CRC
     crc_t cas_crc = crc_init();
-    cas_crc = crc_update(cas_crc, buf, bs_pos(b) - 4);
+    cas_crc = crc_update(cas_crc, cas->bytes, cas->bytes_len);
     cas_crc = crc_finalize(cas_crc);
-    if (cas_crc != cas->crc_32) {
-        g_critical("CAT CRC_32 specified as 0x%08X, but calculated as 0x%08X", cas->crc_32, cas_crc);
+    if (cas_crc != 0) {
+        g_critical("CAT CRC_32 should be 0, but calculated as 0x%08X", cas_crc);
+        goto fail;
+    }
+
+    if (b->error) {
+        g_critical("Invalid Conditional Access Section length.");
         goto fail;
     }
 
 cleanup:
-    bs_free(b);
+    bitreader_free(b);
     return cas;
 fail:
     conditional_access_section_free(cas);
@@ -547,22 +668,23 @@ fail:
 
 void conditional_access_section_print(const conditional_access_section_t* cas)
 {
+    g_return_if_fail(cas);
     if (tslib_loglevel < TSLIB_LOG_LEVEL_INFO) {
         return;
     }
 
     g_info("Conditional Access Section");
-    SKIT_LOG_UINT(0, cas->table_id);
-    SKIT_LOG_UINT(0, cas->section_length);
+    SKIT_LOG_UINT8(0, cas->table_id);
+    SKIT_LOG_UINT16(0, cas->section_length);
 
-    SKIT_LOG_UINT(0, cas->version_number);
-    SKIT_LOG_UINT(0, cas->current_next_indicator);
-    SKIT_LOG_UINT(0, cas->section_number);
-    SKIT_LOG_UINT(0, cas->last_section_number);
+    SKIT_LOG_UINT8(0, cas->version_number);
+    SKIT_LOG_UINT8(0, cas->current_next_indicator);
+    SKIT_LOG_UINT8(0, cas->section_number);
+    SKIT_LOG_UINT8(0, cas->last_section_number);
 
-    for (size_t i = 0; i < cas->descriptors->len; ++i) {
-        descriptor_print(g_ptr_array_index(cas->descriptors, i), 2);
+    for (size_t i = 0; i < cas->descriptors_len; ++i) {
+        descriptor_print(cas->descriptors[i], 2);
     }
 
-    SKIT_LOG_UINT_HEX(0, cas->crc_32);
+    SKIT_LOG_UINT32(0, cas->crc_32);
 }

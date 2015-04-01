@@ -112,8 +112,8 @@ int mpeg2ts_program_register_pid_processor(mpeg2ts_program_t* m2p, uint16_t pid,
 
     pid_info_t* pi = pid_info_new();
     elementary_stream_info_t* esi = NULL;
-    for (gsize i = 0; i < m2p->pmt->es_info->len; i++) {
-        elementary_stream_info_t* tmp = g_ptr_array_index(m2p->pmt->es_info, i);
+    for (size_t i = 0; i < m2p->pmt->es_info_len; i++) {
+        elementary_stream_info_t* tmp = m2p->pmt->es_info[i];
         if (tmp && tmp->elementary_pid == pid) {
             esi = tmp;
             break;
@@ -183,6 +183,14 @@ void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
 
 static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
+    g_return_val_if_fail(m2s, 1);
+    g_return_val_if_fail(ts, 1);
+
+    if (!ts->payload.bytes || !ts->payload.len) {
+        g_critical("mpeg2ts_program_read_pat called with an empty TS payload.");
+        return 1;
+    }
+
     int ret = 0;
     conditional_access_section_t* new_cas = conditional_access_section_read(ts->payload.bytes + 1,
             ts->payload.len - 1);
@@ -192,8 +200,7 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet cat
-    if (!m2s->cat || (m2s->cat->version_number != new_cas->version_number
-            && new_cas->current_next_indicator == 1) || memcmp(m2s->cat->bytes, new_cas->bytes, TS_SIZE)) {
+    if (!conditional_access_sections_equal(m2s->cat, new_cas)) {
         if (m2s->cat != NULL) {
             g_info("New cat section in force, discarding the old one");
             conditional_access_section_free(m2s->cat);
@@ -213,17 +220,23 @@ cleanup:
 
 static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
 {
+    g_return_val_if_fail(m2s, 1);
+    g_return_val_if_fail(ts, 1);
+
+    if (!ts->payload.bytes || !ts->payload.len) {
+        g_critical("mpeg2ts_program_read_pat called with an empty TS payload.");
+        return 1;
+    }
+
     int ret = 0;
-    program_association_section_t* new_pas = program_association_section_read(ts->payload.bytes + 1,
-            ts->payload.len - 1);
+    program_association_section_t* new_pas = program_association_section_read(ts->payload.bytes, ts->payload.len);
     if (new_pas == NULL) {
         ret = 1;
         goto cleanup;
     }
 
     // TODO: allow >1 packet PAT
-    if (!m2s->pat || (m2s->pat->version_number != new_pas->version_number
-            && new_pas->current_next_indicator == 1) || memcmp(m2s->pat->bytes, new_pas->bytes, TS_SIZE)) {
+    if (!program_association_sections_equal(m2s->pat, new_pas)) {
         if (m2s->pat != NULL) {
             g_warning("New PAT section in force, discarding the old one");
             program_association_section_free(m2s->pat);
@@ -260,16 +273,23 @@ static int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t* m2s, ts_packet_t
 
 static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
 {
+    g_return_val_if_fail(m2p, 1);
+    g_return_val_if_fail(ts, 1);
+
+    if (!ts->payload.bytes || !ts->payload.len) {
+        g_critical("mpeg2ts_program_read_pmt called with an empty TS payload.");
+        return 1;
+    }
+
     int ret = 0;
-    program_map_section_t* new_pms = program_map_section_read(ts->payload.bytes + 1, ts->payload.len - 1);
+    program_map_section_t* new_pms = program_map_section_read(ts->payload.bytes, ts->payload.len);
     if (new_pms == NULL) {
         ret = 1;
         goto cleanup;
     }
 
     // TODO: allow >1 packet PAT
-    if (!m2p->pmt || (m2p->pmt->version_number != new_pms->version_number
-            && new_pms->current_next_indicator == 1) || memcmp(m2p->pmt->bytes, new_pms->bytes, TS_SIZE)) {
+    if (!program_map_sections_equal(m2p->pmt, new_pms)) {
         if (m2p->pmt != NULL) {
             g_info("New PMT in force, discarding the old one");
             g_hash_table_remove_all(m2p->pids);
@@ -277,8 +297,8 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
         }
         m2p->pmt = new_pms;
 
-        for (size_t es_idx = 0; es_idx < m2p->pmt->es_info->len; es_idx++) {
-            elementary_stream_info_t* es = g_ptr_array_index(m2p->pmt->es_info, es_idx);
+        for (size_t es_idx = 0; es_idx < m2p->pmt->es_info_len; es_idx++) {
+            elementary_stream_info_t* es = m2p->pmt->es_info[es_idx];
             pid_info_t* pi = pid_info_new();
             pi->es_info = es;
             g_hash_table_insert(m2p->pids, GINT_TO_POINTER(pi->es_info->elementary_pid), pi);

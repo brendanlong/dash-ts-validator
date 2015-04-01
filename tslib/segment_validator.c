@@ -37,8 +37,9 @@
 #include "pes_demux.h"
 
 
-static int pat_processor(mpeg2ts_stream_t* m2s, void* arg);
-static int pmt_processor(mpeg2ts_program_t* m2p, void* arg);
+static int cat_processor(mpeg2ts_stream_t* m2s, void*);
+static int pat_processor(mpeg2ts_stream_t* m2s, void*);
+static int pmt_processor(mpeg2ts_program_t* m2p, void*);
 static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
 static int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
         void* arg);
@@ -153,8 +154,14 @@ void dash_validator_free(dash_validator_t* obj)
 
 static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
+    g_return_val_if_fail(m2s, 0);
+    g_return_val_if_fail(m2s->pat, 0);
+    g_return_val_if_fail(m2s->programs, 0);
+    g_return_val_if_fail(arg, 0);
+
     dash_validator_t* dash_validator = (dash_validator_t*)arg;
-    memcpy(dash_validator->pat_bytes, m2s->pat->bytes, TS_SIZE);
+    memset(dash_validator->pat_bytes, 0, TS_SIZE);
+    memcpy(dash_validator->pat_bytes, m2s->pat->bytes, m2s->pat->bytes_len);
 
     if (m2s->programs->len != 1) {
         g_critical("DASH Conformance: 6.4.4.2  Media segments shall contain exactly one program (%u found)",
@@ -172,6 +179,19 @@ static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
     return 1;
 }
 
+int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
+{
+    g_return_val_if_fail(m2s, 0);
+    g_return_val_if_fail(m2s->cat, 0);
+    g_return_val_if_fail(arg, 0);
+
+    dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    memset(dash_validator->cat_bytes, 0, TS_SIZE);
+    memcpy(dash_validator->cat_bytes, m2s->cat->bytes, m2s->cat->bytes_len);
+
+    return 1;
+}
+
 static pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_validator)
 {
     for (gsize i = 0; i < dash_validator->pids->len; ++i) {
@@ -185,10 +205,13 @@ static pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_
 
 static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 {
-    g_return_val_if_fail(m2p->pmt != NULL, 0);
+    g_return_val_if_fail(m2p, 0);
+    g_return_val_if_fail(m2p->pmt, 0);
+    g_return_val_if_fail(arg, 0);
 
     dash_validator_t* dash_validator = arg;
-    memcpy(dash_validator->pmt_bytes, m2p->pmt->bytes, TS_SIZE);
+    memset(dash_validator->pmt_bytes, 0, TS_SIZE);
+    memcpy(dash_validator->pmt_bytes, m2p->pmt->bytes, m2p->pmt->bytes_len);
 
     dash_validator->pcr_pid = m2p->pmt->pcr_pid;
 
@@ -239,8 +262,8 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
             g_ptr_array_add(dash_validator->pids, pid_validator);
 
             // Register callback for TS packets on CA_PID
-            for (size_t d = 0; d < pi->es_info->descriptors->len; ++d) {
-                descriptor_t* descriptor = g_ptr_array_index(pi->es_info->descriptors, d);
+            for (size_t d = 0; d < pi->es_info->descriptors_len; ++d) {
+                descriptor_t* descriptor = pi->es_info->descriptors[d];
                 if (descriptor->tag == CA_DESCRIPTOR) {
                     dash_validator->is_encrypted = true;
                     ca_descriptor_t* ca_descriptor = (ca_descriptor_t*)descriptor;
@@ -779,6 +802,7 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
     }
 
     m2s->pat_processor = pat_processor;
+    m2s->cat_processor = cat_processor;
     m2s->arg = dash_validator;
 
     // Connect handler for DASH EMSG streams

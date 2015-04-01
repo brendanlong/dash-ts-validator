@@ -39,16 +39,16 @@ int tslib_loglevel = TSLIB_LOG_LEVEL_DEFAULT;
 #define INDENT_LEVEL	1
 const char* IDENT = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
 
-void skit_log_struct(size_t num_indents, char* name, const void* value, skit_log_type_t type, char* str)
+void skit_log_struct(size_t num_indents, const char* name, const void* value, skit_log_type_t type, const char* str)
 {
     if(name == NULL) {
         return;
     }
 
     // get rid of prefixes
-    char* last_dot = strrchr(name, '.');
-    char* last_arrow = strrchr(name, '>');
-    char* real_name = NULL;
+    const char* last_dot = strrchr(name, '.');
+    const char* last_arrow = strrchr(name, '>');
+    const char* real_name = NULL;
 
     if (last_dot == NULL) {
         real_name = (last_arrow != NULL) ? last_arrow + 1 : name;

@@ -4,7 +4,7 @@ AC_CONFIG_SRCDIR([tslib/mpd.h])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
-AM_INIT_AUTOMAKE([1.9 foreign subdir-objects])
+AM_INIT_AUTOMAKE([1.9 foreign subdir-objects serial-tests])
 
 # Checks for programs.
 AC_PROG_CC
