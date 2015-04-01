@@ -843,21 +843,21 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
         if (xmlStrEqual(cur_node->name, "S")) {
             int error = 0;
             char* t = xmlGetProp(cur_node, "t");
-            uint64_t start = str_to_uint64(t, 0, &error);
+            uint64_t start = t ? str_to_uint64(t, 0, &error) : 0;
             xmlFree(t);
             if (error) {
                 g_critical("<S>'s @t value (%s) is not a number.", t);
                 goto fail;
             }
             char* d = xmlGetProp(cur_node, "d");
-            uint64_t duration = str_to_uint64(d, 0, &error);
+            uint64_t duration = d ? str_to_uint64(d, 0, &error) : 0;
             xmlFree(d);
-            if (error) {
-                g_critical("<S>'s @d value (%s) is not a number.", d);
+            if (error || !d) {
+                g_critical("<S>'s @d value (%s) is not a valid duration.", d);
                 goto fail;
             }
             char* r = xmlGetProp(cur_node, "r");
-            uint64_t repeat = str_to_uint64(r, 0, &error);
+            uint64_t repeat = r ? str_to_uint64(r, 0, &error) : 1;
             xmlFree(r);
             if (error) {
                 g_critical("<S>'s @r value (%s) is not a number.", r);
