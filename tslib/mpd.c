@@ -1364,12 +1364,13 @@ static bool read_range(xmlNode* node, const char* property_name, uint64_t* start
     g_return_val_if_fail(end_out, false);
 
     bool ret = true;
+    char** split = NULL;
     char* property = xmlGetProp(node, property_name);
     if (property == NULL) {
         goto cleanup;
     }
 
-    char** split = g_strsplit(property, "-", 0);
+    split = g_strsplit(property, "-", 0);
     /* Length of the split string should be exactly 2 */
     if (split[0] == NULL || split[1] == NULL || split[2] != NULL) {
         goto fail;
@@ -1385,6 +1386,7 @@ static bool read_range(xmlNode* node, const char* property_name, uint64_t* start
         goto fail;
     }
 cleanup:
+    g_strfreev(split);
     xmlFree(property);
     return ret;
 fail:
