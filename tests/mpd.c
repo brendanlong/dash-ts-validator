@@ -505,7 +505,7 @@ START_TEST(test_representation)
     ck_assert_uint_eq(representation->start_with_sap, 4);
     ck_assert_uint_eq(representation->presentation_time_offset, 0);
     ck_assert_uint_eq(representation->bandwidth, 409940);
-    ck_assert_uint_eq(representation->timescale, 0);
+    ck_assert_uint_eq(representation->timescale, 1);
     ck_assert_int_eq(representation->subrepresentations->len, 0);
     ck_assert_int_eq(representation->segments->len, 0);
 
@@ -676,6 +676,32 @@ START_TEST(test_segment_list_in_representation)
     ck_assert_str_eq(segment->index_file_name, "/period/set/rep/s1.sidx");
     ck_assert_uint_eq(segment->index_range_start, 290);
     ck_assert_uint_eq(segment->index_range_end, 9292);
+
+    segment = g_ptr_array_index(representation->segments, 1);
+    ck_assert_ptr_ne(segment, NULL);
+    ck_assert_ptr_eq(segment->representation, representation);
+    ck_assert_str_eq(segment->file_name, "/period/set/rep/segment-2.ts");
+    ck_assert_uint_eq(segment->media_range_start, 3);
+    ck_assert_uint_eq(segment->media_range_end, 339);
+    ck_assert_uint_eq(segment->start, 450000);
+    ck_assert_uint_eq(segment->duration, 2 * 90000);
+    ck_assert_uint_eq(segment->end, segment->start + segment->duration);
+    ck_assert_str_eq(segment->index_file_name, segment->file_name);
+    ck_assert_uint_eq(segment->index_range_start, 3290);
+    ck_assert_uint_eq(segment->index_range_end, 39292);
+
+    segment = g_ptr_array_index(representation->segments, 2);
+    ck_assert_ptr_ne(segment, NULL);
+    ck_assert_ptr_eq(segment->representation, representation);
+    ck_assert_str_eq(segment->file_name, "/period/set/rep/segment-3.ts");
+    ck_assert_uint_eq(segment->media_range_start, 0);
+    ck_assert_uint_eq(segment->media_range_end, 0);
+    ck_assert_uint_eq(segment->start, 4 * 90000 + 270000);
+    ck_assert_uint_eq(segment->duration, 2 * 90000);
+    ck_assert_uint_eq(segment->end, segment->start + segment->duration);
+    ck_assert_str_eq(segment->index_file_name, segment->file_name);
+    ck_assert_uint_eq(segment->index_range_start, 32);
+    ck_assert_uint_eq(segment->index_range_end, 74);
 
     mpd_free(mpd);
 END_TEST
