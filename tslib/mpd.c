@@ -626,7 +626,10 @@ bool read_subrepresentation(xmlNode* node, representation_t* representation)
     if (content_component) {
         char** cc_split = g_strsplit_set(content_component, " \t", -1);
         for (size_t i = 0; cc_split[i]; ++i) {
-            g_ptr_array_add(subrepresentation->content_component, cc_split[i]);
+            if (strlen(cc_split[i]) == 0) {
+                continue;
+            }
+            g_ptr_array_add(subrepresentation->content_component, g_strdup(cc_split[i]));
         }
         g_strfreev(cc_split);
     }
@@ -636,6 +639,9 @@ bool read_subrepresentation(xmlNode* node, representation_t* representation)
     if (dependency_level) {
         dependency_split = g_strsplit_set(dependency_level, " \t", -1);
         for (size_t i = 0; dependency_split[i]; ++i) {
+            if (strlen(dependency_split[i]) == 0) {
+                continue;
+            }
             int error = 0;
             uint64_t cc_int = str_to_uint64(dependency_split[i], 0, &error);
             if (error || cc_int > UINT32_MAX) {
@@ -836,6 +842,7 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
     g_return_val_if_fail(representation, NULL);
 
     GPtrArray* timeline = g_ptr_array_new_with_free_func(free);
+    uint64_t start = representation->presentation_time_offset;
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
             continue;
@@ -843,11 +850,13 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
         if (xmlStrEqual(cur_node->name, "S")) {
             int error = 0;
             char* t = xmlGetProp(cur_node, "t");
-            uint64_t start = t ? str_to_uint64(t, 0, &error) : 0;
-            xmlFree(t);
-            if (error) {
-                g_critical("<S>'s @t value (%s) is not a number.", t);
-                goto fail;
+            if (t) {
+                start = convert_timescale(str_to_uint64(t, 0, &error), representation->timescale);
+                xmlFree(t);
+                if (error) {
+                    g_critical("<S>'s @t value (%s) is not a number.", t);
+                    goto fail;
+                }
             }
             char* d = xmlGetProp(cur_node, "d");
             uint64_t duration = d ? str_to_uint64(d, 0, &error) : 0;
@@ -856,6 +865,7 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
                 g_critical("<S>'s @d value (%s) is not a valid duration.", d);
                 goto fail;
             }
+            duration = convert_timescale(duration, representation->timescale);
             char* r = xmlGetProp(cur_node, "r");
             uint64_t repeat = r ? str_to_uint64(r, 0, &error) : 1;
             xmlFree(r);
@@ -866,10 +876,10 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
 
             for (uint64_t i = 0; i < repeat; ++i) {
                 segment_timeline_s_t* s = malloc(sizeof(*s));
-                s->start = convert_timescale(start, representation->timescale);
-                s->duration = convert_timescale(duration, representation->timescale);
-                start += duration;
+                s->start = start;
+                s->duration = duration;
                 g_ptr_array_add(timeline, s);
+                start += duration;
             }
         }
     }
@@ -1295,7 +1305,7 @@ static dash_profile_t read_profile(xmlNode* node, dash_profile_t parent_profile)
         goto cleanup;
     }
 
-    gchar** profiles = g_strsplit(property, ",", 0);
+    gchar** profiles = g_strsplit_set(property, ", \t", -1);
     gchar* profile_str;
     for (size_t i = 0; (profile_str = profiles[i]); ++i) {
         dash_profile_t new_profile = DASH_PROFILE_UNKNOWN;
