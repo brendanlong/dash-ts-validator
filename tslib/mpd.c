@@ -366,19 +366,16 @@ fail:
 
 mpd_t* mpd_read_file(char* file_name)
 {
-    char* base_url = NULL;
     mpd_t* mpd = NULL;
     xmlDoc* doc = xmlReadFile(file_name, NULL, 0);
     if (doc == NULL) {
         g_critical("Could not parse MPD file: %s.", file_name);
         goto cleanup;
     }
-    base_url = g_path_get_dirname(file_name);
 
-    mpd = mpd_read(doc, base_url);
+    mpd = mpd_read(doc, file_name);
 
 cleanup:
-    g_free(base_url);
     xmlFreeDoc(doc);
     return mpd;
 }
@@ -968,7 +965,9 @@ static char* segment_template_replace(char* pattern, uint64_t segment_number, re
         g_string_append_printf(result, "%0*"PRIu64, padding, print_num);
     }
 
-    with_base = g_build_filename(base_url, result->str, NULL);
+    char* directory = g_path_get_dirname(base_url);
+    with_base = g_build_filename(directory, result->str, NULL);
+    g_free(directory);
 fail:
     g_string_free(result, true);
     return with_base;
@@ -1053,24 +1052,14 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
     uint64_t start_number = 1;
     size_t timeline_i = 0;
     uint64_t start_time = representation->presentation_time_offset;
-    for (size_t i = start_number; segment_timeline == NULL || timeline_i < segment_timeline->len; ++i, ++timeline_i) {
+    uint64_t period_end = (representation->adaptation_set->period->duration * MPEG_TS_TIMESCALE) \
+            + start_time;
+    for (size_t i = start_number;
+            start_time < period_end && (segment_timeline == NULL || timeline_i < segment_timeline->len);
+            ++i, ++timeline_i) {
         char* media = segment_template_replace(media_template, i, representation, start_time, base_url);
         if (!media) {
             goto fail;
-        }
-
-        if (!segment_timeline) {
-            /* Figure out if this file exists */
-            GFile* file = g_file_new_for_path(media);
-            GError* error = NULL;
-            GFileInputStream* in = g_file_read(file, NULL, &error);
-            if (in) {
-                g_object_unref(in);
-            }
-            g_object_unref(file);
-            if (error) {
-                break;
-            }
         }
 
         segment_t* segment = segment_new(representation);
@@ -1095,7 +1084,9 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
 
 cleanup:
     g_ptr_array_remove_index(segment_bases, segment_bases->len - 1);
-    g_ptr_array_free(segment_timeline, true);
+    if (segment_timeline) {
+        g_ptr_array_free(segment_timeline, true);
+    }
     xmlFree(media_template);
     xmlFree(index_template);
     xmlFree(initialization_template);
@@ -1113,7 +1104,9 @@ char* find_base_url(xmlNode* node, char* parent_url)
             char* base_url;
             char* content = xmlNodeGetContent(cur_node);
             if (parent_url) {
-                base_url = g_build_filename(parent_url, content, NULL);
+                char* directory = g_path_get_dirname(parent_url);
+                base_url = g_build_filename(directory, content, NULL);
+                g_free(directory);
             } else {
                 /* Make a duplicate so all of our strings will use the same allocator. */
                 base_url = g_strdup(content);
