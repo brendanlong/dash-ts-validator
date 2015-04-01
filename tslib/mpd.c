@@ -80,6 +80,7 @@ static dash_profile_t read_profile(xmlNode*, dash_profile_t parent_profile);
 static const char* dash_profile_to_string(dash_profile_t);
 static bool read_range(xmlNode*, const char* property_name, uint64_t* start_out, uint64_t* end_out);
 static uint64_t convert_timescale(uint64_t time, uint64_t timescale);
+static uint64_t convert_timescale_to(uint64_t time, uint64_t from_timescale, uint64_t to_timescale);
 static uint64_t read_duration(xmlNode*, const char* property_name);
 static xmlNode* find_segment_base(xmlNode*);
 
@@ -541,17 +542,11 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
             segment->start = representation->presentation_time_offset;
             segment->duration = representation->adaptation_set->period->duration * MPEG_TS_TIMESCALE;
             segment->end = segment->start + segment->duration;
-            g_ptr_array_add(segment_bases, cur_node);
-            for (int i = segment_bases->len - 1; i >= 0; --i) {
-                xmlNode* base_node = g_ptr_array_index(segment_bases, i);
-                if (xmlHasProp(base_node, "indexRange")) {
-                    segment->index_range_start = representation->segment_index_range_start;
-                    segment->index_range_end = representation->segment_index_range_end;
-                    segment->index_file_name = segment->file_name;
-                    break;
-                }
+            if (representation->have_segment_index_range) {
+                segment->index_range_start = representation->segment_index_range_start;
+                segment->index_range_end = representation->segment_index_range_end;
+                segment->index_file_name = segment->file_name;
             }
-            g_ptr_array_remove_index(segment_bases, segment_bases->len - 1);
             g_ptr_array_add(representation->segments, segment);
         }  else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
             if (saw_segment_element) {
@@ -683,6 +678,7 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
         }
 
         if (!have_index_range && xmlHasProp(base, "indexRange")) {
+            representation->have_segment_index_range = true;
             if (!read_range(base, "indexRange", &representation->segment_index_range_start,
                 &representation->segment_index_range_end)) {
                 goto fail;
@@ -864,40 +860,36 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
     if(!read_range(node, "mediaRange", &segment->media_range_start, &segment->media_range_end)) {
         goto fail;
     }
-    bool have_index = false;
     if (xmlHasProp(node, "index")) {
         segment->index_file_name = read_filename(node, "index", base_url);
-        have_index = true;
     }
-    bool have_index_range = false;
-    for (size_t i = 0; (!have_index_range || !have_index) && i <= segment_bases->len; ++i) {
-        xmlNode* base;
-        if (i == 0) {
-            base = node;
-        } else {
-            base = g_ptr_array_index(segment_bases, i - 1);
+    bool have_range = xmlHasProp(node, "indexRange");
+    if (have_range) {
+        if (!read_range(node, "indexRange", &segment->index_range_start, &segment->index_range_end)) {
+            goto fail;
         }
-        if (xmlHasProp(base, "indexRange")) {
-            if (!have_index) {
-                segment->index_file_name = segment->file_name;
-                have_index = true;
-            }
-            if(!read_range(base, "indexRange", &segment->index_range_start, &segment->index_range_end)) {
-                goto fail;
-            }
-            have_index_range = true;
-        }
+    } else if (representation->have_segment_index_range) {
+        segment->index_range_start = representation->segment_index_range_start;
+        segment->index_range_end = representation->segment_index_range_end;
+        have_range = true;
+    }
+    if (have_range && !segment->index_file_name) {
+        segment->index_file_name = segment->file_name;
     }
     g_ptr_array_add(representation->segments, segment);
-    return true;
+cleanup:
+    return segment != NULL;
 fail:
     segment_free(segment);
-    return false;
+    segment = NULL;
+    goto cleanup;
 }
 
 static char* segment_template_replace(char* pattern, uint64_t segment_number, representation_t* representation,
         uint64_t start_time, const char* base_url)
 {
+    /* $Time$ is in timescale units */
+    start_time = convert_timescale_to(start_time, MPEG_TS_TIMESCALE, representation->timescale);
     char* with_base = NULL;
 
     size_t pattern_len = strlen(pattern);
@@ -1076,6 +1068,13 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
         }
         if (index_template) {
             segment->index_file_name = segment_template_replace(index_template, i, representation, start_time, base_url);
+        }
+        if (representation->have_segment_index_range) {
+            segment->index_range_start = representation->segment_index_range_start;
+            segment->index_range_end = representation->segment_index_range_end;
+            if (!segment->index_file_name) {
+                segment->index_file_name = segment->file_name;
+            }
         }
         g_ptr_array_add(representation->segments, segment);
 
@@ -1306,15 +1305,20 @@ fail:
     goto cleanup;
 }
 
-static uint64_t convert_timescale(uint64_t time, uint64_t timescale)
+uint64_t convert_timescale(uint64_t time, uint64_t timescale)
+{
+    return convert_timescale_to(time, timescale, MPEG_TS_TIMESCALE);
+}
+
+uint64_t convert_timescale_to(uint64_t time, uint64_t from_timescale, uint64_t to_timescale)
 {
     // This function is complicated because we want to avoid rounding if an exact result is possible
-    if (time == 0 || timescale == MPEG_TS_TIMESCALE) {
+    if (time == 0 || from_timescale == to_timescale) {
         return time;
-    } else if (timescale > MPEG_TS_TIMESCALE) {
-        return time / (timescale / MPEG_TS_TIMESCALE);
+    } else if (from_timescale > to_timescale) {
+        return time / (from_timescale / to_timescale);
     } else {
-        return (MPEG_TS_TIMESCALE / timescale) * time;
+        return (to_timescale / from_timescale) * time;
     }
 }
 
