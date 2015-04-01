@@ -107,6 +107,8 @@ void mpd_free(mpd_t* obj)
 
 void mpd_print(const mpd_t* mpd)
 {
+    g_return_if_fail(mpd);
+
     g_debug("MPD:");
     unsigned indent = 1;
 
@@ -157,6 +159,8 @@ void period_free(period_t* obj)
 
 void period_print(const period_t* period, unsigned indent)
 {
+    g_return_if_fail(period);
+
     ++indent;
     PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(period->bitstream_switching));
     PRINT_PROPERTY(indent, "duration: %"PRIu64, period->duration);
@@ -188,6 +192,8 @@ void adaptation_set_free(adaptation_set_t* obj)
 
 void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned indent)
 {
+    g_return_if_fail(adaptation_set);
+
     PRINT_PROPERTY(indent, "id: %"PRIu32, adaptation_set->id);
     PRINT_PROPERTY(indent, "mime_type: %s", adaptation_set->mime_type);
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(adaptation_set->profile));
@@ -231,6 +237,8 @@ void representation_free(representation_t* obj)
 
 void representation_print(const representation_t* representation, unsigned indent)
 {
+    g_return_if_fail(representation);
+
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(representation->profile));
     PRINT_PROPERTY(indent, "id: %s", representation->id);
     PRINT_PROPERTY(indent, "mime_type: %s", representation->mime_type);
@@ -274,6 +282,8 @@ void subrepresentation_free(subrepresentation_t* obj)
 
 void subrepresentation_print(const subrepresentation_t* obj, unsigned indent)
 {
+    g_return_if_fail(obj);
+
     PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(obj->profile));
     PRINT_PROPERTY(indent, "start_with_sap: %"PRIu8, obj->start_with_sap);
     if (obj->has_level) {
@@ -314,6 +324,8 @@ void segment_free(segment_t* obj)
 
 void segment_print(const segment_t* segment, unsigned indent)
 {
+    g_return_if_fail(segment);
+
     PRINT_PROPERTY(indent, "file_name: %s", PRINT_STR(segment->file_name));
     PRINT_RANGE(indent, segment, media_range);
     PRINT_PROPERTY(indent, "start: %"PRIu64, segment->start);
@@ -329,6 +341,10 @@ static mpd_t* mpd_read(xmlDoc* doc, char* base_url)
 
     mpd_t* mpd = mpd_new();
     xmlNode* root = xmlDocGetRootElement(doc);
+    if (!root) {
+        g_critical("No root element in MPD!");
+        goto fail;
+    }
     if (root->type != XML_ELEMENT_NODE) {
         g_critical("MPD error, toplevel element is not an element.");
         goto fail;
@@ -347,6 +363,7 @@ static mpd_t* mpd_read(xmlDoc* doc, char* base_url)
         mpd->presentation_type = MPD_PRESENTATION_DYNAMIC;
     }
     xmlFree(type);
+
     mpd->duration = read_duration(root, "mediaPresentationDuration");
 
     for (xmlNode* cur_node = root->children; cur_node; cur_node = cur_node->next) {
@@ -367,6 +384,8 @@ fail:
 
 mpd_t* mpd_read_file(char* file_name)
 {
+    g_return_val_if_fail(file_name, NULL);
+
     mpd_t* mpd = NULL;
     xmlDoc* doc = xmlReadFile(file_name, NULL, 0);
     if (doc == NULL) {
@@ -402,6 +421,10 @@ cleanup:
 
 bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(mpd, false);
+    g_return_val_if_fail(parent_base_url, false);
+
     bool return_code = true;
 
     period_t* period = period_new(mpd);
@@ -439,6 +462,11 @@ fail:
 
 bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url, GPtrArray* segment_bases)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(period, false);
+    g_return_val_if_fail(parent_base_url, false);
+    g_return_val_if_fail(segment_bases, false);
+
     bool return_code = true;
 
     adaptation_set_t* adaptation_set = adaptation_set_new(period);
@@ -491,6 +519,11 @@ fail:
 bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* parent_base_url,
         GPtrArray* segment_bases)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(adaptation_set, false);
+    g_return_val_if_fail(parent_base_url, false);
+    g_return_val_if_fail(segment_bases, false);
+
     char* start_with_sap = NULL;
     bool return_code = true;
     char* base_url =  NULL;
@@ -591,25 +624,11 @@ bool read_subrepresentation(xmlNode* node, representation_t* representation)
 
     char* content_component = xmlGetProp(node, "contentComponent");
     if (content_component) {
-        size_t start = 0;
-        while (content_component[start] == ' ' || content_component[start] == '\t') {
-            ++start;
+        char** cc_split = g_strsplit_set(content_component, " \t", -1);
+        for (size_t i = 0; cc_split[i]; ++i) {
+            g_ptr_array_add(subrepresentation->content_component, cc_split[i]);
         }
-        if (content_component[start]) {
-            for (size_t end = start + 1; ; ++end) {
-                if (content_component[end] == 0 || content_component[end] == ' ' || content_component[end] == '\t') {
-                    g_ptr_array_add(subrepresentation->content_component,
-                            g_strndup(content_component + start, end - start));
-                    if (content_component[end] == 0) {
-                        break;
-                    }
-                    while (content_component[end] == ' ' || content_component[end] == '\t') {
-                        ++end;
-                    }
-                    start = end;
-                }
-            }
-        }
+        g_strfreev(cc_split);
     }
 
     char* dependency_level = xmlGetProp(node, "dependencyLevel");
@@ -650,6 +669,11 @@ fail:
 
 bool read_segment_base(xmlNode* node, representation_t* representation, char* base_url, GPtrArray* segment_bases)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(representation, false);
+    g_return_val_if_fail(base_url, false);
+    g_return_val_if_fail(segment_bases, false);
+
     bool return_code = true;
     g_ptr_array_add(segment_bases, node);
 
@@ -740,6 +764,11 @@ fail:
 
 bool read_segment_list(xmlNode* node, representation_t* representation, char* base_url, GPtrArray* segment_bases)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(representation, false);
+    g_return_val_if_fail(base_url, false);
+    g_return_val_if_fail(segment_bases, false);
+
     bool return_code = read_segment_base(node, representation, base_url, segment_bases);
     if (!return_code) {
         return false;
@@ -774,6 +803,10 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (xmlStrEqual(cur_node->name, "SegmentURL")) {
             if (segment_timeline != NULL) {
+                if (timeline_i >= segment_timeline->len) {
+                    g_critical("<SegmentTimeline> does not have enough elements for the given segments!");
+                    goto fail;
+                }
                 segment_timeline_s_t* s = g_ptr_array_index(segment_timeline, timeline_i);
                 start = s->start;
                 duration = s->duration;
@@ -799,36 +832,35 @@ fail:
 
 GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation)
 {
+    g_return_val_if_fail(node, NULL);
+    g_return_val_if_fail(representation, NULL);
+
     GPtrArray* timeline = g_ptr_array_new_with_free_func(free);
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
             continue;
         }
         if (xmlStrEqual(cur_node->name, "S")) {
+            int error = 0;
             char* t = xmlGetProp(cur_node, "t");
-            char* d = xmlGetProp(cur_node, "d");
-            char* r = xmlGetProp(cur_node, "r");
-            int error;
-            bool failed = false;
             uint64_t start = str_to_uint64(t, 0, &error);
+            xmlFree(t);
             if (error) {
                 g_critical("<S>'s @t value (%s) is not a number.", t);
-                failed = true;
+                goto fail;
             }
+            char* d = xmlGetProp(cur_node, "d");
             uint64_t duration = str_to_uint64(d, 0, &error);
+            xmlFree(d);
             if (error) {
                 g_critical("<S>'s @d value (%s) is not a number.", d);
-                failed = true;
+                goto fail;
             }
+            char* r = xmlGetProp(cur_node, "r");
             uint64_t repeat = str_to_uint64(r, 0, &error);
+            xmlFree(r);
             if (error) {
                 g_critical("<S>'s @r value (%s) is not a number.", r);
-                failed = true;
-            }
-            xmlFree(t);
-            xmlFree(d);
-            xmlFree(r);
-            if (failed) {
                 goto fail;
             }
 
@@ -839,8 +871,6 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
                 start += duration;
                 g_ptr_array_add(timeline, s);
             }
-        } else {
-            g_debug("Ignoring element <%s> in <SegmentTimeline>.", cur_node->name);
         }
     }
     return timeline;
@@ -852,6 +882,11 @@ fail:
 bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t start, uint64_t duration,
         char* base_url, GPtrArray* segment_bases)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(representation, false);
+    g_return_val_if_fail(base_url, false);
+    g_return_val_if_fail(segment_bases, false);
+
     segment_t* segment = segment_new(representation);
 
     /* Don't use convert_timescale here since we already converted in read_segment_timeline and read_segment_list */
@@ -892,8 +927,13 @@ fail:
 static char* segment_template_replace(char* pattern, uint64_t segment_number, representation_t* representation,
         uint64_t start_time, const char* base_url)
 {
+    g_return_val_if_fail(pattern, NULL);
+    g_return_val_if_fail(representation, NULL);
+    g_return_val_if_fail(base_url, NULL);
+
     /* $Time$ is in timescale units */
     start_time = convert_timescale_to(start_time, MPEG_TS_TIMESCALE, representation->timescale);
+
     char* with_base = NULL;
 
     size_t pattern_len = strlen(pattern);
@@ -972,6 +1012,11 @@ fail:
 static bool read_segment_template(xmlNode* node, representation_t* representation, char* base_url,
         GPtrArray* segment_bases)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(representation, false);
+    g_return_val_if_fail(base_url, false);
+    g_return_val_if_fail(segment_bases, false);
+
     char* media_template = NULL;
     char* index_template = NULL;
     char* initialization_template = NULL;
@@ -1102,6 +1147,9 @@ fail:
 
 char* find_base_url(xmlNode* node, char* parent_url)
 {
+    g_return_val_if_fail(node, NULL);
+    g_return_val_if_fail(parent_url, NULL);
+
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type == XML_ELEMENT_NODE && xmlStrEqual(cur_node->name, "BaseURL")) {
             char* base_url;
@@ -1125,8 +1173,11 @@ char* find_base_url(xmlNode* node, char* parent_url)
 
 optional_uint32_t read_optional_uint32(xmlNode* node, const char* property_name)
 {
+    optional_uint32_t result = {0};
+    g_return_val_if_fail(node, result);
+    g_return_val_if_fail(property_name, result);
+
     char* value = xmlGetProp(node, property_name);
-    optional_uint32_t result;
     if (value == 0 || xmlStrEqual(value, "false")) {
         result.has_int = false;
         result.b = false;
@@ -1149,6 +1200,8 @@ optional_uint32_t read_optional_uint32(xmlNode* node, const char* property_name)
 
 static void print_optional_uint32(int indent, const char* name, optional_uint32_t value)
 {
+    g_return_if_fail(name);
+
     if (value.has_int) {
         PRINT_PROPERTY(indent, "%s: %"PRIu32, name, value.i);
     } else {
@@ -1158,6 +1211,9 @@ static void print_optional_uint32(int indent, const char* name, optional_uint32_
 
 uint32_t read_uint64(xmlNode* node, const char* property_name)
 {
+    g_return_val_if_fail(node, 0);
+    g_return_val_if_fail(property_name, 0);
+
     char* value = xmlGetProp(node, property_name);
     if (value == NULL) {
         return 0;
@@ -1173,6 +1229,9 @@ uint32_t read_uint64(xmlNode* node, const char* property_name)
 
 bool read_bool(xmlNode* node, const char* property_name)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(property_name, false);
+
     char* value = xmlGetProp(node, property_name);
     bool result = xmlStrEqual(value, "true");
     if (value && !result && !xmlStrEqual(value, "false")) {
@@ -1184,6 +1243,10 @@ bool read_bool(xmlNode* node, const char* property_name)
 
 char* read_filename(xmlNode* node, const char* property_name, const char* base_url)
 {
+    g_return_val_if_fail(node, NULL);
+    g_return_val_if_fail(property_name, NULL);
+    g_return_val_if_fail(base_url, NULL);
+
     char* property = xmlGetProp(node, property_name);
     char* filename;
     if (property == NULL) {
@@ -1202,6 +1265,8 @@ char* read_filename(xmlNode* node, const char* property_name, const char* base_u
 
 uint64_t str_to_uint64(const char* str, size_t length, int* error)
 {
+    g_return_val_if_fail(str, 0);
+
     uint64_t result = 0;
     for (size_t i = 0; (!length || i < length) && str[i]; ++i) {
         char c = str[i];
@@ -1222,6 +1287,8 @@ uint64_t str_to_uint64(const char* str, size_t length, int* error)
 
 static dash_profile_t read_profile(xmlNode* node, dash_profile_t parent_profile)
 {
+    g_return_val_if_fail(node, DASH_PROFILE_UNKNOWN);
+
     dash_profile_t profile = DASH_PROFILE_UNKNOWN;
     char* property = xmlGetProp(node, "profiles");
     if (property == NULL) {
@@ -1273,6 +1340,11 @@ static const char* dash_profile_to_string(dash_profile_t profile) {
 
 static bool read_range(xmlNode* node, const char* property_name, uint64_t* start_out, uint64_t* end_out)
 {
+    g_return_val_if_fail(node, false);
+    g_return_val_if_fail(property_name, false);
+    g_return_val_if_fail(start_out, false);
+    g_return_val_if_fail(end_out, false);
+
     bool ret = true;
     char* property = xmlGetProp(node, property_name);
     if (property == NULL) {
@@ -1286,19 +1358,13 @@ static bool read_range(xmlNode* node, const char* property_name, uint64_t* start
     }
 
     int error;
-    uint64_t start = str_to_uint64(split[0], 0, &error);
+    *start_out = str_to_uint64(split[0], 0, &error);
     if (error) {
         goto fail;
     }
-    uint64_t end = str_to_uint64(split[1], 0, &error);
+    *end_out = str_to_uint64(split[1], 0, &error);
     if (error) {
         goto fail;
-    }
-    if (start_out) {
-        *start_out = start;
-    }
-    if (end_out) {
-        *end_out = end;
     }
 cleanup:
     xmlFree(property);
@@ -1311,11 +1377,15 @@ fail:
 
 uint64_t convert_timescale(uint64_t time, uint64_t timescale)
 {
+    g_return_val_if_fail(timescale != 0, 0);
     return convert_timescale_to(time, timescale, MPEG_TS_TIMESCALE);
 }
 
 uint64_t convert_timescale_to(uint64_t time, uint64_t from_timescale, uint64_t to_timescale)
 {
+    g_return_val_if_fail(from_timescale != 0, 0);
+    g_return_val_if_fail(to_timescale != 0, 0);
+
     // This function is complicated because we want to avoid rounding if an exact result is possible
     if (time == 0 || from_timescale == to_timescale) {
         return time;
@@ -1434,6 +1504,8 @@ fail:
 
 xmlNode* find_segment_base(xmlNode* node)
 {
+    g_return_val_if_fail(node, NULL);
+
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
             continue;
