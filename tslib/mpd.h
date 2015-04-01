@@ -116,6 +116,7 @@ typedef struct _representation_t {
     bool have_segment_index_range;
     uint64_t segment_index_range_start;
     uint64_t segment_index_range_end;
+    uint64_t start_number;
     GPtrArray* subrepresentations;
     GPtrArray* segments;
 } representation_t;

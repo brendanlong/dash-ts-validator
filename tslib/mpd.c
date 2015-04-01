@@ -212,6 +212,7 @@ representation_t* representation_new(adaptation_set_t* adaptation_set)
 {
     representation_t* obj = calloc(1, sizeof(*obj));
     obj->timescale = 1;
+    obj->start_number = 1;
     obj->adaptation_set = adaptation_set;
     obj->subrepresentations = g_ptr_array_new_with_free_func((GDestroyNotify)subrepresentation_free);
     obj->segments = g_ptr_array_new_with_free_func((GDestroyNotify)segment_free);
@@ -703,6 +704,7 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
     bool have_representation_index = false;
     bool have_initialization = false;
     bool have_bitstream_switching = false;
+    bool have_start_number = false;
     for (int i = segment_bases->len - 1; i >= 0; --i) {
         xmlNode* base = g_ptr_array_index(segment_bases, i);
         if (!have_presentation_time_offset && xmlHasProp(base, "presentationTimeOffset")) {
@@ -718,6 +720,11 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
                 goto fail;
             }
             have_index_range = true;
+        }
+
+        if (!have_start_number && xmlHasProp(base, "startNumber")) {
+            representation->start_number = read_uint64(base, "startNumber");
+            have_start_number = true;
         }
 
         for (xmlNode* cur_node = base->children; cur_node; cur_node = cur_node->next) {
@@ -1100,21 +1107,16 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
         }
     }
 
-    uint64_t start_number = 1;
+    uint64_t start_number = representation->start_number;
     size_t timeline_i = 0;
     uint64_t start_time = representation->presentation_time_offset;
     uint64_t period_end = (representation->adaptation_set->period->duration * MPEG_TS_TIMESCALE) \
             + start_time;
-    for (size_t i = start_number;
+    for (size_t i = 0;
             start_time < period_end && (segment_timeline == NULL || timeline_i < segment_timeline->len);
             ++i, ++timeline_i) {
-        char* media = segment_template_replace(media_template, i, representation, start_time, base_url);
-        if (!media) {
-            goto fail;
-        }
 
         segment_t* segment = segment_new(representation);
-        segment->file_name = media;
         if (segment_timeline) {
             segment_timeline_s_t* s = g_ptr_array_index(segment_timeline, timeline_i);
             segment->start = s->start;
@@ -1125,8 +1127,14 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
             segment->duration = duration;
             segment->end = start_time + duration;
         }
+        segment->file_name = segment_template_replace(media_template, i + start_number, representation, segment->start,
+                base_url);
+        if (!segment->file_name) {
+            goto fail;
+        }
         if (index_template) {
-            segment->index_file_name = segment_template_replace(index_template, i, representation, start_time, base_url);
+            segment->index_file_name = segment_template_replace(index_template, i + start_number, representation,
+                    segment->start, base_url);
         }
         if (representation->have_segment_index_range) {
             segment->index_range_start = representation->segment_index_range_start;
