@@ -116,6 +116,7 @@ int main(int argc, char* argv[])
             bool adaptation_set_valid = true;
 
             g_print("VALIDATING ADAPTATION SET: %"PRIu32"\n", adaptation_set->id);
+            GPtrArray* validated_representations = g_ptr_array_new();
             for (size_t r_i = 0; r_i < adaptation_set->representations->len; ++r_i) {
                 representation_t* representation = g_ptr_array_index(adaptation_set->representations, r_i);
                 if (representation->mime_type && strcmp(representation->mime_type, "video/mp2t")
@@ -125,6 +126,7 @@ int main(int argc, char* argv[])
                             representation->id, representation->mime_type);
                     continue;
                 }
+                g_ptr_array_add(validated_representations, representation);
 
                 bool representation_valid = true;
                 g_print("\nVALIDATING REPRESENTATION: %s\n", representation->id);
@@ -338,8 +340,8 @@ int main(int argc, char* argv[])
             }
 
             if (adaptation_set->bitstream_switching) {
-                for (gsize x = 0; x < adaptation_set->representations->len; ++x) {
-                    representation_t* representation_x = g_ptr_array_index(adaptation_set->representations, x);
+                for (gsize x = 0; x < validated_representations->len; ++x) {
+                    representation_t* representation_x = g_ptr_array_index(validated_representations, x);
                     const char* file_names[4];
                     uint64_t byte_starts[4];
                     uint64_t byte_ends[4];
@@ -355,11 +357,11 @@ int main(int argc, char* argv[])
                         file_names[f_i] = segment_x->file_name;
                         byte_starts[f_i] = segment_x->media_range_start;
                         byte_ends[f_i] =  segment_x->media_range_end;
-                        for (gsize y = 0; y < adaptation_set->representations->len; ++y) {
+                        for (gsize y = 0; y < validated_representations->len; ++y) {
                             if (x == y) {
                                 continue;
                             }
-                            representation_t* representation_y = g_ptr_array_index(adaptation_set->representations, y);
+                            representation_t* representation_y = g_ptr_array_index(validated_representations, y);
                             if (representation_y->segments->len != representation_x->segments->len) {
                                 g_critical("Representations %s and %s are in the same adaptation set and have "
                                         "bitstream switching set, but don't have the same number of segments.",
@@ -399,23 +401,25 @@ int main(int argc, char* argv[])
                 }
             }
 
-
             // segment cross checking: check that the gap between all adjacent segments is acceptably small
-            adaptation_set_valid &= check_representation_gaps(adaptation_set->representations,
-                    AUDIO_CONTENT_COMPONENT, max_gap_pts_ticks[AUDIO_CONTENT_COMPONENT]);
-            adaptation_set_valid &= check_representation_gaps(adaptation_set->representations,
-                    VIDEO_CONTENT_COMPONENT, max_gap_pts_ticks[VIDEO_CONTENT_COMPONENT]);
+            if (validated_representations->len) {
+                adaptation_set_valid &= check_representation_gaps(validated_representations,
+                        AUDIO_CONTENT_COMPONENT, max_gap_pts_ticks[AUDIO_CONTENT_COMPONENT]);
+                adaptation_set_valid &= check_representation_gaps(validated_representations,
+                        VIDEO_CONTENT_COMPONENT, max_gap_pts_ticks[VIDEO_CONTENT_COMPONENT]);
+            }
 
             /* For the simple profile, the PSI must be the same for all Representations in an
              * AdaptationSet */
             if(adaptation_set->profile >= DASH_PROFILE_MPEG2TS_SIMPLE
-                    && !check_psi_identical(adaptation_set->representations)) {
+                    && !check_psi_identical(validated_representations)) {
                 g_critical("DASH Conformance: PSI info not identical for all segments in AdaptationSet with "
                         "profile=\"urn:mpeg:dash:profile:mp2t-simple:2011\". 8.7.3 Segment format constraints: PSI "
                         "information, including versions, shall be identical within all Representations contained in an "
                         "AdaptationSet;\n");
-                adaptation_set_valid &= check_psi_identical(adaptation_set->representations);
+                adaptation_set_valid = false;
             }
+            g_ptr_array_free(validated_representations, true);
 
             g_print("ADAPTATION SET TEST RESULT: %"PRIu32": %s\n", adaptation_set->id,
                     adaptation_set_valid ? "SUCCESS" : "FAIL");
@@ -433,9 +437,11 @@ cleanup:
 
 int check_representation_gaps(GPtrArray* representations, content_component_t content_component, int64_t max_delta)
 {
+    g_return_val_if_fail(representations, 0);
+
     if (representations->len == 0) {
         g_warning("Can't print gap matrix for empty set of representations.");
-        return 0;
+        return 1;
     }
     int status = 1;
     representation_t* first_representation = g_ptr_array_index(representations, 0);
@@ -447,6 +453,10 @@ int check_representation_gaps(GPtrArray* representations, content_component_t co
             representation_t* representation1 = g_ptr_array_index(representations, r_i);
             segment_t* segment1 = g_ptr_array_index(representation1->segments, s_i - 1);
             dash_validator_t* dv1 = segment1->arg;
+            if (!dv1) {
+                g_critical("Attempting to check representation gaps on representations that haven't be validated!");
+                return 0;
+            }
             if (dv1->is_encrypted) {
                 continue;
             }
@@ -455,6 +465,10 @@ int check_representation_gaps(GPtrArray* representations, content_component_t co
                 representation_t* representation2 = g_ptr_array_index(representations, r_i2);
                 segment_t* segment2 = g_ptr_array_index(representation2->segments, s_i);
                 dash_validator_t* dv2 = segment1->arg;
+                if (!dv2) {
+                    g_critical("Attempting to check representation gaps on representations that haven't be validated!");
+                    return 0;
+                }
                 if (dv2->is_encrypted) {
                     continue;
                 }
