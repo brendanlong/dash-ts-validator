@@ -60,16 +60,15 @@ typedef struct {
 
 
 static bool read_period(xmlNode*, mpd_t*, char* base_url);
-static bool read_adaptation_set(xmlNode*, period_t*, char* base_url, xmlNode* segment_base,
-        xmlNode* segment_list, xmlNode* segment_template);
-static bool read_representation(xmlNode*, adaptation_set_t*, char* base_url, xmlNode* segment_base,
-        xmlNode* segment_list, xmlNode* segment_template);
+static bool read_adaptation_set(xmlNode*, period_t*, char* base_url, GPtrArray* segment_bases);
+static bool read_representation(xmlNode*, adaptation_set_t*, char* base_url, GPtrArray* segment_bases);
 static bool read_subrepresentation(xmlNode*, representation_t*);
-static bool read_segment_base(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_base);
-static bool read_segment_list(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_list);
+static bool read_segment_base(xmlNode*, representation_t*, char* base_url, GPtrArray* segment_bases);
+static bool read_segment_list(xmlNode*, representation_t*, char* base_url, GPtrArray* segment_bases);
 static GPtrArray* read_segment_timeline(xmlNode*, representation_t*);
-static bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t duration, char* base_url);
-static bool read_segment_template(xmlNode*, representation_t*, char* base_url, xmlNode* parent_segment_template);
+static bool read_segment_url(xmlNode*, representation_t*, uint64_t start, uint64_t duration, char* base_url,
+        GPtrArray* segment_bases);
+static bool read_segment_template(xmlNode*, representation_t*, char* base_url, GPtrArray* segment_bases);
 static char* find_base_url(xmlNode*, char* parent_base_url);
 static optional_uint32_t read_optional_uint32(xmlNode*, const char* property_name);
 static void print_optional_uint32(int indent, const char* name, optional_uint32_t value);
@@ -82,6 +81,7 @@ static const char* dash_profile_to_string(dash_profile_t);
 static bool read_range(xmlNode*, const char* property_name, uint64_t* start_out, uint64_t* end_out);
 static uint64_t convert_timescale(uint64_t time, uint64_t timescale);
 static uint64_t read_duration(xmlNode*, const char* property_name);
+static xmlNode* find_segment_base(xmlNode*);
 
 const char INDENT_BUFFER[] = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
 
@@ -204,6 +204,7 @@ void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned inden
 representation_t* representation_new(adaptation_set_t* adaptation_set)
 {
     representation_t* obj = calloc(1, sizeof(*obj));
+    obj->timescale = 1;
     obj->adaptation_set = adaptation_set;
     obj->subrepresentations = g_ptr_array_new_with_free_func((GDestroyNotify)subrepresentation_free);
     obj->segments = g_ptr_array_new_with_free_func((GDestroyNotify)segment_free);
@@ -415,31 +416,22 @@ bool read_period(xmlNode* node, mpd_t* mpd, char* parent_base_url)
         period->duration = mpd->duration;
     }
 
-    xmlNode* segment_base = NULL;
-    xmlNode* segment_list = NULL;
-    xmlNode* segment_template = NULL;
-    for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
-        if (cur_node->type != XML_ELEMENT_NODE) {
-            continue;
-        }
-        if (xmlStrEqual(cur_node->name, "SegmentBase")) {
-            segment_base = cur_node;
-        } else if (xmlStrEqual(cur_node->name, "SegmentList")) {
-            segment_base = cur_node;
-        } else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
-            segment_base = cur_node;
-        }
+    GPtrArray* segment_bases = g_ptr_array_new();
+    xmlNode* segment_base = find_segment_base(node);
+    if (segment_base) {
+        g_ptr_array_add(segment_bases, segment_base);
     }
 
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (xmlStrEqual(cur_node->name, "AdaptationSet")) {
-            if(!read_adaptation_set(cur_node, period, base_url, segment_base, segment_list, segment_template)) {
+            if(!read_adaptation_set(cur_node, period, base_url, segment_bases)) {
                 goto fail;
             }
         }
     }
 
 cleanup:
+    g_ptr_array_free(segment_bases, true);
     g_free(base_url);
     return return_code;
 fail:
@@ -447,8 +439,7 @@ fail:
     goto cleanup;
 }
 
-bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url,
-        xmlNode* parent_segment_base, xmlNode* parent_segment_list, xmlNode* parent_segment_template)
+bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url, GPtrArray* segment_bases)
 {
     bool return_code = true;
 
@@ -464,14 +455,17 @@ bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url,
 
     char* base_url = find_base_url(node, parent_base_url);
 
-    /* read segmentAlignment, subsegmentAlignment, subsegmentStartsWithSAP attributes? */
+    xmlNode* segment_base = find_segment_base(node);
+    if (segment_base) {
+        g_ptr_array_add(segment_bases, segment_base);
+    }
+
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) {
             continue;
         }
         if (xmlStrEqual(cur_node->name, "Representation")) {
-            if(!read_representation(cur_node, adaptation_set, base_url, parent_segment_base,
-                    parent_segment_list, parent_segment_template)) {
+            if(!read_representation(cur_node, adaptation_set, base_url, segment_bases)) {
                 goto fail;
             }
         } else if (xmlStrEqual(cur_node->name, "ContentComponent")) {
@@ -486,6 +480,9 @@ bool read_adaptation_set(xmlNode* node, period_t* period, char* parent_base_url,
     }
 
 cleanup:
+    if (segment_base) {
+        g_ptr_array_remove_index(segment_bases, segment_bases->len - 1);
+    }
     g_free(base_url);
     return return_code;
 fail:
@@ -494,7 +491,7 @@ fail:
 }
 
 bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* parent_base_url,
-        xmlNode* parent_segment_base, xmlNode* parent_segment_list, xmlNode* parent_segment_template)
+        GPtrArray* segment_bases)
 {
     char* start_with_sap = NULL;
     bool return_code = true;
@@ -520,13 +517,26 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
 
     base_url = find_base_url(node, parent_base_url);
 
+    bool saw_segment_element = false;
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (xmlStrEqual(cur_node->name, "SegmentList")) {
-            if(!read_segment_list(cur_node, representation, base_url, parent_segment_list)) {
+            if (saw_segment_element) {
+                g_critical("Saw multiple segment elements (SegmentList, SegmentBase, SegmentTemplate) in "
+                        "Representation %s.", representation->id);
+                goto fail;
+            }
+            saw_segment_element = true;
+            if(!read_segment_list(cur_node, representation, base_url, segment_bases)) {
                 goto fail;
             }
         } else if (xmlStrEqual(cur_node->name, "SegmentBase")) {
-            if (!read_segment_base(cur_node, representation, base_url, parent_segment_base)) {
+            if (saw_segment_element) {
+                g_critical("Saw multiple segment elements (SegmentList, SegmentBase, SegmentTemplate) in "
+                        "Representation %s.", representation->id);
+                goto fail;
+            }
+            saw_segment_element = true;
+            if (!read_segment_base(cur_node, representation, base_url, segment_bases)) {
                 goto fail;
             }
             segment_t* segment = segment_new(representation);
@@ -534,15 +544,26 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
             segment->start = representation->presentation_time_offset;
             segment->duration = representation->adaptation_set->period->duration * MPEG_TS_TIMESCALE;
             segment->end = segment->start + segment->duration;
-            if (xmlHasProp(cur_node, "indexRange")) {
-                if (!read_range(cur_node, "indexRange", &segment->index_range_start, &segment->index_range_end)) {
-                    goto fail;
+            g_ptr_array_add(segment_bases, cur_node);
+            for (int i = segment_bases->len - 1; i >= 0; --i) {
+                xmlNode* base_node = g_ptr_array_index(segment_bases, i);
+                if (xmlHasProp(base_node, "indexRange")) {
+                    segment->index_range_start = representation->segment_index_range_start;
+                    segment->index_range_end = representation->segment_index_range_end;
+                    segment->index_file_name = segment->file_name;
+                    break;
                 }
-                segment->index_file_name = segment->file_name;
             }
+            g_ptr_array_remove_index(segment_bases, segment_bases->len - 1);
             g_ptr_array_add(representation->segments, segment);
         }  else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
-            if (!read_segment_template(cur_node, representation, base_url, parent_segment_template)) {
+            if (saw_segment_element) {
+                g_critical("Saw multiple segment elements (SegmentList, SegmentBase, SegmentTemplate) in "
+                        "Representation %s.", representation->id);
+                goto fail;
+            }
+            saw_segment_element = true;
+            if (!read_segment_template(cur_node, representation, base_url, segment_bases)) {
                 goto fail;
             }
         } else if (xmlStrEqual(cur_node->name, "SubRepresentation")) {
@@ -638,105 +659,117 @@ fail:
     goto cleanup;
 }
 
-bool read_segment_base(xmlNode* node, representation_t* representation, char* base_url, xmlNode* parent_segment_base)
+bool read_segment_base(xmlNode* node, representation_t* representation, char* base_url, GPtrArray* segment_bases)
 {
     bool return_code = true;
+    g_ptr_array_add(segment_bases, node);
 
-    if (xmlHasProp(node, "timescale")) {
-        representation->timescale = read_uint64(node, "timescale");
-    } else if (xmlHasProp(parent_segment_base, "timescale")) {
-        representation->timescale = read_uint64(parent_segment_base, "timescale");
-    } else {
-        representation->timescale = 1;
+    /* Need to read timescale before presentationTimeOffset */
+    for (int i = segment_bases->len - 1; i >= 0; --i) {
+        if (xmlHasProp(g_ptr_array_index(segment_bases, i), "timescale")) {
+            representation->timescale = read_uint64(node, "timescale");
+            break;
+        }
     }
 
-    representation->presentation_time_offset = convert_timescale(read_uint64(node, "presentationTimeOffset"),
-                                                                 representation->timescale);
-
-    for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
-        if (cur_node->type != XML_ELEMENT_NODE) {
-            continue;
+    bool have_index_range = false;
+    bool have_presentation_time_offset = false;
+    bool have_representation_index = false;
+    bool have_initialization = false;
+    bool have_bitstream_switching = false;
+    for (int i = segment_bases->len - 1; i >= 0; --i) {
+        xmlNode* base = g_ptr_array_index(segment_bases, i);
+        if (!have_presentation_time_offset && xmlHasProp(base, "presentationTimeOffset")) {
+            representation->presentation_time_offset = convert_timescale(
+                read_uint64(base, "presentationTimeOffset"), representation->timescale);
+            have_presentation_time_offset = true;
         }
-        if (xmlStrEqual(cur_node->name, "RepresentationIndex")) {
-            if (representation->index_file_name != NULL) {
-                g_critical("Ignoring duplicate index file in <%s>.", node->name);
+
+        if (!have_index_range && xmlHasProp(base, "indexRange")) {
+            if (!read_range(base, "indexRange", &representation->segment_index_range_start,
+                &representation->segment_index_range_end)) {
                 goto fail;
             }
-            representation->index_file_name = read_filename(cur_node, "sourceURL", base_url);
-            if(!read_range(cur_node, "range", &representation->index_range_start,
-                    &representation->index_range_end)) {
-                goto fail;
+            have_index_range = true;
+        }
+
+        for (xmlNode* cur_node = base->children; cur_node; cur_node = cur_node->next) {
+            if (cur_node->type != XML_ELEMENT_NODE) {
+                continue;
             }
-        } else if (xmlStrEqual(cur_node->name, "Initialization")) {
-            if (representation->initialization_file_name != NULL) {
-                g_critical("Ignoring duplicate initialization segment in <%s>.", node->name);
-                goto fail;
-            }
-            representation->initialization_file_name = read_filename(cur_node, "sourceURL", base_url);
-            if(!read_range(cur_node, "range", &representation->initialization_range_start,
-                    &representation->initialization_range_end)) {
-                goto fail;
-            }
-        } else if (xmlStrEqual(cur_node->name, "BitstreamSwitching")) {
-            if (representation->bitstream_switching_file_name != NULL) {
-                g_critical("Duplicate <BitstreamSwitching> segment in <%s>.", node->name);
-                goto fail;
-            }
-            representation->bitstream_switching_file_name = read_filename(cur_node, "sourceURL", base_url);
-            if(!read_range(cur_node, "range", &representation->bitstream_switching_range_start,
-                    &representation->bitstream_switching_range_end)) {
-                goto fail;
+            if (!have_representation_index && xmlStrEqual(cur_node->name, "RepresentationIndex")) {
+                if (representation->index_file_name != NULL) {
+                    g_critical("Ignoring duplicate index file in <%s>.", node->name);
+                    goto fail;
+                }
+                representation->index_file_name = read_filename(cur_node, "sourceURL", base_url);
+                if(!read_range(cur_node, "range", &representation->index_range_start,
+                        &representation->index_range_end)) {
+                    goto fail;
+                }
+                have_representation_index = true;
+            } else if (!have_initialization && xmlStrEqual(cur_node->name, "Initialization")) {
+                if (representation->initialization_file_name != NULL) {
+                    g_critical("Ignoring duplicate initialization segment in <%s>.", node->name);
+                    goto fail;
+                }
+                representation->initialization_file_name = read_filename(cur_node, "sourceURL", base_url);
+                if(!read_range(cur_node, "range", &representation->initialization_range_start,
+                        &representation->initialization_range_end)) {
+                    goto fail;
+                }
+                have_initialization = true;
+            } else if (!have_bitstream_switching && xmlStrEqual(cur_node->name, "BitstreamSwitching")) {
+                if (representation->bitstream_switching_file_name != NULL) {
+                    g_critical("Duplicate <BitstreamSwitching> segment in <%s>.", node->name);
+                    goto fail;
+                }
+                representation->bitstream_switching_file_name = read_filename(cur_node, "sourceURL", base_url);
+                if(!read_range(cur_node, "range", &representation->bitstream_switching_range_start,
+                        &representation->bitstream_switching_range_end)) {
+                    goto fail;
+                }
+                have_bitstream_switching = true;
             }
         }
     }
 cleanup:
+    g_ptr_array_remove_index(segment_bases, segment_bases->len - 1);
     return return_code;
 fail:
     return_code = false;
     goto cleanup;
 }
 
-bool read_segment_list(xmlNode* node, representation_t* representation, char* base_url, xmlNode* parent_segment_list)
+bool read_segment_list(xmlNode* node, representation_t* representation, char* base_url, GPtrArray* segment_bases)
 {
-    bool return_code = read_segment_base(node, representation, base_url, NULL);
-    char* duration_str = NULL;
+    bool return_code = read_segment_base(node, representation, base_url, segment_bases);
+    if (!return_code) {
+        return false;
+    }
+    g_ptr_array_add(segment_bases, node);
 
-    /* Get SegmentTimeline first, since we need it to create segments */
     GPtrArray* segment_timeline = NULL;
-    for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
-        if (xmlStrEqual(cur_node->name, "SegmentTimeline")) {
-            if (segment_timeline != NULL) {
-                g_critical("Saw multiple <SegmentTimeline> children for one <SegmentList>.");
+    uint64_t duration = 0;
+    for (int i = segment_bases->len - 1; i >= 0; --i) {
+        xmlNode* base_node = g_ptr_array_index(segment_bases, i);
+        if (!duration && !segment_timeline && xmlHasProp(base_node, "duration")) {
+            duration = read_uint64(base_node, "duration");
+            if (duration == 0) {
+                g_critical("<%s> has invalid duration.", base_node->name);
                 goto fail;
             }
-            segment_timeline = read_segment_timeline(cur_node, representation);
+            duration = convert_timescale(duration, representation->timescale);
         }
-    }
 
-    duration_str = xmlGetProp(node, "duration");
-    if (duration_str == NULL && segment_timeline == NULL) {
-        duration_str = xmlGetProp(parent_segment_list, "duration");
-    }
-    uint64_t duration = 0;
-    if (duration_str) {
-        if (segment_timeline != NULL) {
-            g_critical("<SegmentList> cannot have both duration attribute and <SegmentTimeline>. Pick one or the other.");
-            goto fail;
+        for (xmlNode* cur_node = base_node->children; cur_node; cur_node = cur_node->next) {
+            if (!duration && !segment_timeline && xmlStrEqual(cur_node->name, "SegmentTimeline")) {
+                segment_timeline = read_segment_timeline(cur_node, representation);
+                if (!segment_timeline) {
+                    goto fail;
+                }
+            }
         }
-        int error;
-        duration = str_to_uint64(duration_str, 0, &error);
-        if (error) {
-            g_critical("<SegmentList> duration \"%s\" is not a 64-bit number.", duration_str);
-            goto fail;
-        }
-    } else if (segment_timeline == NULL) {
-        g_critical("No duration or <SegmentTimeline> found for <SegmentList>.");
-        goto fail;
-    }
-    duration = convert_timescale(duration, representation->timescale);
-
-    if (!xmlHasProp(node, "presentationTimeOffset")) {
-        representation->presentation_time_offset = read_uint64(parent_segment_list, "presentationTimeOffset");
     }
 
     size_t timeline_i = 0;
@@ -748,7 +781,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
                 start = s->start;
                 duration = s->duration;
             }
-            if(!read_segment_url(cur_node, representation, start, duration, base_url)) {
+            if(!read_segment_url(cur_node, representation, start, duration, base_url, segment_bases)) {
                 goto fail;
             }
             ++timeline_i;
@@ -757,7 +790,7 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
     }
 
 cleanup:
-    xmlFree(duration_str);
+    g_ptr_array_remove_index(segment_bases, segment_bases->len - 1);
     if (segment_timeline != NULL) {
         g_ptr_array_free(segment_timeline, true);
     }
@@ -819,7 +852,8 @@ fail:
     return NULL;
 }
 
-bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t start, uint64_t duration, char* base_url)
+bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t start, uint64_t duration,
+        char* base_url, GPtrArray* segment_bases)
 {
     segment_t* segment = segment_new(representation);
 
@@ -833,13 +867,29 @@ bool read_segment_url(xmlNode* node, representation_t* representation, uint64_t 
     if(!read_range(node, "mediaRange", &segment->media_range_start, &segment->media_range_end)) {
         goto fail;
     }
+    bool have_index = false;
     if (xmlHasProp(node, "index")) {
         segment->index_file_name = read_filename(node, "index", base_url);
-    } else if (xmlHasProp(node, "indexRange")) {
-        segment->index_file_name = segment->file_name;
+        have_index = true;
     }
-    if(!read_range(node, "indexRange", &segment->index_range_start, &segment->index_range_end)) {
-        goto fail;
+    bool have_index_range = false;
+    for (size_t i = 0; (!have_index_range || !have_index) && i <= segment_bases->len; ++i) {
+        xmlNode* base;
+        if (i == 0) {
+            base = node;
+        } else {
+            base = g_ptr_array_index(segment_bases, i - 1);
+        }
+        if (xmlHasProp(base, "indexRange")) {
+            if (!have_index) {
+                segment->index_file_name = segment->file_name;
+                have_index = true;
+            }
+            if(!read_range(base, "indexRange", &segment->index_range_start, &segment->index_range_end)) {
+                goto fail;
+            }
+            have_index_range = true;
+        }
     }
     g_ptr_array_add(representation->segments, segment);
     return true;
@@ -924,46 +974,61 @@ fail:
     return with_base;
 }
 
-static bool read_segment_template(xmlNode* node, representation_t* representation, char* base_url, xmlNode* parent)
+static bool read_segment_template(xmlNode* node, representation_t* representation, char* base_url,
+        GPtrArray* segment_bases)
 {
     char* media_template = NULL;
     char* index_template = NULL;
     char* initialization_template = NULL;
     char* bitstream_switching_template = NULL;
-    char* duration_str = NULL;
-
-    bool return_code = read_segment_base(node, representation, base_url, NULL);
-
-    /* Get SegmentTimeline first, since we need it to create segments */
     GPtrArray* segment_timeline = NULL;
-    for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
-        if (xmlStrEqual(cur_node->name, "SegmentTimeline")) {
-            if (segment_timeline != NULL) {
-                g_critical("Saw multiple <SegmentTimeline> children for one <SegmentTemplate>.");
+
+    bool return_code = read_segment_base(node, representation, base_url, segment_bases);
+    if (!return_code) {
+        return false;
+    }
+
+    g_ptr_array_add(segment_bases, node);
+
+    uint64_t duration = 0;
+    for (int i = segment_bases->len - 1; i >= 0; --i) {
+        xmlNode* base_node = g_ptr_array_index(segment_bases, i);
+        if (!media_template) {
+            media_template = xmlGetProp(base_node, "media");
+        }
+        if (!index_template) {
+            index_template = xmlGetProp(base_node, "index");
+        }
+        if (!initialization_template) {
+            initialization_template = xmlGetProp(base_node, "initialization");
+        }
+        if (!bitstream_switching_template) {
+            bitstream_switching_template = xmlGetProp(base_node, "bitstreamSwitching");
+        }
+        if (!duration && !segment_timeline && xmlHasProp(base_node, "duration")) {
+            duration = read_uint64(base_node, "duration");
+            if (duration == 0) {
+                g_critical("<%s> has invalid duration.", base_node->name);
                 goto fail;
             }
-            segment_timeline = read_segment_timeline(cur_node, representation);
+            duration = convert_timescale(duration, representation->timescale);
+        }
+
+        for (xmlNode* cur_node = base_node->children; cur_node; cur_node = cur_node->next) {
+            if (!duration && !segment_timeline && xmlStrEqual(cur_node->name, "SegmentTimeline")) {
+                segment_timeline = read_segment_timeline(cur_node, representation);
+                if (!segment_timeline) {
+                    goto fail;
+                }
+            }
         }
     }
 
-    media_template = xmlGetProp(node, "media");
-    if (!media_template) {
-        media_template = xmlGetProp(parent, "media");
-    }
     if (!media_template) {
         g_critical("<SegmentTemplate> has no @media attribute.");
         goto fail;
     }
 
-    index_template = xmlGetProp(node, "index");
-    if (!index_template) {
-        index_template = xmlGetProp(parent, "index");
-    }
-
-    initialization_template = xmlGetProp(node, "initialization");
-    if (!initialization_template) {
-        initialization_template = xmlGetProp(parent, "initialization");
-    }
     if (initialization_template) {
         representation->initialization_file_name = segment_template_replace(initialization_template, 0, representation,
                 0, base_url);
@@ -972,10 +1037,6 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
         }
     }
 
-    bitstream_switching_template = xmlGetProp(node, "bitstreamSwitching");
-    if (bitstream_switching_template == NULL && !representation->bitstream_switching_file_name) {
-        bitstream_switching_template = xmlGetProp(parent, "bitstreamSwitching");
-    }
     if (bitstream_switching_template) {
         if (representation->bitstream_switching_file_name) {
             g_critical("<SegmentTemplate> has both <BitstreamSwitching> and @bitstreamSwitching. Pick one or the "
@@ -988,26 +1049,6 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
             goto fail;
         }
     }
-
-    uint64_t duration = 0;
-    duration_str = xmlGetProp(node, "duration");
-    if (duration_str == NULL && !segment_timeline) {
-        duration_str = xmlGetProp(parent, "duration");
-    }
-    if (duration_str) {
-        if (segment_timeline) {
-            g_critical("SegmentTemplate> has both @duration and <SegmentTimeline>, but you can only use one or the "
-                    "other.");
-            goto fail;
-        }
-        int error;
-        duration = str_to_uint64(duration_str, 0, &error);
-        if (error) {
-            g_critical("<SegmentTemplate> duration \"%s\" is not a 64-bit number.", duration_str);
-            goto fail;
-        }
-    }
-    duration = convert_timescale(duration, representation->timescale);
 
     uint64_t start_number = 1;
     size_t timeline_i = 0;
@@ -1053,12 +1094,12 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
     }
 
 cleanup:
+    g_ptr_array_remove_index(segment_bases, segment_bases->len - 1);
     g_ptr_array_free(segment_timeline, true);
     xmlFree(media_template);
     xmlFree(index_template);
     xmlFree(initialization_template);
     xmlFree(bitstream_switching_template);
-    xmlFree(duration_str);
     return return_code;
 fail:
     return_code = false;
@@ -1388,4 +1429,18 @@ cleanup:
 fail:
     result = 0;
     goto cleanup;
+}
+
+xmlNode* find_segment_base(xmlNode* node)
+{
+    for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
+        if (cur_node->type != XML_ELEMENT_NODE) {
+            continue;
+        }
+        if (xmlStrEqual(cur_node->name, "SegmentBase") || xmlStrEqual(cur_node->name, "SegmentList")
+                || xmlStrEqual(cur_node->name, "SegmentTemplate")) {
+            return cur_node;
+        }
+    }
+    return NULL;
 }

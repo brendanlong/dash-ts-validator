@@ -113,6 +113,8 @@ typedef struct _representation_t {
     uint64_t presentation_time_offset;
     uint32_t bandwidth;
     uint32_t timescale;
+    uint64_t segment_index_range_start;
+    uint64_t segment_index_range_end;
     GPtrArray* subrepresentations;
     GPtrArray* segments;
 } representation_t;
