@@ -49,15 +49,13 @@ void descriptor_free(descriptor_t* desc)
     if (!desc) {
         return;
     }
-    free(desc->data);
     switch (desc->tag) {
     case CA_DESCRIPTOR:
         ca_descriptor_free(desc);
         break;
-    default:
-        free(desc);
-        break;
     }
+    free(desc->data);
+    free(desc);
 }
 
 descriptor_t* descriptor_read(uint8_t* data, size_t data_len)
@@ -76,6 +74,7 @@ descriptor_t* descriptor_read(uint8_t* data, size_t data_len)
 
     if (b->error) {
         g_critical("Descriptor length is invalid.");
+        desc->tag = 0;
         goto fail;
     }
 
@@ -133,7 +132,6 @@ void ca_descriptor_free(descriptor_t* desc)
 
     ca_descriptor_t* cad = (ca_descriptor_t*)desc;
     free(cad->private_data);
-    free(cad);
 }
 
 descriptor_t* ca_descriptor_read(descriptor_t* desc)
@@ -165,7 +163,7 @@ cleanup:
     bitreader_free(b);
     return (descriptor_t*)cad;
 fail:
-    ca_descriptor_free((descriptor_t*)cad);
+    descriptor_free((descriptor_t*)cad);
     cad = NULL;
     goto cleanup;
 }
