@@ -1078,6 +1078,19 @@ START_TEST(test_segment_template_in_representation)
     ck_assert_uint_eq(segment->index_range_start, 32);
     ck_assert_uint_eq(segment->index_range_end, 74);
 
+    segment = g_ptr_array_index(representation->segments, 3);
+    ck_assert_ptr_ne(segment, NULL);
+    ck_assert_ptr_eq(segment->representation, representation);
+    ck_assert_str_eq(segment->file_name, "/rep/$-4-7838-REP-asdf-175-175.ts");
+    ck_assert_uint_eq(segment->media_range_start, 0);
+    ck_assert_uint_eq(segment->media_range_end, 0);
+    ck_assert_uint_eq(segment->start, 2250000 + 10 * 90000);
+    ck_assert_uint_eq(segment->duration, 10 * 90000);
+    ck_assert_uint_eq(segment->end, segment->start + segment->duration);
+    ck_assert_str_eq(segment->index_file_name, "/rep/$-4-7838-REP-asdf-175-175.sidx");
+    ck_assert_uint_eq(segment->index_range_start, 32);
+    ck_assert_uint_eq(segment->index_range_end, 74);
+
     mpd_free(mpd);
 END_TEST
 
@@ -1162,6 +1175,19 @@ START_TEST(test_segment_template_in_adaptation_set)
     ck_assert_uint_eq(segment->duration, 10 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
     ck_assert_str_eq(segment->index_file_name, "/rep/$-3-7838-REP-asdf-125-125.sidx");
+    ck_assert_uint_eq(segment->index_range_start, 32);
+    ck_assert_uint_eq(segment->index_range_end, 74);
+
+    segment = g_ptr_array_index(representation->segments, 3);
+    ck_assert_ptr_ne(segment, NULL);
+    ck_assert_ptr_eq(segment->representation, representation);
+    ck_assert_str_eq(segment->file_name, "/rep/$-4-7838-REP-asdf-175-175.ts");
+    ck_assert_uint_eq(segment->media_range_start, 0);
+    ck_assert_uint_eq(segment->media_range_end, 0);
+    ck_assert_uint_eq(segment->start, 2250000 + 10 * 90000);
+    ck_assert_uint_eq(segment->duration, 10 * 90000);
+    ck_assert_uint_eq(segment->end, segment->start + segment->duration);
+    ck_assert_str_eq(segment->index_file_name, "/rep/$-4-7838-REP-asdf-175-175.sidx");
     ck_assert_uint_eq(segment->index_range_start, 32);
     ck_assert_uint_eq(segment->index_range_end, 74);
 
@@ -1252,6 +1278,19 @@ START_TEST(test_segment_template_in_period)
     ck_assert_uint_eq(segment->index_range_start, 32);
     ck_assert_uint_eq(segment->index_range_end, 74);
 
+    segment = g_ptr_array_index(representation->segments, 3);
+    ck_assert_ptr_ne(segment, NULL);
+    ck_assert_ptr_eq(segment->representation, representation);
+    ck_assert_str_eq(segment->file_name, "/rep/$-4-7838-REP-asdf-175-175.ts");
+    ck_assert_uint_eq(segment->media_range_start, 0);
+    ck_assert_uint_eq(segment->media_range_end, 0);
+    ck_assert_uint_eq(segment->start, 2250000 + 10 * 90000);
+    ck_assert_uint_eq(segment->duration, 10 * 90000);
+    ck_assert_uint_eq(segment->end, segment->start + segment->duration);
+    ck_assert_str_eq(segment->index_file_name, "/rep/$-4-7838-REP-asdf-175-175.sidx");
+    ck_assert_uint_eq(segment->index_range_start, 32);
+    ck_assert_uint_eq(segment->index_range_end, 74);
+
     mpd_free(mpd);
 END_TEST
 
@@ -1259,10 +1298,15 @@ START_TEST(test_segment_template_mixed_levels)
     char* xml_doc = "<?xml version='1.0'?> \
             <MPD xmlns='urn:mpeg:dash:schema:mpd:2011'> \
                 <Period duration='PT34S'> \
-                    <SegmentTemplate timescale='5' presentationTimeOffset='25' indexRange='32-74' \
+                    <SegmentTemplate startNumber='8' timescale='5' presentationTimeOffset='25' indexRange='32-74' \
                             bitstreamSwitching='bs-$$-$Bandwidth$-$RepresentationID$.ts'/> \
                     <AdaptationSet> \
-                        <SegmentBase duration='50' /> \
+                        <SegmentBase> \
+                            <SegmentTimeline> \
+                                <S d='50' r='3' /> \
+                                <S d='5' /> \
+                            </SegmentTimeline> \
+                        </SegmentBase> \
                         <Representation id='REP-asdf' bandwidth='7838'> \
                             <SegmentTemplate media='$$-$Number$-$Bandwidth$-$RepresentationID$-$Time$-$Time$.ts' \
                                     index='$$-$Number$-$Bandwidth$-$RepresentationID$-$Time$-$Time$.sidx' \
@@ -1299,43 +1343,57 @@ START_TEST(test_segment_template_mixed_levels)
     ck_assert_str_eq(representation->initialization_file_name, "/rep/init-$-7838-REP-asdf.ts");
     ck_assert_uint_eq(representation->initialization_range_start, 0);
     ck_assert_uint_eq(representation->initialization_range_end, 0);
+    ck_assert_uint_eq(representation->start_number, 8);
 
     segment_t* segment = g_ptr_array_index(representation->segments, 0);
     ck_assert_ptr_ne(segment, NULL);
     ck_assert_ptr_eq(segment->representation, representation);
-    ck_assert_str_eq(segment->file_name, "/rep/$-1-7838-REP-asdf-25-25.ts");
+    ck_assert_str_eq(segment->file_name, "/rep/$-8-7838-REP-asdf-25-25.ts");
     ck_assert_uint_eq(segment->media_range_start, 0);
     ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 450000);
     ck_assert_uint_eq(segment->duration, 10 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
-    ck_assert_str_eq(segment->index_file_name, "/rep/$-1-7838-REP-asdf-25-25.sidx");
+    ck_assert_str_eq(segment->index_file_name, "/rep/$-8-7838-REP-asdf-25-25.sidx");
     ck_assert_uint_eq(segment->index_range_start, 32);
     ck_assert_uint_eq(segment->index_range_end, 74);
 
     segment = g_ptr_array_index(representation->segments, 1);
     ck_assert_ptr_ne(segment, NULL);
     ck_assert_ptr_eq(segment->representation, representation);
-    ck_assert_str_eq(segment->file_name, "/rep/$-2-7838-REP-asdf-75-75.ts");
-    ck_assert_uint_eq(segment->media_range_start, 0);
-    ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 1350000);
     ck_assert_uint_eq(segment->duration, 10 * 90000);
+    ck_assert_str_eq(segment->file_name, "/rep/$-9-7838-REP-asdf-75-75.ts");
+    ck_assert_uint_eq(segment->media_range_start, 0);
+    ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
-    ck_assert_str_eq(segment->index_file_name, "/rep/$-2-7838-REP-asdf-75-75.sidx");
+    ck_assert_str_eq(segment->index_file_name, "/rep/$-9-7838-REP-asdf-75-75.sidx");
     ck_assert_uint_eq(segment->index_range_start, 32);
     ck_assert_uint_eq(segment->index_range_end, 74);
 
     segment = g_ptr_array_index(representation->segments, 2);
     ck_assert_ptr_ne(segment, NULL);
     ck_assert_ptr_eq(segment->representation, representation);
-    ck_assert_str_eq(segment->file_name, "/rep/$-3-7838-REP-asdf-125-125.ts");
+    ck_assert_str_eq(segment->file_name, "/rep/$-10-7838-REP-asdf-125-125.ts");
     ck_assert_uint_eq(segment->media_range_start, 0);
     ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 2250000);
     ck_assert_uint_eq(segment->duration, 10 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
-    ck_assert_str_eq(segment->index_file_name, "/rep/$-3-7838-REP-asdf-125-125.sidx");
+    ck_assert_str_eq(segment->index_file_name, "/rep/$-10-7838-REP-asdf-125-125.sidx");
+    ck_assert_uint_eq(segment->index_range_start, 32);
+    ck_assert_uint_eq(segment->index_range_end, 74);
+
+    segment = g_ptr_array_index(representation->segments, 3);
+    ck_assert_ptr_ne(segment, NULL);
+    ck_assert_ptr_eq(segment->representation, representation);
+    ck_assert_str_eq(segment->file_name, "/rep/$-11-7838-REP-asdf-175-175.ts");
+    ck_assert_uint_eq(segment->media_range_start, 0);
+    ck_assert_uint_eq(segment->media_range_end, 0);
+    ck_assert_uint_eq(segment->start, 2250000 + 10 * 90000);
+    ck_assert_uint_eq(segment->duration, 90000);
+    ck_assert_uint_eq(segment->end, segment->start + segment->duration);
+    ck_assert_str_eq(segment->index_file_name, "/rep/$-11-7838-REP-asdf-175-175.sidx");
     ck_assert_uint_eq(segment->index_range_start, 32);
     ck_assert_uint_eq(segment->index_range_end, 74);
 
