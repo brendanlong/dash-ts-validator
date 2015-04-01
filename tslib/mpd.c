@@ -503,6 +503,11 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
     representation->mime_type = xmlGetProp(node, "mimeType");
     representation->bandwidth = read_uint64(node, "bandwidth");
 
+    xmlNode* segment_base = find_segment_base(node);
+    if (segment_base) {
+        g_ptr_array_add(segment_bases, segment_base);
+    }
+
     start_with_sap = xmlGetProp(node, "startWithSAP");
     if (start_with_sap) {
         int tmp = atoi(start_with_sap);
@@ -515,25 +520,22 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
 
     base_url = find_base_url(node, parent_base_url);
 
-    bool saw_segment_element = false;
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
-        if (xmlStrEqual(cur_node->name, "SegmentList")) {
-            if (saw_segment_element) {
-                g_critical("Saw multiple segment elements (SegmentList, SegmentBase, SegmentTemplate) in "
-                        "Representation %s.", representation->id);
+        if (xmlStrEqual(cur_node->name, "SubRepresentation")) {
+            if (!read_subrepresentation(cur_node, representation)) {
                 goto fail;
             }
-            saw_segment_element = true;
+        }
+    }
+
+    for (int i = segment_bases->len - 1; i >= 0; --i) {
+        xmlNode* cur_node = g_ptr_array_index(segment_bases, i);
+        if (xmlStrEqual(cur_node->name, "SegmentList")) {
             if(!read_segment_list(cur_node, representation, base_url, segment_bases)) {
                 goto fail;
             }
+            break;
         } else if (xmlStrEqual(cur_node->name, "SegmentBase")) {
-            if (saw_segment_element) {
-                g_critical("Saw multiple segment elements (SegmentList, SegmentBase, SegmentTemplate) in "
-                        "Representation %s.", representation->id);
-                goto fail;
-            }
-            saw_segment_element = true;
             if (!read_segment_base(cur_node, representation, base_url, segment_bases)) {
                 goto fail;
             }
@@ -548,24 +550,19 @@ bool read_representation(xmlNode* node, adaptation_set_t* adaptation_set, char* 
                 segment->index_file_name = segment->file_name;
             }
             g_ptr_array_add(representation->segments, segment);
+            break;
         }  else if (xmlStrEqual(cur_node->name, "SegmentTemplate")) {
-            if (saw_segment_element) {
-                g_critical("Saw multiple segment elements (SegmentList, SegmentBase, SegmentTemplate) in "
-                        "Representation %s.", representation->id);
-                goto fail;
-            }
-            saw_segment_element = true;
             if (!read_segment_template(cur_node, representation, base_url, segment_bases)) {
                 goto fail;
             }
-        } else if (xmlStrEqual(cur_node->name, "SubRepresentation")) {
-            if (!read_subrepresentation(cur_node, representation)) {
-                goto fail;
-            }
+            break;
         }
     }
 
 cleanup:
+    if (segment_base) {
+        g_ptr_array_remove_index(segment_bases, segment_bases->len - 1);
+    }
     g_free(base_url);
     xmlFree(start_with_sap);
     return return_code;
@@ -658,8 +655,15 @@ bool read_segment_base(xmlNode* node, representation_t* representation, char* ba
 
     /* Need to read timescale before presentationTimeOffset */
     for (int i = segment_bases->len - 1; i >= 0; --i) {
-        if (xmlHasProp(g_ptr_array_index(segment_bases, i), "timescale")) {
-            representation->timescale = read_uint64(node, "timescale");
+        xmlNode* cur_node = g_ptr_array_index(segment_bases, i);
+        if (xmlHasProp(cur_node, "timescale")) {
+            representation->timescale = read_uint64(cur_node, "timescale");
+            if (representation->timescale == 0) {
+                char* value = xmlGetProp(cur_node, "timescale");
+                g_critical("Invalid %s@timescale: %s", cur_node->name, value);
+                g_free(value);
+                goto fail;
+            }
             break;
         }
     }
