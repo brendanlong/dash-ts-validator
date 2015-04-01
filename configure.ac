@@ -9,6 +9,7 @@ AM_INIT_AUTOMAKE([1.9 foreign subdir-objects serial-tests])
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_RANLIB
+AX_VALGRIND_CHECK
 LT_INIT
 
 # Checks for libraries.

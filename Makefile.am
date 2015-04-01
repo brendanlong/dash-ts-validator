@@ -14,8 +14,14 @@ SUBDIRS = h264bitstream
 
 noinst_LIBRARIES = tslib/libts.a
 bin_PROGRAMS = tslib/apps/ts_validate_mult_segment
-noinst_PROGRAMS = tests/check_bitreader tests/check_cets_ecm tests/check_descriptors tests/check_mpd tests/check_psi
 TESTS = tests/check_bitreader tests/check_cets_ecm tests/check_descriptors tests/check_mpd tests/check_psi
+noinst_PROGRAMS = $(TESTS)
+
+.PHONY: check-valgrind ;
+check-valgrind: $(TESTS)
+	@for test in $$(echo $(TESTS) | sed 's/tests\//tests\/.libs\//g') ; do \
+	    LD_LIBRARY_PATH=h264bitstream/.libs $(VALGRIND) --quiet --leak-check=full --show-possibly-lost=no $${test} ; \
+	done
 
 tslib_libts_a_SOURCES = tslib/bitreader.c tslib/cets_ecm.c tslib/crc32m.c tslib/descriptors.c tslib/isobmff.c \
         tslib/log.c tslib/mpd.c tslib/mpeg2ts_demux.c tslib/pes.c tslib/pes_demux.c tslib/psi.c \
