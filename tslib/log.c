@@ -114,6 +114,8 @@ void log_handler(const char* domain, GLogLevelFlags log_level, const char* messa
         return;
     } else if ((log_level & G_LOG_LEVEL_WARNING) && tslib_loglevel < TSLIB_LOG_LEVEL_WARN) {
         return;
+    } else if ((log_level & G_LOG_LEVEL_CRITICAL) && tslib_loglevel < TSLIB_LOG_LEVEL_CRITICAL) {
+        return;
     }
     g_print("%s\n", message);
 }

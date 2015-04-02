@@ -26,19 +26,59 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef TEST_COMMON_H
-#define TEST_COMMON_H
-
 #include <check.h>
+#include <getopt.h>
+#include <glib.h>
+#include <libxml/parser.h>
 
-#define assert_arrays_eq(check, x, x_len, y, y_len) \
-ck_assert_int_eq(x_len, y_len); \
-for (size_t _q = 0; _q < x_len; ++_q) { \
-    check((x)[_q], (y)[_q]); \
+#include "log.h"
+#include "test_common.h"
+
+static struct option long_options[] = {
+    { "verbose", no_argument, NULL, 'v' },
+    { "help", no_argument, NULL, 'h' },
+};
+
+static char options[] =
+    "\t-v, --verbose\n"
+    "\t-h, --help\n";
+
+static void usage(char* name)
+{
+    fprintf(stderr, "Usage: \n%s [options]\n\nOptions:\n%s\n", name,
+            options);
 }
 
-#define assert_bytes_eq(x, x_len, y, y_len) assert_arrays_eq(ck_assert_uint_eq, x, x_len, y, y_len)
+int main(int argc, char** argv)
+{
+    tslib_loglevel = TSLIB_LOG_LEVEL_ERROR;
+    int c, long_options_index;
+    while((c = getopt_long(argc, argv, "vh", long_options, &long_options_index)) != -1) {
+        switch(c) {
+        case 'v':
+            if(tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
+                tslib_loglevel++;
+            }
+            break;
+        case 'h':
+        default:
+            usage(argv[0]);
+            return 1;
+        }
+    }
 
-Suite *suite(void);
+    g_log_set_default_handler(log_handler, NULL);
 
-#endif
+    int number_failed;
+    Suite *s;
+    SRunner *sr;
+
+    s = suite();
+    sr = srunner_create(s);
+
+    srunner_run_all(sr, CK_NORMAL);
+    number_failed = srunner_ntests_failed(sr);
+    srunner_free(sr);
+    xmlCleanupParser();
+    return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+}

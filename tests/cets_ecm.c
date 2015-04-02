@@ -189,7 +189,7 @@ START_TEST(test_cets_ecm_too_many_au)
     ck_assert_ptr_eq(cets_ecm, NULL);
 END_TEST
 
-static Suite *cets_ecm_suite(void)
+Suite *suite(void)
 {
     Suite *s;
     TCase *tc_core;
@@ -211,19 +211,4 @@ static Suite *cets_ecm_suite(void)
     suite_add_tcase(s, tc_core);
 
     return s;
-}
-
-int main(void)
-{
-    int number_failed;
-    Suite *s;
-    SRunner *sr;
-
-    s = cets_ecm_suite();
-    sr = srunner_create(s);
-
-    srunner_run_all(sr, CK_NORMAL);
-    number_failed = srunner_ntests_failed(sr);
-    srunner_free(sr);
-    return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

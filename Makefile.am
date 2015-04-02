@@ -30,23 +30,23 @@ tslib_libts_a_SOURCES = tslib/bitreader.c tslib/cets_ecm.c tslib/crc32m.c tslib/
 tslib_apps_ts_validate_mult_segment_SOURCES = tslib/apps/ts_validate_mult_segment.c
 tslib_apps_ts_validate_mult_segment_LDADD = tslib/libts.a
 
-tests_check_bitreader_SOURCES = tests/bitreader.c
+tests_check_bitreader_SOURCES = tests/bitreader.c tests/main.c
 tests_check_bitreader_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
 tests_check_bitreader_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
 
-tests_check_cets_ecm_SOURCES = tests/cets_ecm.c
+tests_check_cets_ecm_SOURCES = tests/cets_ecm.c tests/main.c
 tests_check_cets_ecm_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
 tests_check_cets_ecm_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
 
-tests_check_descriptors_SOURCES = tests/descriptors.c
+tests_check_descriptors_SOURCES = tests/descriptors.c tests/main.c
 tests_check_descriptors_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
 tests_check_descriptors_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
 
-tests_check_mpd_SOURCES = tests/mpd.c
+tests_check_mpd_SOURCES = tests/mpd.c tests/main.c
 tests_check_mpd_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
 tests_check_mpd_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
 
-tests_check_psi_SOURCES = tests/psi.c
+tests_check_psi_SOURCES = tests/psi.c tests/main.c
 tests_check_psi_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
 tests_check_psi_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
 

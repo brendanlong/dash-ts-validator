@@ -28,7 +28,6 @@
  */
 #include <check.h>
 #include <stdlib.h>
-#include <libxml/parser.h>
 
 #include "mpd.h"
 #include "test_common.h"
@@ -1400,7 +1399,7 @@ START_TEST(test_segment_template_mixed_levels)
     mpd_free(mpd);
 END_TEST
 
-static Suite *mpd_suite(void)
+Suite *suite(void)
 {
     Suite *s;
     TCase *tc_core;
@@ -1430,20 +1429,4 @@ static Suite *mpd_suite(void)
     suite_add_tcase(s, tc_core);
 
     return s;
-}
-
-int main(void)
-{
-    int number_failed;
-    Suite *s;
-    SRunner *sr;
-
-    s = mpd_suite();
-    sr = srunner_create(s);
-
-    srunner_run_all(sr, CK_NORMAL);
-    number_failed = srunner_ntests_failed(sr);
-    srunner_free(sr);
-    xmlCleanupParser();
-    return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
