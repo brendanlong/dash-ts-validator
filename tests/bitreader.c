@@ -33,7 +33,7 @@
 #include "test_common.h"
 
 START_TEST(test_bitreader_aligned)
-    uint8_t bytes[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 170};
+    uint8_t bytes[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 170, '5', 0, '\t', 255, 29, 54, 5, 9};
     bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
 
     ck_assert_int_eq(bitreader_read_uint8(b), 1);
@@ -47,6 +47,10 @@ START_TEST(test_bitreader_aligned)
     ck_assert(!bitreader_read_bit(b));
     ck_assert_int_eq(bitreader_read_bits(b, 2), 2);
     ck_assert_int_eq(bitreader_read_bits(b, 4), 10);
+    uint8_t bytes_out[3];
+    bitreader_read_bytes(b, bytes_out, 3);
+    assert_bytes_eq(bytes_out, 3, bytes + 19, 3);
+    ck_assert_uint_eq(bitreader_read_90khz_timestamp(b), 7638712964);
 
     ck_assert(bitreader_eof(b));
     ck_assert(!b->error);
@@ -57,7 +61,8 @@ START_TEST(test_bitreader_aligned)
 END_TEST
 
 START_TEST(test_bitreader_unaligned)
-    uint8_t bytes[] = {255, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8};
+    uint8_t bytes[] = {255, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 'a', 'b', 'c', 'd', 'e', 'f', 'g',
+            'h'};
     bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
 
     ck_assert(bitreader_read_bit(b));
@@ -66,10 +71,16 @@ START_TEST(test_bitreader_unaligned)
     ck_assert_int_eq(bitreader_read_uint24(b), 395274);
     ck_assert_int_eq(bitreader_read_uint32(b), 202248210);
     ck_assert_int_eq(bitreader_read_uint64(b), 1441719254663171086);
-    ck_assert(!bitreader_eof(b));
-    ck_assert(!bitreader_read_bit(b));
-    ck_assert_int_eq(bitreader_read_bits(b, 6), 8);
+    uint8_t bytes_out[3];
+    uint8_t bytes_expected[3] = {16, 194, 196};
+    bitreader_read_bytes(b, bytes_out, 3);
+    assert_bytes_eq(bytes_out, 3, bytes_expected, 3);
+    ck_assert_uint_eq(bitreader_read_90khz_timestamp(b), 4063422055);
+
     ck_assert(!b->error);
+    ck_assert(!bitreader_eof(b));
+    ck_assert(bitreader_read_bit(b));
+    ck_assert_int_eq(bitreader_read_bits(b, 6), 40);
 
     ck_assert(bitreader_eof(b));
     ck_assert(!b->error);

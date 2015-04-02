@@ -87,6 +87,11 @@ fail:
     return 0;
 }
 
+void bitreader_skip_bit(bitreader_t* b)
+{
+    bitreader_skip_bits(b, 1);
+}
+
 void bitreader_skip_bits(bitreader_t* b, size_t bits)
 {
     if (bitreader_eof(b)) {
@@ -106,6 +111,12 @@ fail:
     b->error = true;
 }
 
+void bitreader_skip_bytes(bitreader_t* b, size_t bytes)
+{
+    /* TODO: Optimize */
+    bitreader_skip_bits(b, bytes * 8);
+}
+
 uint64_t bitreader_read_bits(bitreader_t* b, size_t bits)
 {
     if (bitreader_eof(b) || bits > 64) {
@@ -120,6 +131,14 @@ uint64_t bitreader_read_bits(bitreader_t* b, size_t bits)
 fail:
     b->error = true;
     return 0;
+}
+
+void bitreader_read_bytes(bitreader_t* b, uint8_t* bytes_out, size_t bytes_len)
+{
+    /* TODO: Optimize */
+    for (size_t i = 0; i < bytes_len; ++i) {
+        bytes_out[i] = bitreader_read_uint8(b);
+    }
 }
 
 uint64_t bitreader_read_uint(bitreader_t* b, size_t bits)
@@ -171,4 +190,17 @@ uint32_t bitreader_read_uint32(bitreader_t* b)
 uint64_t bitreader_read_uint64(bitreader_t* b)
 {
     return (uint64_t)bitreader_read_uint(b, 64);
+}
+
+uint64_t bitreader_read_90khz_timestamp(bitreader_t* b)
+{
+    bitreader_skip_bits(b, 4);
+    uint64_t v = bitreader_read_bits(b, 3) << 30;
+    bitreader_skip_bit(b);
+    v |= bitreader_read_bits(b, 15) << 15;
+    bitreader_skip_bit(b);
+    v |= bitreader_read_bits(b, 15);
+    bitreader_skip_bit(b);
+
+    return v;
 }

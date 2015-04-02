@@ -14,7 +14,8 @@ SUBDIRS = h264bitstream
 
 noinst_LIBRARIES = tslib/libts.a
 bin_PROGRAMS = tslib/apps/ts_validate_mult_segment
-TESTS = tests/check_bitreader tests/check_cets_ecm tests/check_descriptors tests/check_mpd tests/check_psi
+TESTS = tests/check_bitreader tests/check_cets_ecm tests/check_descriptors tests/check_mpd tests/check_pes \
+        tests/check_psi tests/check_ts
 noinst_PROGRAMS = $(TESTS)
 
 .PHONY: check-valgrind ;
@@ -47,8 +48,16 @@ tests_check_mpd_SOURCES = tests/mpd.c tests/main.c
 tests_check_mpd_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
 tests_check_mpd_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
 
+tests_check_pes_SOURCES = tests/pes.c tests/main.c
+tests_check_pes_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
+tests_check_pes_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
+
 tests_check_psi_SOURCES = tests/psi.c tests/main.c
 tests_check_psi_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
 tests_check_psi_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
+
+tests_check_ts_SOURCES = tests/ts.c tests/main.c
+tests_check_ts_CFLAGS = $(CFLAGS) $(CHECK_CFLAGS)
+tests_check_ts_LDADD = tslib/libts.a $(LDFLAGS) $(CHECK_LIBS)
 
 MAINTAINERCLEANFILES = Makefile.in aclocal.m4 configure config-h.in

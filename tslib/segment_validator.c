@@ -306,7 +306,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         dash_validator->status = 0;
     }
 
-    if (dash_validator->pcr_pid == ts->header.pid) {
+    if (dash_validator->pcr_pid == ts->pid) {
         int64_t pcr = ts_read_pcr(ts);
         if (PCR_IS_VALID(pcr)) {
             dash_validator->last_pcr = pcr;
@@ -380,10 +380,10 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         ++dash_validator->current_subsegment->ts_count;
     }
 
-    if (g_hash_table_contains(dash_validator->ecm_pids, GINT_TO_POINTER(ts->header.pid))) {
-        cets_ecm_t* cets_ecm = cets_ecm_read(ts->payload.bytes, ts->payload.len);
+    if (g_hash_table_contains(dash_validator->ecm_pids, GINT_TO_POINTER(ts->pid))) {
+        cets_ecm_t* cets_ecm = cets_ecm_read(ts->payload, ts->payload_len);
         if (!cets_ecm) {
-            g_critical("Invalid CETS ECM found on PID %"PRIu16, ts->header.pid);
+            g_critical("Invalid CETS ECM found on PID %"PRIu16, ts->pid);
         }
         /* Ignore keys that don't apply yet */
         else if (!cets_ecm->next_key_id_flag) {
@@ -399,7 +399,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
                 /* TODO check number of AU */
                 for (gsize i = 0; i < dash_validator->pids->len; ++i) {
                     pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);
-                    if (g_hash_table_contains(pv->ecm_pids, GINT_TO_POINTER(ts->header.pid))) {
+                    if (g_hash_table_contains(pv->ecm_pids, GINT_TO_POINTER(ts->pid))) {
                         pv->au_for_transport_scrambling_control[transport_scrambling_control] += state->num_au;
                     }
                 }
@@ -408,15 +408,15 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         cets_ecm_free(cets_ecm);
     }
 
-    pid_validator_t* pid_validator = dash_validator_find_pid(ts->header.pid, dash_validator);
+    pid_validator_t* pid_validator = dash_validator_find_pid(ts->pid, dash_validator);
     if (pid_validator == NULL) {
         /* This PID is not registered as part of the main program */
         goto cleanup;
     }
 
-    if (ts->header.transport_scrambling_control) {
-        if (pid_validator->au_for_transport_scrambling_control[ts->header.transport_scrambling_control]) {
-            --pid_validator->au_for_transport_scrambling_control[ts->header.transport_scrambling_control];
+    if (ts->transport_scrambling_control) {
+        if (pid_validator->au_for_transport_scrambling_control[ts->transport_scrambling_control]) {
+            --pid_validator->au_for_transport_scrambling_control[ts->transport_scrambling_control];
         } else {
             g_critical("DASH Conformance: Segment %s contains TS packet for PID %"PRIu16" with "
                     "transport_scrambling_control = '%d%d', but we have not seen a CETS ECM with that "
@@ -427,22 +427,22 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
                     "and/or in the Initialization Segment (if used). As an example, this requires the presence of the ECM "
                     "necessary for decrypting the first encrypted packet of the (Sub)Segment is within the (Sub)Segment "
                     "before such a packet.",
-                    (dash_validator->segment ? dash_validator->segment->file_name : "?"), ts->header.pid,
-                    (bool)(ts->header.transport_scrambling_control & 2), ts->header.transport_scrambling_control & 1);
+                    (dash_validator->segment ? dash_validator->segment->file_name : "?"), ts->pid,
+                    (bool)(ts->transport_scrambling_control & 2), ts->transport_scrambling_control & 1);
             dash_validator->status = 0;
         }
     }
 
     // This is the first TS packet from this PID
     if (pid_validator->ts_count == 0) {
-        pid_validator->continuity_counter = ts->header.continuity_counter;
+        pid_validator->continuity_counter = ts->continuity_counter;
 
         // we ignore non-payload and non-media packets
-        if (ts->header.adaptation_field_control & TS_PAYLOAD
+        if (ts->adaptation_field_control & TS_PAYLOAD
                 && pid_validator->content_component != UNKNOWN_CONTENT_COMPONENT) {
             // if we only have complete PES packets, we must start with PUSI=1 followed by PES header in the first payload-bearing packet
             if ((dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN)
-                    && (ts->header.payload_unit_start_indicator == 0)) {
+                    && (ts->payload_unit_start_indicator == 0)) {
                 g_critical("DASH Conformance: media segments shall contain only complete PES packets");
                 dash_validator->status = 0;
             }
@@ -525,12 +525,12 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                     "Adaptation Set are fulfilled." : "");
             dash_validator->status = 0;
         }
-        if (dash_validator->current_subsegment && first_ts && first_ts->header.pid == dash_validator->current_subsegment->reference_id) {
+        if (dash_validator->current_subsegment && first_ts && first_ts->pid == dash_validator->current_subsegment->reference_id) {
             g_critical("DASH Conformance: Media segment %s has an incomplete PES packet for the indexed media stream "
                     "in this subsegment (PID %"PRIu16"). 6.4.2.1. Subsegment: A subsegment shall contain complete "
                     "access units for the indexed media stream (i.e., stream for which reference_ID equals PID), "
                     "however it may contain incomplete PES packets from other media streams.",
-                    dash_validator->segment->file_name, first_ts->header.pid);
+                    dash_validator->segment->file_name, first_ts->pid);
             dash_validator->status = 0;
         }
         goto cleanup;
@@ -552,7 +552,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         }
     }
 
-    pid_validator = dash_validator_find_pid(first_ts->header.pid, dash_validator);
+    pid_validator = dash_validator_find_pid(first_ts->pid, dash_validator);
     assert(pid_validator != NULL);
 
     // we are in the first PES packet of a PID
@@ -693,7 +693,7 @@ static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t*
     validate_pes_packet_common(pes, ts_queue, dash_validator);
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
-    if (!first_ts->header.payload_unit_start_indicator) {
+    if (!first_ts->payload_unit_start_indicator) {
         g_critical("DASH Conformance: First 'emsg' packet (PID = 0x0004) does not have "
                 "payload_unit_start_indicator = 1. 5.10.3.3.5 says, \"the transport stream packet carrying the start "
                 "of the `emsg` box shall have the payload_unit_start_indicator field set to `1`\".");
@@ -730,23 +730,23 @@ static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t*
         }
     }
 
-    if (first_ts->payload.len < 8) {
+    if (first_ts->payload_len < 8) {
         /* Note: The first 8 bytes of a Box are the "size" and "type" fields, so if the payload size is >= 8 bytes,
          *       we can guarantee that the Box.type is in it. We check that the type (and size) are correct in
          *       validate_emsg_msg(). */
         g_critical("DASH Conformance: The first TS packet with 'emsg' data has payload size of %zu bytes, but should "
                 "be at least 8 bytes. 5.10.3.3.5 says, \"The complete Box.type field shall be present in this first "
-                "packet, and the payload size shall be at least 8 bytes.\".", first_ts->payload.len);
+                "packet, and the payload size shall be at least 8 bytes.\".", first_ts->payload_len);
         dash_validator->status = 0;
     }
 
     for (GList* current = ts_queue->head; current; current = current->next) {
         ts_packet_t* tsp = current->data;
-        if (tsp->header.transport_scrambling_control != 0) {
+        if (tsp->transport_scrambling_control != 0) {
             g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
                     "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
                     "of 0x0004 the value of the transport_scrambling_control field shall be set to '00'\".",
-                    first_ts->header.transport_scrambling_control);
+                    first_ts->transport_scrambling_control);
             dash_validator->status = 0;
         }
     }
@@ -836,9 +836,8 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
 
     while ((num_packets = fread(ts_buf, TS_SIZE, packet_buf_size, infile)) > 0) {
         for (int i = 0; i < num_packets; i++) {
-            ts_packet_t* ts = ts_new();
-            int res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read);
-            if (res < TS_SIZE) {
+            ts_packet_t* ts = ts_read(ts_buf + i * TS_SIZE, TS_SIZE, packets_read);
+            if (!ts) {
                 g_critical("DASH Conformance: Error parsing TS packet %"PRIo64" in segment %s. %s",
                         packets_read, file_name,
                         dash_validator->segment_type == INITIALIZATION_SEGMENT ? "6.4.3.2 Initialization Segment: An "
@@ -872,10 +871,9 @@ cleanup:
     if (infile) {
         fclose(infile);
     }
-    return tslib_errno;
+    return dash_validator->status != 1;
 fail:
     dash_validator->status = 0;
-    tslib_errno = 1;
     goto cleanup;
 }
 
@@ -908,9 +906,8 @@ bool validate_bitstream_switching(const char* file_names[], uint64_t byte_starts
         size_t packets_read;
         while ((packets_read = fread(ts_buf, TS_SIZE, MIN(TS_BUFFER_SIZE / TS_SIZE, packets_to_read), infile)) > 0) {
             for (size_t i = 0; i < packets_read; i++) {
-                ts_packet_t* ts = ts_new();
-                int res = ts_read(ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read_total);
-                if (res < TS_SIZE) {
+                ts_packet_t* ts = ts_read(ts_buf + i * TS_SIZE, TS_SIZE, packets_read_total);
+                if (!ts) {
                     goto fail;
                 }
                 mpeg2ts_stream_read_ts_packet(m2s, ts);

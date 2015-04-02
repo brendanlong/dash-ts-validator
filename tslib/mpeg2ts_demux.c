@@ -186,14 +186,14 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     g_return_val_if_fail(m2s, 1);
     g_return_val_if_fail(ts, 1);
 
-    if (!ts->payload.bytes || !ts->payload.len) {
+    if (!ts->payload || !ts->payload_len) {
         g_critical("mpeg2ts_program_read_pat called with an empty TS payload.");
         return 1;
     }
 
     int ret = 0;
-    conditional_access_section_t* new_cas = conditional_access_section_read(ts->payload.bytes + 1,
-            ts->payload.len - 1);
+    conditional_access_section_t* new_cas = conditional_access_section_read(ts->payload + 1,
+            ts->payload_len - 1);
     if (new_cas == NULL) {
         ret = 1;
         goto cleanup;
@@ -223,13 +223,13 @@ static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     g_return_val_if_fail(m2s, 1);
     g_return_val_if_fail(ts, 1);
 
-    if (!ts->payload.bytes || !ts->payload.len) {
+    if (!ts->payload || !ts->payload_len) {
         g_critical("mpeg2ts_program_read_pat called with an empty TS payload.");
         return 1;
     }
 
     int ret = 0;
-    program_association_section_t* new_pas = program_association_section_read(ts->payload.bytes, ts->payload.len);
+    program_association_section_t* new_pas = program_association_section_read(ts->payload, ts->payload_len);
     if (new_pas == NULL) {
         ret = 1;
         goto cleanup;
@@ -276,13 +276,13 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
     g_return_val_if_fail(m2p, 1);
     g_return_val_if_fail(ts, 1);
 
-    if (!ts->payload.bytes || !ts->payload.len) {
+    if (!ts->payload || !ts->payload_len) {
         g_critical("mpeg2ts_program_read_pmt called with an empty TS payload.");
         return 1;
     }
 
     int ret = 0;
-    program_map_section_t* new_pms = program_map_section_read(ts->payload.bytes, ts->payload.len);
+    program_map_section_t* new_pms = program_map_section_read(ts->payload, ts->payload_len);
     if (new_pms == NULL) {
         ret = 1;
         goto cleanup;
@@ -345,22 +345,22 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         m2s->ts_processor->process_ts_packet(ts, NULL, m2s->ts_processor->arg);
     }
 
-    if (ts->header.pid == PID_PAT) {
+    if (ts->pid == PID_PAT) {
         return mpeg2ts_stream_read_pat(m2s, ts);
     }
-    if (ts->header.pid == PID_CAT) {
+    if (ts->pid == PID_CAT) {
         return mpeg2ts_stream_read_cat(m2s, ts);
     }
-    if (ts->header.pid == PID_DASH_EMSG) {
+    if (ts->pid == PID_DASH_EMSG) {
         return mpeg2ts_stream_read_dash_event_msg(m2s, ts);
     }
-    if (ts->header.pid == PID_NULL) {
+    if (ts->pid == PID_NULL) {
         ts_free(ts);
         return 0;
     }
 
     if (m2s->pat == NULL) {
-        g_info("PAT missing -- unknown PID 0x%02X", ts->header.pid);
+        g_info("PAT missing -- unknown PID 0x%02X", ts->pid);
         ts_free(ts);
         return 0;
     }
@@ -368,11 +368,11 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     for (gsize i = 0; i < m2s->programs->len; ++i) {
         mpeg2ts_program_t* m2p = g_ptr_array_index(m2s->programs, i);
 
-        if (m2p->pid == ts->header.pid) {
+        if (m2p->pid == ts->pid) {
             return mpeg2ts_program_read_pmt(m2p, ts);    // got a PMT
         }
 
-        pid_info_t* pi = mpeg2ts_program_get_pid_info(m2p, ts->header.pid);
+        pid_info_t* pi = mpeg2ts_program_get_pid_info(m2p, ts->pid);
 
         // pi == NULL => this PID does not belong to this program
         if (pi == NULL) {
@@ -397,7 +397,7 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // if we are here, we have no clue what this PID is
-    g_debug("Unknown PID 0x%02X", ts->header.pid);
+    g_debug("Unknown PID 0x%02X", ts->pid);
     ts_free(ts);
     return 0;
 }

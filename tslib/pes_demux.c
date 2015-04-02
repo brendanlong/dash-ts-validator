@@ -60,11 +60,11 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
     pes_demux_t* pdm = arg;
 
     // If we have a new payload, handle the existing PES data in the queue first
-    if ((ts == NULL || ts->header.payload_unit_start_indicator) && pdm->ts_queue->length > 0) {
+    if ((ts == NULL || ts->payload_unit_start_indicator) && pdm->ts_queue->length > 0) {
         // we have something in the queue
         // chances are this is a PES packet
         ts_packet_t* tsp = g_queue_peek_head(pdm->ts_queue);
-        if (tsp->header.payload_unit_start_indicator == 0) {
+        if (tsp->payload_unit_start_indicator == 0) {
             // the queue doesn't start with a complete TS packet
             g_critical("PES queue does not start from PUSI=1");
             // we'll do nothing and just clear the queue
@@ -77,7 +77,7 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
             size_t buf_size = 0;
             for (current = pdm->ts_queue->head; current; current = current->next) {
                 tsp = current->data;
-                buf_size += tsp->payload.len;
+                buf_size += tsp->payload_len;
             }
             GArray* buf = g_array_sized_new(false, false, 1, buf_size);
 
@@ -90,8 +90,8 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
                     first = false;
                 }
 
-                if (tsp != NULL && (tsp->header.adaptation_field_control & TS_PAYLOAD)) {
-                    g_array_append_vals(buf, tsp->payload.bytes, tsp->payload.len);
+                if (tsp != NULL && (tsp->adaptation_field_control & TS_PAYLOAD)) {
+                    g_array_append_vals(buf, tsp->payload, tsp->payload_len);
                 }
             }
             pes_read(pes, (uint8_t*)buf->data, buf->len);
