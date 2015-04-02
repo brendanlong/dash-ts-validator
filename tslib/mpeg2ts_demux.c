@@ -195,6 +195,10 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         ret = 1;
         goto cleanup;
     }
+    if (!new_cas->current_next_indicator) {
+        g_warning("Ignoring CAT with current_next_indicator = 0");
+        goto cleanup;
+    }
 
     // TODO: allow >1 packet cat
     if (!conditional_access_sections_equal(m2s->cat, new_cas)) {
@@ -229,6 +233,10 @@ static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     program_association_section_t* new_pas = program_association_section_read(ts->payload, ts->payload_len);
     if (new_pas == NULL) {
         ret = 1;
+        goto cleanup;
+    }
+    if (!new_pas->current_next_indicator) {
+        g_warning("Ignoring PAT with current_next_indicator = 0");
         goto cleanup;
     }
 
@@ -282,6 +290,10 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
     program_map_section_t* new_pms = program_map_section_read(ts->payload, ts->payload_len);
     if (new_pms == NULL) {
         ret = 1;
+        goto cleanup;
+    }
+    if (!new_pms->current_next_indicator) {
+        g_warning("Ignoring PMT with current_next_indicator = 0");
         goto cleanup;
     }
 

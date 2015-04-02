@@ -251,9 +251,6 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
 
     pas->version_number = bitreader_read_bits(b, 5);
     pas->current_next_indicator = bitreader_read_bit(b);
-    if (!pas->current_next_indicator) {
-        g_warning("This PAT is not yet applicable");
-    }
 
     pas->section_number = bitreader_read_uint8(b);
     pas->last_section_number = bitreader_read_uint8(b);
@@ -455,9 +452,6 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
 
     pms->version_number = bitreader_read_bits(b, 5);
     pms->current_next_indicator = bitreader_read_bit(b);
-    if (!pms->current_next_indicator) {
-        g_warning("This PMT is not yet applicable");
-    }
 
     pms->section_number = bitreader_read_uint8(b);
     pms->last_section_number = bitreader_read_uint8(b);
@@ -622,9 +616,6 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
 
     cas->version_number = bitreader_read_bits(b, 5);
     cas->current_next_indicator = bitreader_read_bit(b);
-    if (!cas->current_next_indicator) {
-        g_warning("This CAT is not yet applicable");
-    }
 
     cas->section_number = bitreader_read_uint8(b);
     cas->last_section_number = bitreader_read_uint8(b);
