@@ -37,12 +37,11 @@
 #include "pes_demux.h"
 
 
-static int cat_processor(mpeg2ts_stream_t* m2s, void*);
-static int pat_processor(mpeg2ts_stream_t* m2s, void*);
-static int pmt_processor(mpeg2ts_program_t* m2p, void*);
-static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_info, void* arg);
-static int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue,
-        void* arg);
+static int cat_processor(mpeg2ts_stream_t*, void*);
+static int pat_processor(mpeg2ts_stream_t*, void*);
+static int pmt_processor(mpeg2ts_program_t*, void*);
+static int validate_ts_packet(ts_packet_t*, elementary_stream_info_t*, void*);
+static int validate_pes_packet(pes_packet_t*, elementary_stream_info_t*, GQueue* ts_queue, void*);
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
 static int analyze_sidx_references(data_sidx_t*, int* num_subsegments, int* num_nested_sidx, dash_profile_t);
 
@@ -127,6 +126,8 @@ dash_validator_t* dash_validator_new(segment_type_t segment_type, dash_profile_t
 
 void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, dash_profile_t profile)
 {
+    g_return_if_fail(obj);
+
     obj->segment_type = segment_type;
     obj->profile = profile;
     obj->subsegments = g_ptr_array_new_with_free_func((GDestroyNotify)subsegment_free);
@@ -148,6 +149,9 @@ void dash_validator_destroy(dash_validator_t* obj)
 
 void dash_validator_free(dash_validator_t* obj)
 {
+    if (obj == NULL) {
+        return;
+    }
     dash_validator_destroy(obj);
     free(obj);
 }
@@ -159,7 +163,7 @@ static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
     g_return_val_if_fail(m2s->programs, 0);
     g_return_val_if_fail(arg, 0);
 
-    dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    dash_validator_t* dash_validator = arg;
     memset(dash_validator->pat_bytes, 0, TS_SIZE);
     memcpy(dash_validator->pat_bytes, m2s->pat->bytes, m2s->pat->bytes_len);
 
@@ -185,7 +189,7 @@ int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
     g_return_val_if_fail(m2s->cat, 0);
     g_return_val_if_fail(arg, 0);
 
-    dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    dash_validator_t* dash_validator = arg;
     memset(dash_validator->cat_bytes, 0, TS_SIZE);
     memcpy(dash_validator->cat_bytes, m2s->cat->bytes, m2s->cat->bytes_len);
 
@@ -194,6 +198,8 @@ int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
 
 static pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_validator)
 {
+    g_return_val_if_fail(dash_validator, NULL);
+
     for (gsize i = 0; i < dash_validator->pids->len; ++i) {
         pid_validator_t* pv = g_ptr_array_index(dash_validator->pids, i);
         if (pv->pid == pid) {
@@ -295,10 +301,13 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 
 static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg)
 {
-    dash_validator_t* dash_validator = (dash_validator_t*)arg;
+    g_return_val_if_fail(arg, 0);
     if (ts == NULL) {
+        /* NULL TS packet sent to end stream */
         return 0;
     }
+
+    dash_validator_t* dash_validator = arg;
 
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT && ts->adaptation_field.pcr_flag) {
         g_critical("DASH Conformance: TS packet in initialization segment has pcr_flag = 1. 6.4.3.2 says, "
@@ -467,10 +476,11 @@ cleanup:
     return 1;
 }
 
-static void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_validator_t* dash_validator)
+static bool validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_validator_t* dash_validator)
 {
-    assert(ts_queue && ts_queue->length > 0);
-    assert(dash_validator);
+    g_return_val_if_fail(ts_queue, false);
+    g_return_val_if_fail(ts_queue->length > 0, false);
+    g_return_val_if_fail(dash_validator, false);
 
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT
             || dash_validator->segment_type == BITSTREAM_SWITCHING_SEGMENT) {
@@ -491,7 +501,7 @@ static void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash
                     "shall contain only an integral number of access units and shall contain a PTS.");
             dash_validator->status = 0;
         }
-        return;
+        goto cleanup;
     }
 
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->pts_flag) {
@@ -500,15 +510,25 @@ static void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash
                 "Segment.\"", pes->pts_flag, pes->dts_flag);
         dash_validator->status = 0;
     }
+cleanup:
+    return dash_validator->status;
 }
 
 int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
-    dash_validator_t* dash_validator = (dash_validator_t*)arg;
-    pid_validator_t* pid_validator = NULL;
-    validate_pes_packet_common(pes, ts_queue, dash_validator);
+    g_return_val_if_fail(ts_queue, 0);
+    g_return_val_if_fail(ts_queue->length > 0, 0);
+    g_return_val_if_fail(arg, 0);
 
-    ts_packet_t* first_ts = ts_queue ? g_queue_peek_head(ts_queue) : NULL;
+    dash_validator_t* dash_validator = arg;
+    ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
+    pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->pid, dash_validator);
+    g_return_val_if_fail(pid_validator, 0);
+
+    if (!validate_pes_packet_common(pes, ts_queue, dash_validator)) {
+        dash_validator->status = 0;
+    }
+
     if (pes == NULL) {
         // we have a queue that didn't appear to be a valid PES packet (e.g., because it didn't start with
         // payload_unit_start_indicator = 1)
@@ -525,7 +545,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
                     "Adaptation Set are fulfilled." : "");
             dash_validator->status = 0;
         }
-        if (dash_validator->current_subsegment && first_ts && first_ts->pid == dash_validator->current_subsegment->reference_id) {
+        if (dash_validator->current_subsegment && first_ts->pid == dash_validator->current_subsegment->reference_id) {
             g_critical("DASH Conformance: Media segment %s has an incomplete PES packet for the indexed media stream "
                     "in this subsegment (PID %"PRIu16"). 6.4.2.1. Subsegment: A subsegment shall contain complete "
                     "access units for the indexed media stream (i.e., stream for which reference_ID equals PID), "
@@ -551,9 +571,6 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             dash_validator->status = 0;
         }
     }
-
-    pid_validator = dash_validator_find_pid(first_ts->pid, dash_validator);
-    assert(pid_validator != NULL);
 
     // we are in the first PES packet of a PID
     if (pid_validator->pes_count == 0) {
@@ -606,7 +623,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
     if (dash_validator->current_subsegment && dash_validator->current_subsegment->pes_count == 0
-            && !(pes->pts_flag)
+            && !pes->pts_flag
             && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
                 dash_validator->adaptation_set->subsegment_alignment.b)) {
         g_critical("DASH Conformance: First PES packet in subsegment %zu of %s does not have PTS and "
@@ -674,11 +691,9 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
 cleanup:
-    if (pid_validator) {
-        pid_validator->pes_count++;
-        if (dash_validator->current_subsegment) {
-            dash_validator->current_subsegment->pes_count++;
-        }
+    pid_validator->pes_count++;
+    if (dash_validator->current_subsegment) {
+        dash_validator->current_subsegment->pes_count++;
     }
     pes_free(pes);
     return 1;
@@ -689,8 +704,14 @@ fail:
 
 static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
 {
-    dash_validator_t* dash_validator = (dash_validator_t*)arg;
-    validate_pes_packet_common(pes, ts_queue, dash_validator);
+    g_return_val_if_fail(ts_queue, 0);
+    g_return_val_if_fail(ts_queue->length > 0, 0);
+    g_return_val_if_fail(arg, 0);
+
+    dash_validator_t* dash_validator = arg;
+    if (!validate_pes_packet_common(pes, ts_queue, dash_validator)) {
+        dash_validator->status = 0;
+    }
 
     ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
     if (!first_ts->payload_unit_start_indicator) {
@@ -774,6 +795,9 @@ cleanup:
 int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t byte_range_start,
         uint64_t byte_range_end, dash_validator_t* dash_validator_init)
 {
+    g_return_val_if_fail(dash_validator, 1);
+    g_return_val_if_fail(file_name, 1);
+
     dash_validator->current_subsegment = dash_validator->has_subsegments ?
             g_ptr_array_index(dash_validator->subsegments, 0) : NULL;
     mpeg2ts_stream_t* m2s = NULL;
@@ -876,7 +900,14 @@ fail:
 
 bool validate_bitstream_switching(const char* file_names[], uint64_t byte_starts[], uint64_t byte_ends[], size_t len)
 {
+    g_return_val_if_fail(file_names, false);
+    g_return_val_if_fail(byte_starts, false);
+    g_return_val_if_fail(byte_ends, false);
     g_return_val_if_fail(len > 0, false);
+    for (size_t i = 0; i < len; ++i) {
+        g_return_val_if_fail(file_names[i], false);
+    }
+
     bool result = true;
 
     mpeg2ts_stream_t* m2s = mpeg2ts_stream_new();
@@ -930,6 +961,10 @@ fail:
 
 int analyze_sidx_references(data_sidx_t* sidx, int* pnum_subsegments, int* pnum_nested_sidx, dash_profile_t profile)
 {
+    g_return_val_if_fail(sidx, -1);
+    g_return_val_if_fail(pnum_subsegments, -1);
+    g_return_val_if_fail(pnum_nested_sidx, -1);
+
     int originalnum_nested_sidx = *pnum_nested_sidx;
     int originalnum_subsegments = *pnum_subsegments;
 
@@ -957,6 +992,10 @@ sidx boxes have either media references or sidx references, but not both.");
 index_segment_validator_t* validate_index_segment(char* file_name, segment_t* segment_in, representation_t* representation,
         adaptation_set_t* adaptation_set)
 {
+    g_return_val_if_fail(file_name, NULL);
+    g_return_val_if_fail(representation, NULL);
+    g_return_val_if_fail(adaptation_set, NULL);
+
     bool is_single_index = segment_in != NULL;
     g_info("Validating %s Index Segment %s", is_single_index ? "Single" : "Representation", file_name);
     GPtrArray* segments;
@@ -1359,6 +1398,8 @@ fail:
 
 int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)
 {
+    g_return_val_if_fail(buffer, -1);
+
     box_t** boxes = NULL;
     size_t num_boxes;
 
