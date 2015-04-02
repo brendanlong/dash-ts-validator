@@ -96,6 +96,8 @@ static bool read_descriptors(bitreader_t* b, size_t len, descriptor_t*** descrip
     g_return_val_if_fail(b, false);
     g_return_val_if_fail(descriptors_out, false);
     g_return_val_if_fail(descriptors_len, false);
+    g_return_val_if_fail(len < UINT16_MAX, false);
+
     if (len == 0) {
         *descriptors_out = NULL;
         *descriptors_len = 0;
@@ -169,8 +171,8 @@ static bool section_header_read(mpeg2ts_section_t* section, bitreader_t* b)
     // reserved
     bitreader_skip_bits(b, 2);
     section->section_length = bitreader_read_bits(b, 12);
-    if (b->error) {
-        g_critical("Invalid section header!");
+    if (b->error || section->section_length + 3 > section->bytes_len) {
+        g_critical("Invalid section header, bad section_length or too short header!");
         return false;
     }
     section->bytes_len = section->section_length + 3;
@@ -257,19 +259,17 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
     pas->last_section_number = bitreader_read_uint8(b);
     if(pas->section_number != 0 || pas->last_section_number != 0) {
         g_warning("Multi-section PAT is not supported yet");
-        goto fail;
     }
 
     // section_length gives us the length from the end of section_length
     // we used 5 bytes for the mandatory section fields, and will use another 4 bytes for CRC
     // the remaining bytes contain program information, which is 4 bytes per iteration
-    pas->num_programs = (pas->section_length - 5 - 4) / 4;
-
-    if (pas->num_programs > 1) {
-        g_warning("%zd programs found, but only SPTS is fully supported. Patches are welcome.",
-                pas->num_programs);
+    if (pas->section_length < 9) {
+        g_critical("Invalid PAT, section_length of %"PRIu16" is not long enoough to hold require data.",
+                pas->section_length);
         goto fail;
     }
+    pas->num_programs = (pas->section_length - 5 - 4) / 4;
 
     pas->programs = malloc(pas->num_programs * sizeof(program_info_t));
     for (size_t i = 0; i < pas->num_programs; ++i) {
@@ -280,17 +280,17 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
 
     pas->crc_32 = bitreader_read_uint32(b);
 
-    // check CRC
-    crc_t pas_crc = crc_init();
-    pas_crc = crc_update(pas_crc, pas->bytes, pas->section_length + 3);
-    pas_crc = crc_finalize(pas_crc);
-    if (pas_crc != 0) {
-        g_critical("PAT CRC_32 should be 0, but calculated as 0x%08X", pas_crc);
+    if (b->error) {
+        g_critical("Invalid Program Association Section length.");
         goto fail;
     }
 
-    if (b->error) {
-        g_critical("Invalid Program Association Section length.");
+    // check CRC
+    crc_t pas_crc = crc_init();
+    pas_crc = crc_update(pas_crc, pas->bytes, pas->section_length + 3 - 4);
+    pas_crc = crc_finalize(pas_crc);
+    if (pas_crc != pas->crc_32) {
+        g_critical("PAT CRC_32 should be 0x%08X, but calculated as 0x%08X", pas->crc_32, pas_crc);
         goto fail;
     }
 
@@ -463,7 +463,6 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
     pms->last_section_number = bitreader_read_uint8(b);
     if (pms->section_number != 0 || pms->last_section_number != 0) {
         g_critical("Multi-section PMT is not allowed");
-        goto fail;
     }
 
     // reserved
@@ -507,17 +506,17 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
 
     pms->crc_32 = bitreader_read_uint32(b);
 
-    // check CRC
-    crc_t pas_crc = crc_init();
-    pas_crc = crc_update(pas_crc, pms->bytes, pms->bytes_len);
-    pas_crc = crc_finalize(pas_crc);
-    if(pas_crc != 0) {
-        g_critical("PMT CRC_32 should be 0, but is 0x%08X", pas_crc);
+    if (b->error) {
+        g_critical("Invalid Program Map Section length.");
         goto fail;
     }
 
-    if (b->error) {
-        g_critical("Invalid Program Map Section length.");
+    // check CRC
+    crc_t pms_crc = crc_init();
+    pms_crc = crc_update(pms_crc, pms->bytes, pms->section_length + 3 - 4);
+    pms_crc = crc_finalize(pms_crc);
+    if (pms_crc != pms->crc_32) {
+        g_critical("PMT CRC_32 should be 0x%08X, but calculated as 0x%08X", pms->crc_32, pms_crc);
         goto fail;
     }
 
@@ -631,9 +630,13 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
     cas->last_section_number = bitreader_read_uint8(b);
     if (cas->section_number != 0 || cas->last_section_number != 0) {
         g_warning("Multi-section CAT is not supported yet");
-        goto fail;
     }
 
+    if (cas->section_length < 9) {
+        g_critical("Invalid CAT section length, %"PRIu16" is not long enough to hold required data.",
+                cas->section_length);
+        goto fail;
+    }
     if (!read_descriptors(b, cas->section_length - 5 - 4, &cas->descriptors, &cas->descriptors_len)) {
         goto fail;
     }
@@ -643,17 +646,17 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
     // the remaining bytes contain descriptors, most probably only one
     cas->crc_32 = bitreader_read_uint32(b);
 
-    // check CRC
-    crc_t cas_crc = crc_init();
-    cas_crc = crc_update(cas_crc, cas->bytes, cas->bytes_len);
-    cas_crc = crc_finalize(cas_crc);
-    if (cas_crc != 0) {
-        g_critical("CAT CRC_32 should be 0, but calculated as 0x%08X", cas_crc);
+    if (b->error) {
+        g_critical("Invalid Program Map Section length.");
         goto fail;
     }
 
-    if (b->error) {
-        g_critical("Invalid Conditional Access Section length.");
+    // check CRC
+    crc_t crc = crc_init();
+    crc = crc_update(crc, cas->bytes, cas->section_length + 3 - 4);
+    crc = crc_finalize(crc);
+    if (crc != cas->crc_32) {
+        g_critical("CAT CRC_32 should be 0x%08X, but calculated as 0x%08X", cas->crc_32, crc);
         goto fail;
     }
 
