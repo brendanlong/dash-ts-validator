@@ -36,3 +36,4 @@ test-driver
 
 /tests/*
 !/tests/*.c
+!/tests/*.suppressions

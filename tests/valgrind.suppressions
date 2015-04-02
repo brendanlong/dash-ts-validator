@@ -1,0 +1,7 @@
+{
+   glib _dl_init
+   Memcheck:Leak
+   fun:*alloc
+   ...
+   fun:_dl_init
+}

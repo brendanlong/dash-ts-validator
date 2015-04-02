@@ -20,7 +20,8 @@ noinst_PROGRAMS = $(TESTS)
 .PHONY: check-valgrind ;
 check-valgrind: $(TESTS)
 	@for test in $$(echo $(TESTS) | sed 's/tests\//tests\/.libs\//g') ; do \
-	    LD_LIBRARY_PATH=h264bitstream/.libs $(VALGRIND) --quiet --leak-check=full --show-possibly-lost=no $${test} ; \
+	    CK_FORK=no LD_LIBRARY_PATH=h264bitstream/.libs $(VALGRIND) --error-exitcode=1 --leak-resolution=low --quiet \
+	        --leak-check=full --show-possibly-lost=no --suppressions=tests/valgrind.suppressions $${test} ; \
 	done
 
 tslib_libts_a_SOURCES = tslib/bitreader.c tslib/cets_ecm.c tslib/crc32m.c tslib/descriptors.c tslib/isobmff.c \
