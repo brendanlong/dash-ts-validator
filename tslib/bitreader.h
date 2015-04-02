@@ -32,15 +32,15 @@
 #include <stdint.h>
 
 typedef struct {
-    uint8_t* data;
+    const uint8_t* data;
     size_t len;
     size_t bytes_read;
     uint8_t bits_read;
     bool error;
 } bitreader_t;
 
-bitreader_t* bitreader_new(uint8_t* data, size_t len);
-void bitreader_init(bitreader_t*, uint8_t* data, size_t len);
+bitreader_t* bitreader_new(const uint8_t* data, size_t len);
+void bitreader_init(bitreader_t*, const uint8_t* data, size_t len);
 void bitreader_free(bitreader_t*);
 bool bitreader_eof(const bitreader_t*);
 size_t bitreader_pos(const bitreader_t*);

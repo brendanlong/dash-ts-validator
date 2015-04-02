@@ -50,6 +50,7 @@ START_TEST(test_bitreader_aligned)
     uint8_t bytes_out[3];
     bitreader_read_bytes(b, bytes_out, 3);
     assert_bytes_eq(bytes_out, 3, bytes + 19, 3);
+    bitreader_skip_bits(b, 4);
     ck_assert_uint_eq(bitreader_read_90khz_timestamp(b), 7638712964);
 
     ck_assert(bitreader_eof(b));
@@ -75,6 +76,7 @@ START_TEST(test_bitreader_unaligned)
     uint8_t bytes_expected[3] = {16, 194, 196};
     bitreader_read_bytes(b, bytes_out, 3);
     assert_bytes_eq(bytes_out, 3, bytes_expected, 3);
+    bitreader_skip_bits(b, 4);
     ck_assert_uint_eq(bitreader_read_90khz_timestamp(b), 4063422055);
 
     ck_assert(!b->error);

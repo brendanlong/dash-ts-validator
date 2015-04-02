@@ -28,10 +28,7 @@
 #include "mpeg2ts_demux.h"
 
 #include <glib.h>
-#include "libts_common.h"
 #include "psi.h"
-#include "segment_validator.h"
-
 
 demux_pid_handler_t* demux_pid_handler_new(ts_pid_processor_t process_ts_packet)
 {

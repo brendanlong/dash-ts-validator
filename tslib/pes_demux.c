@@ -28,10 +28,6 @@
 #include "pes_demux.h"
 
 #include <glib.h>
-#include <assert.h>
-
-#include "libts_common.h"
-#include "log.h"
 
 
 pes_demux_t* pes_demux_new(pes_processor_t pes_processor)
@@ -81,12 +77,12 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
             }
             GArray* buf = g_array_sized_new(false, false, 1, buf_size);
 
-            pes_packet_t* pes = pes_new();
             bool first = true;
+            uint64_t pos_in_stream = 0;
             for (current = pdm->ts_queue->head; current; current = current->next) {
                 tsp = current->data;
                 if (first) {
-                    pes->payload_pos_in_stream = tsp->pos_in_stream;
+                    pos_in_stream = tsp->pos_in_stream;
                     first = false;
                 }
 
@@ -94,7 +90,10 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
                     g_array_append_vals(buf, tsp->payload, tsp->payload_len);
                 }
             }
-            pes_read(pes, (uint8_t*)buf->data, buf->len);
+            pes_packet_t* pes = pes_read((uint8_t*)buf->data, buf->len);
+            if (pes) {
+                pes->payload_pos_in_stream = pos_in_stream;
+            }
 
             if (pdm->process_pes_packet != NULL) {
                 // at this point we don't own the PES packet memory

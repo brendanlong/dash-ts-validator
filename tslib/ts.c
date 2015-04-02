@@ -40,7 +40,7 @@
 static ts_packet_t* ts_new(uint8_t* buf, size_t buf_len);
 static bool ts_read_adaptation_field(ts_adaptation_field_t*, bitreader_t*);
 
-static void ts_print_adaptation_field(const ts_adaptation_field_t* const);
+static void ts_print_adaptation_field(const ts_adaptation_field_t*);
 
 
 ts_packet_t* ts_new(uint8_t* buf, size_t buf_size)
@@ -54,7 +54,7 @@ ts_packet_t* ts_new(uint8_t* buf, size_t buf_size)
     return ts;
 }
 
-ts_packet_t* ts_copy(const ts_packet_t* const original)
+ts_packet_t* ts_copy(const ts_packet_t* original)
 {
     if (!original) {
         return NULL;
@@ -136,6 +136,7 @@ bool ts_read_adaptation_field(ts_adaptation_field_t* af, bitreader_t* b)
                     af->piecewise_rate = bitreader_read_bits(b, 22);
                 }
                 if (af->seamless_splice_flag) {
+                    bitreader_skip_bits(b, 4);
                     af->dts_next_au = bitreader_read_90khz_timestamp(b);
                 }
 
@@ -220,7 +221,7 @@ fail:
     goto cleanup;
 }
 
-void ts_print_adaptation_field(const ts_adaptation_field_t* const af)
+void ts_print_adaptation_field(const ts_adaptation_field_t* af)
 {
     g_return_if_fail(af);
 
@@ -277,7 +278,7 @@ void ts_print_adaptation_field(const ts_adaptation_field_t* const af)
     }
 }
 
-void ts_print(const ts_packet_t* const ts)
+void ts_print(const ts_packet_t* ts)
 {
     g_return_if_fail(ts);
     if (tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
@@ -299,7 +300,7 @@ void ts_print(const ts_packet_t* const ts)
     SKIT_LOG_UINT64_DBG("", (uint64_t)ts->payload_len);
 }
 
-int64_t ts_read_pcr(const ts_packet_t* const ts)
+int64_t ts_read_pcr(const ts_packet_t* ts)
 {
     g_return_val_if_fail(ts, 0);
 

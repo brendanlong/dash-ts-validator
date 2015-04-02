@@ -29,7 +29,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-bitreader_t* bitreader_new(uint8_t* data, size_t len)
+bitreader_t* bitreader_new(const uint8_t* data, size_t len)
 {
     if (!data) {
         return NULL;
@@ -39,7 +39,7 @@ bitreader_t* bitreader_new(uint8_t* data, size_t len)
     return b;
 }
 
-void bitreader_init(bitreader_t* b, uint8_t* data, size_t len)
+void bitreader_init(bitreader_t* b, const uint8_t* data, size_t len)
 {
     assert(data);
     b->data = data;
@@ -194,7 +194,6 @@ uint64_t bitreader_read_uint64(bitreader_t* b)
 
 uint64_t bitreader_read_90khz_timestamp(bitreader_t* b)
 {
-    bitreader_skip_bits(b, 4);
     uint64_t v = bitreader_read_bits(b, 3) << 30;
     bitreader_skip_bit(b);
     v |= bitreader_read_bits(b, 15) << 15;

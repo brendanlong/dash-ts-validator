@@ -494,10 +494,10 @@ static void validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash
         return;
     }
 
-    if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->header.pts_dts_flags != 0) {
-        g_critical("DASH Conformance: PES packet in initialization segment has PTS_DTS_flags set to 0x%x. "
+    if (dash_validator->segment_type == INITIALIZATION_SEGMENT && pes->pts_flag) {
+        g_critical("DASH Conformance: PES packet in initialization segment has PTS_DTS_flags set to '%u%u'. "
                 "6.4.3.2 says, \"Time-varying initialization information shall not be present in the Initialization "
-                "Segment.\"", pes->header.pts_dts_flags);
+                "Segment.\"", pes->pts_flag, pes->dts_flag);
         dash_validator->status = 0;
     }
 }
@@ -509,7 +509,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     validate_pes_packet_common(pes, ts_queue, dash_validator);
 
     ts_packet_t* first_ts = ts_queue ? g_queue_peek_head(ts_queue) : NULL;
-    if (pes == NULL || pes->status < 0) {
+    if (pes == NULL) {
         // we have a queue that didn't appear to be a valid PES packet (e.g., because it didn't start with
         // payload_unit_start_indicator = 1)
         if (dash_validator->adaptation_set->segment_alignment.has_int ||
@@ -557,9 +557,9 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
 
     // we are in the first PES packet of a PID
     if (pid_validator->pes_count == 0) {
-        if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
-            pid_validator->earliest_playout_time = pes->header.pts;
-            pid_validator->latest_playout_time = pes->header.pts;
+        if (pes->pts_flag) {
+            pid_validator->earliest_playout_time = pes->pts;
+            pid_validator->latest_playout_time = pes->pts;
         } else if (dash_validator->adaptation_set->segment_alignment.has_int ||
                 dash_validator->adaptation_set->segment_alignment.b ||
                 dash_validator->adaptation_set->bitstream_switching) {
@@ -606,7 +606,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
     }
 
     if (dash_validator->current_subsegment && dash_validator->current_subsegment->pes_count == 0
-            && !(pes->header.pts_dts_flags & PES_PTS_FLAG)
+            && !(pes->pts_flag)
             && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
                 dash_validator->adaptation_set->subsegment_alignment.b)) {
         g_critical("DASH Conformance: First PES packet in subsegment %zu of %s does not have PTS and "
@@ -616,11 +616,11 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
         dash_validator->status = 0;
     }
 
-    if (pes->header.pts_dts_flags & PES_PTS_FLAG) {
+    if (pes->pts_flag) {
         // TODO: account for rollovers and discontinuities
         // frames can come in out of PTS order
-        pid_validator->earliest_playout_time = MIN(pid_validator->earliest_playout_time, pes->header.pts);
-        pid_validator->latest_playout_time = MAX(pid_validator->latest_playout_time, pes->header.pts);
+        pid_validator->earliest_playout_time = MIN(pid_validator->earliest_playout_time, pes->pts);
+        pid_validator->latest_playout_time = MAX(pid_validator->latest_playout_time, pes->pts);
     }
 
     if (pid_validator->content_component == VIDEO_CONTENT_COMPONENT) {
@@ -631,9 +631,9 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
             // check subsegment location against index file
             dash_validator->current_subsegment->saw_random_access = true;
             // time location
-            if (dash_validator->current_subsegment->start_time != pes->header.pts) {
+            if (dash_validator->current_subsegment->start_time != pes->pts) {
                 g_critical("DASH Conformance: expected subsegment PTS does not match actual.  Expected: %"PRIu64", "
-                        "Actual: %"PRIu64, dash_validator->current_subsegment->start_time, pes->header.pts);
+                        "Actual: %"PRIu64, dash_validator->current_subsegment->start_time, pes->pts);
                 dash_validator->status = 0;
             }
 
@@ -751,14 +751,11 @@ static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t*
         }
     }
 
-    if (pes->status > 0) {
+    if (!pes) {
         g_critical("DASH Conformance: 5.10.3.3.5 \"A segment shall contain only complete [emsg] boxes. If "
                 "@bitstreamSwitching is set, and subsegments are used, a subsegment shall contain only complete "
                 "`emsg` boxes.\"");
         dash_validator->status = 0;
-    }
-
-    if (pes == NULL) {
         goto cleanup;
     }
 

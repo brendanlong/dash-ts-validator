@@ -121,11 +121,11 @@ enum {
 } ts_pid_t;
 
 
-ts_packet_t* ts_copy(const ts_packet_t* const);
+ts_packet_t* ts_copy(const ts_packet_t*);
 void ts_free(ts_packet_t* ts);
 ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num);
-void ts_print(const ts_packet_t* const ts);
+void ts_print(const ts_packet_t* ts);
 
-int64_t ts_read_pcr(const ts_packet_t* const ts);
+int64_t ts_read_pcr(const ts_packet_t* ts);
 
 #endif

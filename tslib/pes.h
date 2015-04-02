@@ -28,19 +28,11 @@
 #ifndef PES_H
 #define PES_H
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
-#include "bs.h"
-#include "libts_common.h"
-
-
-// PTS/DTS
-// 0b10 means just PTS, 0b11 means both, 0b00 means neither, and 0b01 is forbidden
-#define PES_PTS_FLAG 0x2
-#define PES_DTS_FLAG 0x1
-
 // PES stream ID's
-
 #define PES_STREAM_ID_PROGRAM_STREAM_MAP       0xBC
 #define PES_STREAM_ID_PROGRAM_STREAM_DIRECTORY 0xFF
 
@@ -92,73 +84,60 @@
 
 #define PES_PACKET_START_CODE_PREFIX           0x000001
 
-#define PES_ERROR_NOT_ENOUGH_DATA  -1
-#define PES_ERROR_WRONG_START_CODE -2
-
 typedef struct {
-    uint32_t stream_id;
-    uint32_t pes_packet_length;
-    uint32_t pes_scrambling_control;
-    uint32_t pes_priority;
-    uint32_t data_alignment_indicator;
-    uint32_t copyright;
-    uint32_t original_or_copy;
-    uint32_t pts_dts_flags;
-    uint32_t escr_flag;
-    uint32_t es_rate_flag;
-    uint32_t dsm_trick_mode_flag;
-    uint32_t additional_copy_info_flag;
-    uint32_t pes_crc_flag;
-    uint32_t pes_extension_flag;
-    uint32_t pes_header_data_length;
+    uint8_t stream_id;
+    uint16_t packet_length;
+    uint8_t scrambling_control;
+    uint8_t priority;
+    bool data_alignment_indicator;
+    bool copyright;
+    bool original_or_copy;
+    bool pts_flag;
+    bool dts_flag;
+    bool escr_flag;
+    bool es_rate_flag;
+    bool dsm_trick_mode_flag;
+    bool additional_copy_info_flag;
+    bool crc_flag;
+    bool extension_flag;
     uint64_t pts;
     uint64_t dts;
     uint64_t escr_base;
-    uint32_t escr_extension;
+    uint8_t escr_extension;
     uint32_t es_rate;
-    uint32_t trick_mode_control;
-    uint32_t field_id;
-    uint32_t intra_slice_refresh;
-    uint32_t frequency_truncation;
-    uint32_t rep_cntrl;
-    uint32_t additional_copy_info;
-    uint32_t previous_pes_packet_crc;
-    uint32_t pes_private_data_flag;
-    uint32_t pack_header_field_flag;
-    uint32_t program_packet_sequence_counter_flag;
-    uint32_t pstd_buffer_flag;
-    uint32_t pes_extension_flag_2;
-    uint8_t pes_private_data[16];
-    uint32_t pack_field_length;
-    uint32_t program_packet_sequence_counter;
-    uint32_t mpeg1_mpeg2_identifier;
-    uint32_t original_stuff_length;
-    uint32_t pstd_buffer_scale;
-    uint32_t pstd_buffer_size;
-    uint32_t pes_extension_field_length;
-    uint32_t stream_id_extension_flag;
-    uint32_t stream_id_extension;
-    uint32_t tref_extension_flag;
+    uint8_t trick_mode_control;
+    uint8_t field_id;
+    bool intra_slice_refresh;
+    uint8_t frequency_truncation;
+    uint8_t rep_cntrl;
+    uint8_t additional_copy_info;
+    uint16_t previous_pes_packet_crc;
+    bool private_data_flag;
+    bool pack_header_field_flag;
+    bool program_packet_sequence_counter_flag;
+    bool pstd_buffer_flag;
+    bool extension_flag_2;
+    uint8_t private_data[16];
+    uint8_t pack_field_length;
+    uint8_t program_packet_sequence_counter;
+    bool mpeg1_mpeg2_identifier;
+    uint8_t original_stuff_length;
+    bool pstd_buffer_scale;
+    uint16_t pstd_buffer_size;
+    uint8_t extension_field_length;
+    bool stream_id_extension_flag;
+    uint8_t stream_id_extension;
+    bool tref_extension_flag;
     uint64_t tref;
-} pes_header_t;
 
-typedef struct {
-    pes_header_t header;  /// parsed PES header
-    uint8_t* payload;     /// reference to a location within the buf. thou shalt not free it!
-    uint8_t* buf;         /// buffer containing actual bytes (including headers)
-    size_t payload_len;   /// length of the payload
-    size_t buf_len;       /// length of the buffer (which includes payload)
-    void* opaque;         /// opaque pointer that should always be passed through
-    uint32_t pid;
-    int status;
+    uint8_t* payload;
+    size_t payload_len;
 
-    uint64_t payload_pos_in_stream;  // byte location of payload in transport stream
+    uint64_t payload_pos_in_stream;
 } pes_packet_t;
 
-pes_packet_t* pes_new(void);
 void pes_free(pes_packet_t*);
-
-int pes_read(pes_packet_t*, const uint8_t* buf, size_t len);
-void pes_print(pes_packet_t*);
+pes_packet_t* pes_read(const uint8_t* buf, size_t len);
+void pes_print(const pes_packet_t*);
 
 #endif
