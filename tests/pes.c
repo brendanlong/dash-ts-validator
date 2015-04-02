@@ -32,8 +32,6 @@
 #include "pes.h"
 #include "test_common.h"
 
-#include "pes_data.c"
-
 START_TEST(test_read_pes)
     uint8_t bytes[] = {
       0x00, 0x00, 0x01, 0xe0, 0x00, 0x00, 0x80, 0xc0, 0x0a, 0x31, 0x00, 0x09,
@@ -224,62 +222,6 @@ START_TEST(test_read_pes_no_payload)
     pes_free(pes);
 END_TEST
 
-START_TEST(test_read_pes_long)
-    pes_packet_t* pes = pes_read(TEST_PES_DATA, sizeof(TEST_PES_DATA));
-
-    ck_assert_ptr_ne(pes, NULL);
-    ck_assert_uint_eq(pes->packet_length, 14880);
-    ck_assert_uint_eq(pes->stream_id, 224);
-    ck_assert_uint_eq(pes->scrambling_control, 0);
-    ck_assert(!pes->priority);
-    ck_assert(!pes->data_alignment_indicator);
-    ck_assert(!pes->copyright);
-    ck_assert(!pes->original_or_copy);
-    ck_assert(pes->pts_flag);
-    ck_assert(pes->dts_flag);
-    ck_assert(!pes->escr_flag);
-    ck_assert(!pes->es_rate_flag);
-    ck_assert(!pes->dsm_trick_mode_flag);
-    ck_assert(!pes->additional_copy_info_flag);
-    ck_assert(!pes->crc_flag);
-    ck_assert(!pes->extension_flag);
-    ck_assert_uint_eq(pes->pts, 3606000);
-    ck_assert_uint_eq(pes->dts, 3600000);
-    ck_assert_uint_eq(pes->escr_base, 0);
-    ck_assert_uint_eq(pes->escr_extension, 0);
-    ck_assert_uint_eq(pes->es_rate, 0);
-    ck_assert_uint_eq(pes->trick_mode_control, 0);
-    ck_assert_uint_eq(pes->field_id, 0);
-    ck_assert(!pes->intra_slice_refresh);
-    ck_assert_uint_eq(pes->frequency_truncation, 0);
-    ck_assert_uint_eq(pes->rep_cntrl, 0);
-    ck_assert_uint_eq(pes->additional_copy_info, 0);
-    ck_assert_uint_eq(pes->previous_pes_packet_crc, 0);
-    ck_assert(!pes->private_data_flag);
-    ck_assert(!pes->pack_header_field_flag);
-    ck_assert(!pes->program_packet_sequence_counter_flag);
-    ck_assert(!pes->pstd_buffer_flag);
-    ck_assert(!pes->extension_flag_2);
-    uint8_t zero_bytes[16] = {0};
-    assert_bytes_eq(pes->private_data, 16, zero_bytes, 16);
-    ck_assert_uint_eq(pes->pack_field_length, 0);
-    ck_assert_uint_eq(pes->program_packet_sequence_counter, 0);
-    ck_assert(!pes->mpeg1_mpeg2_identifier);
-    ck_assert_uint_eq(pes->original_stuff_length, 0);
-    ck_assert(!pes->pstd_buffer_scale);
-    ck_assert_uint_eq(pes->pstd_buffer_size, 0);
-    ck_assert_uint_eq(pes->extension_field_length, 0);
-    ck_assert(!pes->stream_id_extension_flag);
-    ck_assert_uint_eq(pes->stream_id_extension, 0);
-    ck_assert(!pes->tref_extension_flag);
-    ck_assert_uint_eq(pes->tref, 0);
-
-    ck_assert_ptr_ne(pes->payload, NULL);
-    ck_assert_uint_eq(pes->payload_len, 14864);
-
-    pes_free(pes);
-END_TEST
-
 /* TODO: Find a PES packet with a more interesting header to test */
 
 Suite *suite(void)
@@ -296,7 +238,6 @@ Suite *suite(void)
     tcase_add_test(tc_core, test_read_pes_too_short);
     tcase_add_test(tc_core, test_read_pes_too_long);
     tcase_add_test(tc_core, test_read_pes_no_payload);
-    tcase_add_test(tc_core, test_read_pes_long);
 
     suite_add_tcase(s, tc_core);
 
