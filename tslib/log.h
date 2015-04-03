@@ -28,11 +28,18 @@
 #ifndef STREAMKIT_LOG_H
 #define STREAMKIT_LOG_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <glib.h>
+#include <inttypes.h>
+
+#define BOOL_TO_STR(b) (b ? "true" : "false")
+
+#define LOG_DEBUG(indent, printf_str, ...) \
+g_debug("%.*s"printf_str, \
+        indent < LOG_INDENT_LEN ? indent : LOG_INDENT_LEN, \
+        LOG_INDENT_BUFFER, __VA_ARGS__)
+
+extern const char* LOG_INDENT_BUFFER;
+extern const int LOG_INDENT_LEN;
 
 typedef enum {
     SKIT_LOG_TYPE_UINT,
@@ -81,13 +88,6 @@ typedef enum {
 
 extern int tslib_loglevel;
 
-#define PRINT_STR(str) (str ? (const char*)str : "(null)")
-#define PRINT_BOOL(b) (b ? "true" : "false")
-
 void log_handler(const char* domain, GLogLevelFlags log_level, const char* message, void*);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

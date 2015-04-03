@@ -30,14 +30,13 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <inttypes.h>
 
 #include "log.h"
 
 int tslib_loglevel = TSLIB_LOG_LEVEL_DEFAULT;
 
-#define INDENT_LEVEL	1
-const char* IDENT = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
+const char* LOG_INDENT_BUFFER = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
+const int LOG_INDENT_LEN = sizeof(LOG_INDENT_BUFFER);
 
 void skit_log_struct(size_t num_indents, const char* name, const void* value, skit_log_type_t type, const char* str)
 {
@@ -61,41 +60,41 @@ void skit_log_struct(size_t num_indents, const char* name, const void* value, sk
         real_name++;
     }
 
-    if (num_indents >= sizeof IDENT) {
+    if (num_indents >= LOG_INDENT_LEN) {
         g_critical("Too many indents - %zu", num_indents);
-        num_indents = sizeof IDENT;
+        num_indents = LOG_INDENT_LEN;
     }
 
     switch(type) {
     case SKIT_LOG_TYPE_UINT:
-        g_info("%.*s%s=%u", (int)num_indents, IDENT, real_name, *(const unsigned*)value);
+        g_info("%.*s%s=%u", (int)num_indents, LOG_INDENT_BUFFER, real_name, *(const unsigned*)value);
         break;
     case SKIT_LOG_TYPE_UINT8:
-        g_info("%.*s%s=%"PRIu8"", (int)num_indents, IDENT, real_name, *(const uint8_t*)value);
+        g_info("%.*s%s=%"PRIu8"", (int)num_indents, LOG_INDENT_BUFFER, real_name, *(const uint8_t*)value);
         break;
     case SKIT_LOG_TYPE_UINT16:
-        g_info("%.*s%s=%"PRIu16"", (int)num_indents, IDENT, real_name, *(const uint16_t*)value);
+        g_info("%.*s%s=%"PRIu16"", (int)num_indents, LOG_INDENT_BUFFER, real_name, *(const uint16_t*)value);
         break;
     case SKIT_LOG_TYPE_UINT32:
-        g_info("%.*s%s=%"PRIu32"", (int)num_indents, IDENT, real_name, *(const uint32_t*)value);
+        g_info("%.*s%s=%"PRIu32"", (int)num_indents, LOG_INDENT_BUFFER, real_name, *(const uint32_t*)value);
         break;
     case SKIT_LOG_TYPE_UINT64:
-        g_info("%.*s%s=%"PRIu64"", (int)num_indents, IDENT, real_name, *(const uint64_t*)value);
+        g_info("%.*s%s=%"PRIu64"", (int)num_indents, LOG_INDENT_BUFFER, real_name, *(const uint64_t*)value);
         break;
     case SKIT_LOG_TYPE_UINT_DBG:
-        g_debug("%.*s%s=%u", (int)num_indents, IDENT, real_name, *(const unsigned*)value);
+        g_debug("%.*s%s=%u", (int)num_indents, LOG_INDENT_BUFFER, real_name, *(const unsigned*)value);
         break;
     case SKIT_LOG_TYPE_UINT_HEX:
-        g_info("%.*s%s=0x%"PRIX64"", (int)num_indents, IDENT, real_name, *(const uint64_t*)value);
+        g_info("%.*s%s=0x%"PRIX64"", (int)num_indents, LOG_INDENT_BUFFER, real_name, *(const uint64_t*)value);
         break;
     case SKIT_LOG_TYPE_UINT_HEX_DBG:
-        g_debug("%.*s%s=0x%"PRIX64"", (int)num_indents, IDENT, real_name, *(const uint64_t*)value);
+        g_debug("%.*s%s=0x%"PRIX64"", (int)num_indents, LOG_INDENT_BUFFER, real_name, *(const uint64_t*)value);
         break;
     case SKIT_LOG_TYPE_STR:
-        g_info("%.*s%s=%s", (int)num_indents, IDENT, real_name, (const char*)value);
+        g_info("%.*s%s=%s", (int)num_indents, LOG_INDENT_BUFFER, real_name, (const char*)value);
         break;
     case SKIT_LOG_TYPE_STR_DBG:
-        g_info("%.*s%s=%s", (int)num_indents, IDENT, real_name, (const char*)value);
+        g_info("%.*s%s=%s", (int)num_indents, LOG_INDENT_BUFFER, real_name, (const char*)value);
         break;
     default:
         break;

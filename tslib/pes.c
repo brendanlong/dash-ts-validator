@@ -257,61 +257,61 @@ static void pes_print_header(const pes_packet_t* pes)
 {
     g_return_if_fail(pes);
 
-    SKIT_LOG_UINT32_DBG("", pes->stream_id);
-    SKIT_LOG_UINT32_DBG("", pes->packet_length);
+    LOG_DEBUG(0, "stream_id: %"PRIu8, pes->stream_id);
+    LOG_DEBUG(0, "packet_length: %"PRIu16, pes->packet_length);
 
     if(HAS_PES_HEADER(pes->stream_id)) {
-        SKIT_LOG_UINT32_DBG("", pes->scrambling_control);
-        SKIT_LOG_UINT32_DBG("", pes->priority);
-        SKIT_LOG_UINT32_DBG("", pes->data_alignment_indicator);
-        SKIT_LOG_UINT32_DBG("", pes->copyright);
-        SKIT_LOG_UINT32_DBG("", pes->original_or_copy);
+        LOG_DEBUG(0, "scrambling_control: %"PRIu8, pes->scrambling_control);
+        LOG_DEBUG(0, "priority: %"PRIu8, pes->priority);
+        LOG_DEBUG(0, "data_alignment_indicator: %s", BOOL_TO_STR(pes->data_alignment_indicator));
+        LOG_DEBUG(0, "copyright: %s", BOOL_TO_STR(pes->copyright));
+        LOG_DEBUG(0, "original_or_copy: %s", BOOL_TO_STR(pes->original_or_copy));
 
-        SKIT_LOG_UINT32_DBG("", pes->pts_flag);
-        SKIT_LOG_UINT32_DBG("", pes->dts_flag);
-        SKIT_LOG_UINT32_DBG("", pes->escr_flag);
-        SKIT_LOG_UINT32_DBG("", pes->es_rate_flag);
-        SKIT_LOG_UINT32_DBG("", pes->dsm_trick_mode_flag);
-        SKIT_LOG_UINT32_DBG("", pes->additional_copy_info_flag);
-        SKIT_LOG_UINT32_DBG("", pes->crc_flag);
-        SKIT_LOG_UINT32_DBG("", pes->extension_flag);
+        LOG_DEBUG(0, "pts_flag: %s", BOOL_TO_STR(pes->pts_flag));
+        LOG_DEBUG(0, "dts_flag: %s", BOOL_TO_STR(pes->dts_flag));
+        LOG_DEBUG(0, "escr_flag: %s", BOOL_TO_STR(pes->escr_flag));
+        LOG_DEBUG(0, "es_rate_flag: %s", BOOL_TO_STR(pes->es_rate_flag));
+        LOG_DEBUG(0, "es_rate_flag: %s", BOOL_TO_STR(pes->es_rate_flag));
+        LOG_DEBUG(0, "es_rate_flag: %s", BOOL_TO_STR(pes->es_rate_flag));
+        LOG_DEBUG(0, "crc_flag: %s", BOOL_TO_STR(pes->crc_flag));
+        LOG_DEBUG(0, "extension_flag: %s", BOOL_TO_STR(pes->extension_flag));
 
         // byte 9..14
         if (pes->pts_flag) {
-            SKIT_LOG_UINT64_DBG("   ", pes->pts);
+            LOG_DEBUG(1, "pts: %"PRIu64, pes->pts);
         }
 
         // byte 15..19
         if (pes->dts_flag) {
-            SKIT_LOG_UINT64_DBG("   ", pes->dts);
+            LOG_DEBUG(1, "dts: %"PRIu64, pes->dts);
         }
 
         if (pes->escr_flag) {
-            SKIT_LOG_UINT64_DBG("   ", pes->escr_base);
-            SKIT_LOG_UINT32_DBG("   ", pes->escr_extension);
+            LOG_DEBUG(1, "escr_base: %"PRIu64, pes->escr_base);
+            LOG_DEBUG(1, "escr_extension: %"PRIu8, pes->escr_extension);
 
         }
         if (pes->es_rate_flag) {
-            SKIT_LOG_UINT32_DBG("   ", pes->es_rate);
+            LOG_DEBUG(1, "es_rate: %"PRIu32, pes->es_rate);
         }
 
         if (pes->dsm_trick_mode_flag) {
-            SKIT_LOG_UINT32_DBG("   ", pes->trick_mode_control);
+            LOG_DEBUG(1, "trick_mode_control: %"PRIu8, pes->trick_mode_control);
             switch (pes->trick_mode_control) {
             case PES_DSM_TRICK_MODE_CTL_FAST_FORWARD:
             case PES_DSM_TRICK_MODE_CTL_FAST_REVERSE:
-                SKIT_LOG_UINT32_DBG("   ", pes->field_id);
-                SKIT_LOG_UINT32_DBG("   ", pes->intra_slice_refresh);
-                SKIT_LOG_UINT32_DBG("   ", pes->frequency_truncation);
+                LOG_DEBUG(1, "field_id: %"PRIu8, pes->field_id);
+                LOG_DEBUG(1, "intra_slice_refresh: %s", BOOL_TO_STR(pes->intra_slice_refresh));
+                LOG_DEBUG(1, "frequency_truncation: %"PRIu8, pes->frequency_truncation);
                 break;
 
             case PES_DSM_TRICK_MODE_CTL_SLOW_MOTION:
             case PES_DSM_TRICK_MODE_CTL_SLOW_REVERSE:
-                SKIT_LOG_UINT32_DBG("   ", pes->rep_cntrl);
+                LOG_DEBUG(1, "rep_cntrl: %"PRIu8, pes->rep_cntrl);
                 break;
 
             case PES_DSM_TRICK_MODE_CTL_FREEZE_FRAME:
-                SKIT_LOG_UINT32_DBG("   ", pes->field_id);
+                LOG_DEBUG(1, "field_id: %"PRIu8, pes->field_id);
                 break;
 
             default:
@@ -319,41 +319,42 @@ static void pes_print_header(const pes_packet_t* pes)
             }
         }
         if (pes->additional_copy_info_flag) {
-            SKIT_LOG_UINT32_DBG("   ", pes->additional_copy_info);
+            LOG_DEBUG(1, "additional_copy_info: %"PRIu8, pes->additional_copy_info);
         }
         if (pes->crc_flag) {
-            SKIT_LOG_UINT32_DBG("   ", pes->previous_pes_packet_crc);
+            LOG_DEBUG(1, "previous_pes_packet_crc: %"PRIu16, pes->previous_pes_packet_crc);
         }
         if (pes->extension_flag) {
-            SKIT_LOG_UINT32_DBG("   ", pes->private_data_flag);
-            SKIT_LOG_UINT32_DBG("   ", pes->pack_header_field_flag);
-            SKIT_LOG_UINT32_DBG("   ", pes->program_packet_sequence_counter_flag);
-            SKIT_LOG_UINT32_DBG("   ", pes->pstd_buffer_flag);
-            SKIT_LOG_UINT32_DBG("   ", pes->extension_flag_2);
+            LOG_DEBUG(1, "private_data_flag: %s", BOOL_TO_STR(pes->private_data_flag));
+            LOG_DEBUG(1, "pack_header_field_flag: %s", BOOL_TO_STR(pes->pack_header_field_flag));
+            LOG_DEBUG(1, "program_packet_sequence_counter_flag: %s",
+                    BOOL_TO_STR(pes->program_packet_sequence_counter_flag));
+            LOG_DEBUG(1, "pstd_buffer_flag: %s", BOOL_TO_STR(pes->pstd_buffer_flag));
+            LOG_DEBUG(1, "extension: %s", BOOL_TO_STR(pes->extension_flag_2));
 
             // add ph->private_data_flag
 
             if (pes->pack_header_field_flag) {
-                SKIT_LOG_UINT32_DBG("       ", pes->pack_field_length);
+                LOG_DEBUG(2, "pack_field_length: %"PRIu8, pes->pack_field_length);
             }
             if (pes->program_packet_sequence_counter_flag) {
-                SKIT_LOG_UINT32_DBG("       ", pes->program_packet_sequence_counter);
-                SKIT_LOG_UINT32_DBG("       ", pes->mpeg1_mpeg2_identifier);
-                SKIT_LOG_UINT32_DBG("       ", pes->original_stuff_length);
+                LOG_DEBUG(2, "program_packet_sequence_counter: %"PRIu8, pes->program_packet_sequence_counter);
+                LOG_DEBUG(2, "mpeg1_mpeg2_identifier: %s", BOOL_TO_STR(pes->mpeg1_mpeg2_identifier));
+                LOG_DEBUG(2, "original_stuff_length: %"PRIu8, pes->original_stuff_length);
             }
             if (pes->pstd_buffer_flag) {
-                SKIT_LOG_UINT32_DBG("       ", pes->pstd_buffer_scale);
-                SKIT_LOG_UINT32_DBG("       ", pes->pstd_buffer_size);
+                LOG_DEBUG(2, "pstd_buffer_scale: %s", BOOL_TO_STR(pes->pstd_buffer_scale));
+                LOG_DEBUG(2, "pstd_buffer_size: %"PRIu16, pes->pstd_buffer_size);
             }
             if (pes->extension_flag_2) {
-                SKIT_LOG_UINT32_DBG("       ", pes->extension_field_length);
-                SKIT_LOG_UINT32_DBG("       ", pes->stream_id_extension_flag);
+                LOG_DEBUG(2, "extension_field_length: %"PRIu8, pes->extension_field_length);
+                LOG_DEBUG(2, "stream_id_extension_flag: %s", BOOL_TO_STR(pes->stream_id_extension_flag));
                 if (!pes->stream_id_extension_flag) {
-                    SKIT_LOG_UINT32_DBG("           ", pes->stream_id_extension);
+                    LOG_DEBUG(2, "stream_id_extension: %"PRIu8, pes->stream_id_extension);
                 } else {
-                    SKIT_LOG_UINT32_DBG("           ", pes->tref_extension_flag);
+                    LOG_DEBUG(2, "tref_extension_flag: %s", BOOL_TO_STR(pes->tref_extension_flag));
                     if (pes->tref_extension_flag) {
-                        SKIT_LOG_UINT64_DBG("           ", pes->tref);
+                        LOG_DEBUG(2, "tref: %"PRIu64, pes->tref);
                     }
                 }
             }
@@ -368,5 +369,5 @@ void pes_print(const pes_packet_t* pes)
         return;
     }
     pes_print_header(pes);
-    SKIT_LOG_UINT64_DBG("", (uint64_t)pes->payload_len);
+    LOG_DEBUG(0, "payload_len: %zu", pes->payload_len);
 }

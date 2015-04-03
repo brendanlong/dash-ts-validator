@@ -105,8 +105,8 @@ void descriptor_print(const descriptor_t* desc, int level)
         ca_descriptor_print(desc, level);
         break;
     default:
-        SKIT_LOG_UINT(level, desc->tag);
-        SKIT_LOG_UINT(level, desc->data_len);
+        LOG_DEBUG(level, "tag: %"PRIu8, desc->tag);
+        LOG_DEBUG(level, "length: %"PRIu8, desc->data_len);
     }
 }
 
@@ -175,9 +175,8 @@ void ca_descriptor_print(const descriptor_t* desc, int level)
 
     const ca_descriptor_t* cad = (const ca_descriptor_t*)desc;
 
-    SKIT_LOG_UINT8(level, desc->tag);
-    SKIT_LOG_UINT8(level, desc->data_len);
+    descriptor_print(desc, level);
 
-    SKIT_LOG_UINT16(level, cad->ca_pid);
-    SKIT_LOG_UINT16(level, cad->ca_system_id);
+    LOG_DEBUG(level, "ca_pid: %"PRIu16, cad->ca_pid);
+    LOG_DEBUG(level, "ca_system_id: %"PRIu16, cad->ca_system_id);
 }

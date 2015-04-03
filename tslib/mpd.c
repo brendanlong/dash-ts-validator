@@ -40,14 +40,9 @@
 /* Ignore warnings for implicitly casting const char* to const xmlChar* (i.e. const unsigned char*) */
 #pragma GCC diagnostic ignored "-Wpointer-sign"
 
-#define PRINT_PROPERTY(indent, printf_str, ...) \
-g_debug("%.*s"printf_str, \
-        indent < sizeof(INDENT_BUFFER) ? indent : (int)sizeof(INDENT_BUFFER), \
-        INDENT_BUFFER, __VA_ARGS__)
-
-#define PRINT_RANGE(indent, owner, property_name) \
+#define LOG_RANGE(indent, owner, property_name) \
 if (owner->property_name##_start != 0 || owner->property_name##_end != 0) { \
-    PRINT_PROPERTY(indent, #property_name ": %"PRIu64"-%"PRIu64, owner->property_name##_start, \
+    LOG_DEBUG(indent, #property_name ": %"PRIu64"-%"PRIu64, owner->property_name##_start, \
             owner->property_name##_end); \
 }
 
@@ -125,15 +120,15 @@ void mpd_print(const mpd_t* mpd)
         break;
     }
     if (mpd_type != NULL) {
-        PRINT_PROPERTY(indent, "presentation_type: %s", PRINT_STR(mpd_type));
+        LOG_DEBUG(indent, "presentation_type: %s", mpd_type);
     } else {
-        PRINT_PROPERTY(indent, "presentation_type: %d", mpd->presentation_type);
+        LOG_DEBUG(indent, "presentation_type: %d", mpd->presentation_type);
     }
-    PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(mpd->profile));
-    PRINT_PROPERTY(indent, "duration: %"PRIu64, mpd->duration);
+    LOG_DEBUG(indent, "profile: %s", dash_profile_to_string(mpd->profile));
+    LOG_DEBUG(indent, "duration: %"PRIu64, mpd->duration);
 
     for (size_t i = 0; i < mpd->periods->len; ++i) {
-        PRINT_PROPERTY(indent, "periods[%zu]:", i);
+        LOG_DEBUG(indent, "periods[%zu]:", i);
         period_print(g_ptr_array_index(mpd->periods, i), indent);
     }
 }
@@ -162,10 +157,10 @@ void period_print(const period_t* period, unsigned indent)
     g_return_if_fail(period);
 
     ++indent;
-    PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(period->bitstream_switching));
-    PRINT_PROPERTY(indent, "duration: %"PRIu64, period->duration);
+    LOG_DEBUG(indent, "bitstream_switching: %s", BOOL_TO_STR(period->bitstream_switching));
+    LOG_DEBUG(indent, "duration: %"PRIu64, period->duration);
     for (size_t i = 0; i < period->adaptation_sets->len; ++i) {
-        PRINT_PROPERTY(indent, "adaptation_sets[%zu]:", i);
+        LOG_DEBUG(indent, "adaptation_sets[%zu]:", i);
         adaptation_set_print(g_ptr_array_index(period->adaptation_sets, i), indent + 1);
     }
 }
@@ -194,16 +189,16 @@ void adaptation_set_print(const adaptation_set_t* adaptation_set, unsigned inden
 {
     g_return_if_fail(adaptation_set);
 
-    PRINT_PROPERTY(indent, "id: %"PRIu32, adaptation_set->id);
-    PRINT_PROPERTY(indent, "mime_type: %s", adaptation_set->mime_type);
-    PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(adaptation_set->profile));
-    PRINT_PROPERTY(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
-    PRINT_PROPERTY(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
+    LOG_DEBUG(indent, "id: %"PRIu32, adaptation_set->id);
+    LOG_DEBUG(indent, "mime_type: %s", adaptation_set->mime_type);
+    LOG_DEBUG(indent, "profile: %s", dash_profile_to_string(adaptation_set->profile));
+    LOG_DEBUG(indent, "audio_pid: %"PRIu32, adaptation_set->audio_pid);
+    LOG_DEBUG(indent, "video_pid: %"PRIu32, adaptation_set->video_pid);
     print_optional_uint32(indent, "segment_alignment", adaptation_set->segment_alignment);
     print_optional_uint32(indent, "subsegment_alignment", adaptation_set->subsegment_alignment);
-    PRINT_PROPERTY(indent, "bitstream_switching: %s", PRINT_BOOL(adaptation_set->bitstream_switching));
+    LOG_DEBUG(indent, "bitstream_switching: %s", BOOL_TO_STR(adaptation_set->bitstream_switching));
     for (size_t i = 0; i < adaptation_set->representations->len; ++i) {
-        PRINT_PROPERTY(indent, "representations[%zu]:", i);
+        LOG_DEBUG(indent, "representations[%zu]:", i);
         representation_print(g_ptr_array_index(adaptation_set->representations, i), indent + 1);
     }
 }
@@ -240,24 +235,24 @@ void representation_print(const representation_t* representation, unsigned inden
 {
     g_return_if_fail(representation);
 
-    PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(representation->profile));
-    PRINT_PROPERTY(indent, "id: %s", representation->id);
-    PRINT_PROPERTY(indent, "mime_type: %s", representation->mime_type);
-    PRINT_PROPERTY(indent, "index_file_name: %s", representation->index_file_name);
-    PRINT_RANGE(indent, representation, index_range);
-    PRINT_PROPERTY(indent, "initialization_file_name: %s", representation->initialization_file_name);
-    PRINT_RANGE(indent, representation, initialization_range);
-    PRINT_PROPERTY(indent, "bitstream_switching_file_name: %s", representation->bitstream_switching_file_name);
-    PRINT_RANGE(indent, representation, bitstream_switching_range);
-    PRINT_PROPERTY(indent, "start_with_sap: %u", representation->start_with_sap);
-    PRINT_PROPERTY(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
-    PRINT_PROPERTY(indent, "timescale: %"PRIu32, representation->timescale);
+    LOG_DEBUG(indent, "profile: %s", dash_profile_to_string(representation->profile));
+    LOG_DEBUG(indent, "id: %s", representation->id);
+    LOG_DEBUG(indent, "mime_type: %s", representation->mime_type);
+    LOG_DEBUG(indent, "index_file_name: %s", representation->index_file_name);
+    LOG_RANGE(indent, representation, index_range);
+    LOG_DEBUG(indent, "initialization_file_name: %s", representation->initialization_file_name);
+    LOG_RANGE(indent, representation, initialization_range);
+    LOG_DEBUG(indent, "bitstream_switching_file_name: %s", representation->bitstream_switching_file_name);
+    LOG_RANGE(indent, representation, bitstream_switching_range);
+    LOG_DEBUG(indent, "start_with_sap: %u", representation->start_with_sap);
+    LOG_DEBUG(indent, "presentation_time_offset: %"PRIu64, representation->presentation_time_offset);
+    LOG_DEBUG(indent, "timescale: %"PRIu32, representation->timescale);
     for (size_t i = 0; i < representation->subrepresentations->len; ++i) {
-        PRINT_PROPERTY(indent, "subrepresentation[%zu]:", i);
+        LOG_DEBUG(indent, "subrepresentation[%zu]:", i);
         subrepresentation_print(g_ptr_array_index(representation->subrepresentations, i), indent + 1);
     }
     for (size_t i = 0; i < representation->segments->len; ++i) {
-        PRINT_PROPERTY(indent, "segments[%zu]:", i);
+        LOG_DEBUG(indent, "segments[%zu]:", i);
         segment_print(g_ptr_array_index(representation->segments, i), indent + 1);
     }
 }
@@ -285,17 +280,17 @@ void subrepresentation_print(const subrepresentation_t* obj, unsigned indent)
 {
     g_return_if_fail(obj);
 
-    PRINT_PROPERTY(indent, "profile: %s", dash_profile_to_string(obj->profile));
-    PRINT_PROPERTY(indent, "start_with_sap: %"PRIu8, obj->start_with_sap);
+    LOG_DEBUG(indent, "profile: %s", dash_profile_to_string(obj->profile));
+    LOG_DEBUG(indent, "start_with_sap: %"PRIu8, obj->start_with_sap);
     if (obj->has_level) {
-        PRINT_PROPERTY(indent, "level: %"PRIu32, obj->level);
+        LOG_DEBUG(indent, "level: %"PRIu32, obj->level);
     }
-    PRINT_PROPERTY(indent, "bandwidth: %"PRIu32, obj->bandwidth);
+    LOG_DEBUG(indent, "bandwidth: %"PRIu32, obj->bandwidth);
     for (size_t i = 0; i < obj->dependency_level->len; ++i) {
-        PRINT_PROPERTY(indent, "dependency_level[%zu]: %"PRIu32, i, g_array_index(obj->dependency_level, uint32_t, i));
+        LOG_DEBUG(indent, "dependency_level[%zu]: %"PRIu32, i, g_array_index(obj->dependency_level, uint32_t, i));
     }
     for (size_t i = 0; i < obj->content_component->len; ++i) {
-        PRINT_PROPERTY(indent, "content_component[%zu]: %s", i, (char*)g_ptr_array_index(obj->content_component, i));
+        LOG_DEBUG(indent, "content_component[%zu]: %s", i, (char*)g_ptr_array_index(obj->content_component, i));
     }
 }
 
@@ -327,12 +322,12 @@ void segment_print(const segment_t* segment, unsigned indent)
 {
     g_return_if_fail(segment);
 
-    PRINT_PROPERTY(indent, "file_name: %s", PRINT_STR(segment->file_name));
-    PRINT_RANGE(indent, segment, media_range);
-    PRINT_PROPERTY(indent, "start: %"PRIu64, segment->start);
-    PRINT_PROPERTY(indent, "duration: %"PRIu64, segment->duration);
-    PRINT_PROPERTY(indent, "index_file_name: %s", PRINT_STR(segment->index_file_name));
-    PRINT_RANGE(indent, segment, index_range);
+    LOG_DEBUG(indent, "file_name: %s", segment->file_name);
+    LOG_RANGE(indent, segment, media_range);
+    LOG_DEBUG(indent, "start: %"PRIu64, segment->start);
+    LOG_DEBUG(indent, "duration: %"PRIu64, segment->duration);
+    LOG_DEBUG(indent, "index_file_name: %s", segment->index_file_name);
+    LOG_RANGE(indent, segment, index_range);
 }
 
 static mpd_t* mpd_read(xmlDoc* doc, char* base_url)
@@ -1221,9 +1216,9 @@ static void print_optional_uint32(int indent, const char* name, optional_uint32_
     g_return_if_fail(name);
 
     if (value.has_int) {
-        PRINT_PROPERTY(indent, "%s: %"PRIu32, name, value.i);
+        LOG_DEBUG(indent, "%s: %"PRIu32, name, value.i);
     } else {
-        PRINT_PROPERTY(indent, "%s: %s", name, PRINT_BOOL(value.b));
+        LOG_DEBUG(indent, "%s: %s", name, BOOL_TO_STR(value.b));
     }
 }
 
