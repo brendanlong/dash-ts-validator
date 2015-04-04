@@ -16,6 +16,7 @@ config.*
 aclocal.m4
 autom4te.cache
 build-aux
+compile
 configure
 depcomp
 install-sh
@@ -28,9 +29,13 @@ stamp-h1
 test-driver
 
 /h264bitstream/h264_analyze
+/h264bitstream/m4/libtool.m4
+/h264bitstream/m4/lt*.m4
 /h264bitstream/libh264bitstream.pc
 /h264bitstream/libh264bitstream-uninstalled.pc
 /h264bitstream/libh264bitstream-uninstalled.sh
+
+/m4
 
 /tslib/apps/ts_validate_mult_segment
 
