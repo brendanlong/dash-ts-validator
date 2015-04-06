@@ -847,49 +847,81 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
     GPtrArray* timeline = g_ptr_array_new_with_free_func(free);
     uint64_t start = representation->presentation_time_offset;
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
-        if (cur_node->type != XML_ELEMENT_NODE) {
+        if (cur_node->type != XML_ELEMENT_NODE || !xmlStrEqual(cur_node->name, "S")) {
             continue;
         }
-        if (xmlStrEqual(cur_node->name, "S")) {
-            int error = 0;
-            char* d = NULL;
-            char* r = NULL;
-            char* t = xmlGetProp(cur_node, "t");
-            if (t) {
-                start = convert_timescale(str_to_uint64(t, 0, &error), representation->timescale);
-                if (error) {
-                    g_critical("<S>'s @t value (%s) is not a number.", t);
-                    goto loop_cleanup;
+        int error = 0;
+        char* d = NULL;
+        char* r = NULL;
+        char* t = xmlGetProp(cur_node, "t");
+        if (t) {
+            start = convert_timescale(str_to_uint64(t, 0, &error), representation->timescale) \
+                    + representation->presentation_time_offset;
+            if (error) {
+                g_critical("<S>'s @t value (%s) is not a number.", t);
+                goto loop_cleanup;
+            }
+        }
+        d = xmlGetProp(cur_node, "d");
+        uint64_t duration = d ? str_to_uint64(d, 0, &error) : 0;
+        if (error || !d) {
+            g_critical("<S>'s @d value (%s) is not a valid duration.", d);
+            error = 1;
+            goto loop_cleanup;
+        }
+        duration = convert_timescale(duration, representation->timescale);
+        r = xmlGetProp(cur_node, "r");
+        int64_t repeat = r ? str_to_int64(r, 0, &error) : 0;
+        if (error) {
+            g_critical("<S>'s @r value (%s) is not a number.", r);
+            goto loop_cleanup;
+        }
+        if (repeat < 0) {
+            for (xmlNode* next_node = cur_node->next; ; next_node = next_node->next) {
+                if (next_node && !xmlStrEqual(next_node->name, "S")) {
+                    continue;
                 }
+                uint64_t duration_left;
+                if (next_node) {
+                    if (!xmlHasProp(next_node, "t")) {
+                        g_critical("S@r is negative, but next S doesn't have @t.");
+                        error = 1;
+                        goto loop_cleanup;
+                    }
+                    uint64_t next_start = convert_timescale(read_uint64(next_node, "t"), representation->timescale) \
+                            + representation->presentation_time_offset;
+                    if (next_start < start) {
+                        g_critical("S@r is negative but next start time (%"PRId64") is less than current start time "
+                                "(%"PRId64").", next_start, start);
+                        error = 1;
+                        goto loop_cleanup;
+                    }
+                    duration_left = next_start - start;
+                } else {
+                    duration_left = convert_timescale(representation->adaptation_set->period->duration, 1) \
+                        - start + representation->presentation_time_offset;
+                }
+                repeat = duration_left / duration;
+                if (repeat != 0) {
+                    repeat -= 1;
+                }
+                break;
             }
-            d = xmlGetProp(cur_node, "d");
-            uint64_t duration = d ? str_to_uint64(d, 0, &error) : 0;
-            if (error || !d) {
-                g_critical("<S>'s @d value (%s) is not a valid duration.", d);
-                goto loop_cleanup;
-            }
-            duration = convert_timescale(duration, representation->timescale);
-            r = xmlGetProp(cur_node, "r");
-            int64_t repeat = r ? str_to_int64(r, 0, &error) : 0;
-            if (error) {
-                g_critical("<S>'s @r value (%s) is not a number.", r);
-                goto loop_cleanup;
-            }
+        }
 
-            for (int64_t i = 0; i < repeat + 1; ++i) {
-                segment_timeline_s_t* s = malloc(sizeof(*s));
-                s->start = start;
-                s->duration = duration;
-                g_ptr_array_add(timeline, s);
-                start += duration;
-            }
+        for (int64_t i = 0; i < repeat + 1; ++i) {
+            segment_timeline_s_t* s = malloc(sizeof(*s));
+            s->start = start;
+            s->duration = duration;
+            g_ptr_array_add(timeline, s);
+            start += duration;
+        }
 loop_cleanup:
-            xmlFree(d);
-            xmlFree(r);
-            xmlFree(t);
-            if (error) {
-                goto fail;
-            }
+        xmlFree(d);
+        xmlFree(r);
+        xmlFree(t);
+        if (error) {
+            goto fail;
         }
     }
     return timeline;
@@ -1455,7 +1487,8 @@ uint64_t read_duration(xmlNode* node, const char* property_name)
 
     const char* error;
     int error_offset;
-    re = pcre_compile("P((?<year>[0-9]+)Y)?((?<month>[0-9]+)M)?((?<day>[0-9]+)D)?(T((?<hour>[0-9]+)H)?((?<minute>[0-9]+)M)?((?<second>[0-9]+)(\\.[0-9]+)?S)?)?", 0, &error, &error_offset, NULL);
+    re = pcre_compile("P((?<year>[0-9]+)Y)?((?<month>[0-9]+)M)?((?<day>[0-9]+)D)?(T((?<hour>[0-9]+)H)?((?<minute>"
+            "[0-9]+)M)?((?<second>[0-9]+)(\\.[0-9]+)?S)?)?", 0, &error, &error_offset, NULL);
     if (re == NULL) {
         g_critical("PCRE compilation error %s at offset %d.", error, error_offset);
         goto fail;
