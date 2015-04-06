@@ -870,13 +870,13 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
             }
             duration = convert_timescale(duration, representation->timescale);
             r = xmlGetProp(cur_node, "r");
-            int64_t repeat = r ? str_to_int64(r, 0, &error) : 1;
+            int64_t repeat = r ? str_to_int64(r, 0, &error) : 0;
             if (error) {
                 g_critical("<S>'s @r value (%s) is not a number.", r);
                 goto loop_cleanup;
             }
 
-            for (int64_t i = 0; i < repeat; ++i) {
+            for (int64_t i = 0; i < repeat + 1; ++i) {
                 segment_timeline_s_t* s = malloc(sizeof(*s));
                 s->start = start;
                 s->duration = duration;

@@ -77,7 +77,7 @@ START_TEST(test_full_mpd)
                             <SegmentTemplate media='segment-$Number$.ts' timescale='90000'> \
                                 <RepresentationIndex sourceURL='representation-index.sidx'/> \
                                 <SegmentTimeline> \
-                                    <S t='0' r='10' d='5400000'/> \
+                                    <S t='0' r='9' d='5400000'/> \
                                 </SegmentTimeline> \
                             </SegmentTemplate> \
                         </Representation> \
@@ -88,7 +88,7 @@ START_TEST(test_full_mpd)
                             <SegmentTemplate media='segment-$Number$.ts' timescale='90000'> \
                                 <RepresentationIndex sourceURL='representation-index.sidx'/> \
                                 <SegmentTimeline> \
-                                    <S t='0' r='10' d='5400000'/> \
+                                    <S t='0' r='9' d='5400000'/> \
                                 </SegmentTimeline> \
                             </SegmentTemplate> \
                         </Representation> \
@@ -1302,7 +1302,7 @@ START_TEST(test_segment_template_mixed_levels)
                     <AdaptationSet> \
                         <SegmentBase> \
                             <SegmentTimeline> \
-                                <S d='50' r='3' /> \
+                                <S d='50' r='2' /> \
                                 <S d='5' /> \
                             </SegmentTimeline> \
                         </SegmentBase> \
