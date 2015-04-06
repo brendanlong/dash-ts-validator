@@ -71,6 +71,7 @@ static uint32_t read_uint64(xmlNode*, const char* property_name);
 static bool read_bool(xmlNode*, const char* property_name);
 static char* read_filename(xmlNode*, const char* property_name, const char* base_url);
 static uint64_t str_to_uint64(const char*, size_t length, int* error);
+static uint64_t str_to_int64(const char*, size_t length, int* error);
 static dash_profile_t read_profile(xmlNode*, dash_profile_t parent_profile);
 static const char* dash_profile_to_string(dash_profile_t);
 static bool read_range(xmlNode*, const char* property_name, uint64_t* start_out, uint64_t* end_out);
@@ -851,37 +852,43 @@ GPtrArray* read_segment_timeline(xmlNode* node, representation_t* representation
         }
         if (xmlStrEqual(cur_node->name, "S")) {
             int error = 0;
+            char* d = NULL;
+            char* r = NULL;
             char* t = xmlGetProp(cur_node, "t");
             if (t) {
                 start = convert_timescale(str_to_uint64(t, 0, &error), representation->timescale);
-                xmlFree(t);
                 if (error) {
                     g_critical("<S>'s @t value (%s) is not a number.", t);
-                    goto fail;
+                    goto loop_cleanup;
                 }
             }
-            char* d = xmlGetProp(cur_node, "d");
+            d = xmlGetProp(cur_node, "d");
             uint64_t duration = d ? str_to_uint64(d, 0, &error) : 0;
-            xmlFree(d);
             if (error || !d) {
                 g_critical("<S>'s @d value (%s) is not a valid duration.", d);
-                goto fail;
+                goto loop_cleanup;
             }
             duration = convert_timescale(duration, representation->timescale);
-            char* r = xmlGetProp(cur_node, "r");
-            uint64_t repeat = r ? str_to_uint64(r, 0, &error) : 1;
-            xmlFree(r);
+            r = xmlGetProp(cur_node, "r");
+            int64_t repeat = r ? str_to_int64(r, 0, &error) : 1;
             if (error) {
                 g_critical("<S>'s @r value (%s) is not a number.", r);
-                goto fail;
+                goto loop_cleanup;
             }
 
-            for (uint64_t i = 0; i < repeat; ++i) {
+            for (int64_t i = 0; i < repeat; ++i) {
                 segment_timeline_s_t* s = malloc(sizeof(*s));
                 s->start = start;
                 s->duration = duration;
                 g_ptr_array_add(timeline, s);
                 start += duration;
+            }
+loop_cleanup:
+            xmlFree(d);
+            xmlFree(r);
+            xmlFree(t);
+            if (error) {
+                goto fail;
             }
         }
     }
@@ -1296,6 +1303,29 @@ uint64_t str_to_uint64(const char* str, size_t length, int* error)
         *error = 0;
     }
     return result;
+}
+
+uint64_t str_to_int64(const char* str, size_t length, int* error)
+{
+    g_return_val_if_fail(str, 0);
+
+    bool negative = str[0] == '-';
+    int64_t result = 0;
+    for (size_t i = negative ? 1 : 0; (!length || i < length) && str[i]; ++i) {
+        char c = str[i];
+        if (c < '0' || c > '9') {
+            g_warning("Invalid non-digit '%c' in string to parse: %s.", c, str);
+            if (error) {
+                *error = 1;
+            }
+            return 0;
+        }
+        result = result * 10 + c - '0';
+    }
+    if (error) {
+        *error = 0;
+    }
+    return (negative ? -1 : 1) * result;
 }
 
 static dash_profile_t read_profile(xmlNode* node, dash_profile_t parent_profile)
