@@ -432,8 +432,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
         pid_validator->continuity_counter = ts->continuity_counter;
 
         // we ignore non-payload and non-media packets
-        if (ts->adaptation_field_control & TS_PAYLOAD
-                && pid_validator->content_component != UNKNOWN_CONTENT_COMPONENT) {
+        if (ts->has_payload && pid_validator->content_component != UNKNOWN_CONTENT_COMPONENT) {
             // if we only have complete PES packets, we must start with PUSI=1 followed by PES header in the first payload-bearing packet
             if ((dash_validator->profile >= DASH_PROFILE_MPEG2TS_MAIN)
                     && (ts->payload_unit_start_indicator == 0)) {

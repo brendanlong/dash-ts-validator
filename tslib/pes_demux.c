@@ -86,7 +86,7 @@ int pes_demux_process_ts_packet(ts_packet_t* ts, elementary_stream_info_t* es_in
                     first = false;
                 }
 
-                if (tsp != NULL && (tsp->adaptation_field_control & TS_PAYLOAD)) {
+                if (tsp != NULL && tsp->has_payload) {
                     g_array_append_vals(buf, tsp->payload, tsp->payload_len);
                 }
             }

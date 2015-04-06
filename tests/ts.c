@@ -51,7 +51,8 @@ START_TEST(test_read_ts)
     ck_assert(!ts->transport_priority);
     ck_assert_uint_eq(ts->pid, 0);
     ck_assert_uint_eq(ts->transport_scrambling_control, 0);
-    ck_assert_uint_eq(ts->adaptation_field_control, 1);
+    ck_assert(!ts->has_adaptation_field);
+    ck_assert(ts->has_payload);
     ck_assert_uint_eq(ts->continuity_counter, 6);
     assert_bytes_eq(ts->bytes, TS_SIZE, bytes, sizeof(bytes));
     assert_bytes_eq(ts->payload, ts->payload_len, bytes + 4, sizeof(bytes) - 4);
@@ -128,7 +129,8 @@ START_TEST(test_read_ts_too_long)
     ck_assert(!ts->transport_priority);
     ck_assert_uint_eq(ts->pid, PID_PAT);
     ck_assert_uint_eq(ts->transport_scrambling_control, 0);
-    ck_assert_uint_eq(ts->adaptation_field_control, 1);
+    ck_assert(!ts->has_adaptation_field);
+    ck_assert(ts->has_payload);
     ck_assert_uint_eq(ts->continuity_counter, 6);
     assert_bytes_eq(ts->bytes, TS_SIZE, bytes, TS_SIZE);
     assert_bytes_eq(ts->payload, ts->payload_len, bytes + 4, TS_SIZE - 4);
@@ -156,7 +158,8 @@ START_TEST(test_read_ts_with_adaptation_field)
     ck_assert(!ts->transport_priority);
     ck_assert_uint_eq(ts->pid, 256);
     ck_assert_uint_eq(ts->transport_scrambling_control, 0);
-    ck_assert_uint_eq(ts->adaptation_field_control, 3);
+    ck_assert(ts->has_adaptation_field);
+    ck_assert(ts->has_payload);
     ck_assert_uint_eq(ts->continuity_counter, 5);
     assert_bytes_eq(ts->bytes, TS_SIZE, bytes, TS_SIZE);
     assert_bytes_eq(ts->payload, ts->payload_len, bytes + 12, ts->payload_len);

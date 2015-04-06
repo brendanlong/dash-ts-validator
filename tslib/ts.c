@@ -191,17 +191,18 @@ ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num)
     ts->pid = bitreader_read_bits(b, 13);
 
     ts->transport_scrambling_control = bitreader_read_bits(b, 2);
-    ts->adaptation_field_control = bitreader_read_bits(b, 2);
+    ts->has_adaptation_field = bitreader_read_bit(b);
+    ts->has_payload = bitreader_read_bit(b);
     ts->continuity_counter = bitreader_read_bits(b, 4);
 
-    if (ts->adaptation_field_control & TS_ADAPTATION_FIELD) {
+    if (ts->has_adaptation_field) {
         memset(&(ts->adaptation_field), 0, sizeof(ts->adaptation_field));
         if (!ts_read_adaptation_field(&(ts->adaptation_field), b)) {
             goto fail;
         }
     }
 
-    if (ts->adaptation_field_control & TS_PAYLOAD) {
+    if (ts->has_payload) {
         ts->payload_len = TS_SIZE - b->bytes_read;
         ts->payload = malloc(ts->payload_len);
         bitreader_read_bytes(b, ts->payload, ts->payload_len);
@@ -291,10 +292,9 @@ void ts_print(const ts_packet_t* ts)
     SKIT_LOG_UINT_HEX_DBG(0, ts->pid);
 
     SKIT_LOG_UINT_DBG(0, ts->transport_scrambling_control);
-    SKIT_LOG_UINT_DBG(0, ts->adaptation_field_control);
     SKIT_LOG_UINT_DBG(0, ts->continuity_counter);
 
-    if (ts->adaptation_field_control & TS_ADAPTATION_FIELD) {
+    if (ts->has_adaptation_field) {
         ts_print_adaptation_field(&ts->adaptation_field);
     }
     SKIT_LOG_UINT64_DBG("", (uint64_t)ts->payload_len);
@@ -304,7 +304,7 @@ int64_t ts_read_pcr(const ts_packet_t* ts)
 {
     g_return_val_if_fail(ts, 0);
 
-    if (ts->adaptation_field_control & TS_ADAPTATION_FIELD && ts->adaptation_field.pcr_flag) {
+    if (ts->has_adaptation_field && ts->adaptation_field.pcr_flag) {
         uint64_t pcr = 300 * ts->adaptation_field.program_clock_reference_base;
         pcr += ts->adaptation_field.program_clock_reference_extension;
         return pcr;

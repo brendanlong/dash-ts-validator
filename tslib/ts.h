@@ -99,7 +99,8 @@ typedef struct {
     uint16_t pid;
 
     uint8_t transport_scrambling_control;
-    uint8_t adaptation_field_control;
+    bool has_adaptation_field;
+    bool has_payload;
     uint8_t continuity_counter;
 
     ts_adaptation_field_t adaptation_field;
