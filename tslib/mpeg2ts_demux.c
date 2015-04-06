@@ -201,7 +201,8 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet cat
-    if (!m2s->cat || m2s->cat->version_number != new_cas->version_number) {
+    if (!m2s->cat || m2s->cat->version_number != new_cas->version_number
+            || (ts->has_adaptation_field && ts->adaptation_field.discontinuity_indicator)) {
         if (m2s->cat != NULL) {
             g_info("New CAT section in force, discarding the old one");
             conditional_access_section_unref(m2s->cat);
@@ -241,7 +242,8 @@ static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet PAT
-    if (!m2s->cat || m2s->pat->version_number != new_pas->version_number) {
+    if (!m2s->cat || m2s->pat->version_number != new_pas->version_number
+            || (ts->has_adaptation_field && ts->adaptation_field.discontinuity_indicator)) {
         if (m2s->pat != NULL) {
             g_warning("New PAT section in force, discarding the old one");
             program_association_section_unref(m2s->pat);
@@ -298,7 +300,8 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet PAT
-    if (!m2p->pmt || m2p->pmt->version_number != new_pms->version_number) {
+    if (!m2p->pmt || m2p->pmt->version_number != new_pms->version_number
+            || (ts->has_adaptation_field && ts->adaptation_field.discontinuity_indicator)) {
         if (m2p->pmt != NULL) {
             g_info("New PMT in force, discarding the old one");
             g_hash_table_remove_all(m2p->pids);
