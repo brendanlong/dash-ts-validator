@@ -120,31 +120,13 @@ static void pid_validator_free(pid_validator_t* obj)
 dash_validator_t* dash_validator_new(segment_type_t segment_type, dash_profile_t profile)
 {
     dash_validator_t* obj = calloc(1, sizeof(*obj));
-    dash_validator_init(obj, segment_type, profile);
-    return obj;
-}
-
-void dash_validator_init(dash_validator_t* obj, segment_type_t segment_type, dash_profile_t profile)
-{
-    g_return_if_fail(obj);
-
     obj->segment_type = segment_type;
     obj->profile = profile;
     obj->subsegments = g_ptr_array_new_with_free_func((GDestroyNotify)subsegment_free);
     obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
     obj->ecm_pids = g_hash_table_new(g_direct_hash, g_direct_equal);
     obj->initialization_segment_ts = g_ptr_array_new_with_free_func((GDestroyNotify)ts_free);
-}
-
-void dash_validator_destroy(dash_validator_t* obj)
-{
-    if (obj == NULL) {
-        return;
-    }
-    g_ptr_array_free(obj->subsegments, true);
-    g_ptr_array_free(obj->pids, true);
-    g_hash_table_destroy(obj->ecm_pids);
-    g_ptr_array_free(obj->initialization_segment_ts, true);
+    return obj;
 }
 
 void dash_validator_free(dash_validator_t* obj)
@@ -152,7 +134,13 @@ void dash_validator_free(dash_validator_t* obj)
     if (obj == NULL) {
         return;
     }
-    dash_validator_destroy(obj);
+    program_association_section_unref(obj->pat);
+    program_map_section_unref(obj->pmt);
+    conditional_access_section_unref(obj->cat);
+    g_ptr_array_free(obj->subsegments, true);
+    g_ptr_array_free(obj->pids, true);
+    g_hash_table_destroy(obj->ecm_pids);
+    g_ptr_array_free(obj->initialization_segment_ts, true);
     free(obj);
 }
 
@@ -164,8 +152,7 @@ static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
     g_return_val_if_fail(arg, 0);
 
     dash_validator_t* dash_validator = arg;
-    memset(dash_validator->pat_bytes, 0, TS_SIZE);
-    memcpy(dash_validator->pat_bytes, m2s->pat->bytes, m2s->pat->bytes_len);
+    dash_validator->pat = program_association_section_ref(m2s->pat);
 
     if (m2s->programs->len != 1) {
         g_critical("DASH Conformance: 6.4.4.2  Media segments shall contain exactly one program (%u found)",
@@ -190,8 +177,7 @@ int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
     g_return_val_if_fail(arg, 0);
 
     dash_validator_t* dash_validator = arg;
-    memset(dash_validator->cat_bytes, 0, TS_SIZE);
-    memcpy(dash_validator->cat_bytes, m2s->cat->bytes, m2s->cat->bytes_len);
+    dash_validator->cat = conditional_access_section_ref(m2s->cat);
 
     return 1;
 }
@@ -216,8 +202,7 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
     g_return_val_if_fail(arg, 0);
 
     dash_validator_t* dash_validator = arg;
-    memset(dash_validator->pmt_bytes, 0, TS_SIZE);
-    memcpy(dash_validator->pmt_bytes, m2p->pmt->bytes, m2p->pmt->bytes_len);
+    dash_validator->pmt = program_map_section_ref(m2p->pmt);
 
     dash_validator->pcr_pid = m2p->pmt->pcr_pid;
 

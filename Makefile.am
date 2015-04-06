@@ -7,6 +7,7 @@ CFLAGS = -std=c99 -g -isystem$(top_srcdir)/h264bitstream -I$(top_srcdir)/tslib \
     -Wpointer-arith -Wtype-limits -Wbad-function-cast -Wcast-qual \
     -Wstrict-prototypes -Wold-style-definition -Wmissing-prototypes -Wno-multichar \
     -Wredundant-decls -Wvla -Wformat-security -Wno-format-zero-length \
+    -Werror=implicit-function-declaration \
     $(GLIB_CFLAGS) $(GIO_CFLAGS) $(LIBPCRE_CFLAGS) $(LIBXML2_CFLAGS)
 LDFLAGS = h264bitstream/libh264bitstream.la $(GLIB_LIBS) $(GIO_LIBS) $(LIBPCRE_LIBS) $(LIBXML2_LIBS)
 

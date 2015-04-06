@@ -79,18 +79,6 @@ static char* STREAM_DESC_RESERVED  = "ISO/IEC 13818-1 Reserved"; // 0x24-0x7E
 static char* STREAM_DESC_IPMP = "IPMP Stream"; // 0x7F
 static char* STREAM_DESC_USER_PRIVATE = "User Private"; // 0x80-0xFF
 
-bool mpeg2ts_sections_equal(const mpeg2ts_section_t* a, const mpeg2ts_section_t* b)
-{
-    if (a == b) {
-        return true;
-    }
-    if (!a || !b) {
-        return false;
-    }
-    return a->bytes_len == b->bytes_len
-        && !memcmp(a->bytes, b->bytes, a->bytes_len);
-}
-
 static bool read_descriptors(bitreader_t* b, size_t len, descriptor_t*** descriptors_out, size_t* descriptors_len)
 {
     g_return_val_if_fail(b, false);
@@ -154,6 +142,17 @@ const char* stream_desc(uint8_t stream_id)
     }
 }
 
+static bool mpeg2ts_section_equal(const mpeg2ts_section_t* a, const mpeg2ts_section_t* b)
+{
+    if (a == b) {
+        return true;
+    }
+    if (!a || !b) {
+        return false;
+    }
+    return a->table_id == b->table_id;
+}
+
 static bool section_header_read(mpeg2ts_section_t* section, bitreader_t* b)
 {
     g_return_val_if_fail(section, false);
@@ -171,12 +170,11 @@ static bool section_header_read(mpeg2ts_section_t* section, bitreader_t* b)
     // reserved
     bitreader_skip_bits(b, 2);
     section->section_length = bitreader_read_bits(b, 12);
-    if (b->error || section->section_length + 3 > section->bytes_len) {
+    if (b->error || section->section_length + 3 > b->len) {
         g_critical("Invalid section header, bad section_length or too short header!");
         return false;
     }
-    section->bytes_len = section->section_length + 3;
-    b->len = section->bytes_len;
+    b->len = section->section_length + 3;
 
     switch (section->table_id) {
     case TABLE_ID_PROGRAM_ASSOCIATION_SECTION:
@@ -196,25 +194,51 @@ static bool section_header_read(mpeg2ts_section_t* section, bitreader_t* b)
     return true;
 }
 
-static program_association_section_t* program_association_section_new(uint8_t* data, size_t len)
+static program_association_section_t* program_association_section_new(void)
 {
-    g_return_val_if_fail(data, NULL);
-
     program_association_section_t* pas = calloc(1, sizeof(*pas));
-    pas->bytes = g_memdup(data, len);
-    pas->bytes_len = len;
+    pas->ref_count = 1;
     return pas;
 }
 
-void program_association_section_free(program_association_section_t* pas)
+program_association_section_t* program_association_section_ref(program_association_section_t* obj)
+{
+    if (!obj) {
+        return NULL;
+    }
+    g_return_val_if_fail(obj->ref_count > 0, NULL);
+    ++obj->ref_count;
+    return obj;
+}
+
+void program_association_section_unref(program_association_section_t* pas)
 {
     if (pas == NULL) {
         return;
     }
-
-    g_free(pas->bytes);
+    g_return_if_fail(pas->ref_count > 0);
+    --pas->ref_count;
+    if (pas->ref_count > 0) {
+        return;
+    }
     free(pas->programs);
     free(pas);
+}
+
+bool program_association_section_equal(const program_association_section_t* a, const program_association_section_t* b)
+{
+    if (!mpeg2ts_section_equal((const mpeg2ts_section_t*)a, (const mpeg2ts_section_t*)b)
+            || a->transport_stream_id != b->transport_stream_id
+            || a->num_programs != b->num_programs) {
+        return false;
+    }
+    for (size_t i = 0; i < a->num_programs; ++i) {
+        if (a->programs[i].program_number != b->programs[i].program_number
+               || a->programs[i].program_map_pid != b->programs[i].program_map_pid) {
+            return false;
+        }
+    }
+    return true;
 }
 
 program_association_section_t* program_association_section_read(uint8_t* buf, size_t buf_len)
@@ -231,8 +255,8 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
         return NULL;
     }
 
-    program_association_section_t* pas = program_association_section_new(buf + offset, buf_len - offset);
-    bitreader_t* b = bitreader_new(pas->bytes, pas->bytes_len);
+    program_association_section_t* pas = program_association_section_new();
+    bitreader_t* b = bitreader_new(buf + offset, buf_len - offset);
 
     if (!section_header_read((mpeg2ts_section_t*)pas, b)) {
         goto fail;
@@ -277,14 +301,14 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
 
     pas->crc_32 = bitreader_read_uint32(b);
 
-    if (b->error) {
+    if (b->error || pas->section_length + 3 - 4 > b->len) {
         g_critical("Invalid Program Association Section length.");
         goto fail;
     }
 
     // check CRC
     crc_t pas_crc = crc_init();
-    pas_crc = crc_update(pas_crc, pas->bytes, pas->section_length + 3 - 4);
+    pas_crc = crc_update(pas_crc, b->data, pas->section_length + 3 - 4);
     pas_crc = crc_finalize(pas_crc);
     if (pas_crc != pas->crc_32) {
         g_critical("PAT CRC_32 should be 0x%08X, but calculated as 0x%08X", pas->crc_32, pas_crc);
@@ -295,7 +319,7 @@ cleanup:
     bitreader_free(b);
     return pas;
 fail:
-    program_association_section_free(pas);
+    program_association_section_unref(pas);
     pas = NULL;
     goto cleanup;
 }
@@ -388,23 +412,34 @@ static void es_info_print(const elementary_stream_info_t* es, int level)
     }
 }
 
-static program_map_section_t* program_map_section_new(uint8_t* data, size_t len)
+static program_map_section_t* program_map_section_new(void)
 {
-    g_return_val_if_fail(data, NULL);
-
     program_map_section_t* pms = calloc(1, sizeof(*pms));
-    pms->bytes = g_memdup(data, len);
-    pms->bytes_len = len;
+    pms->ref_count = 1;
     return pms;
 }
 
-void program_map_section_free(program_map_section_t* pms)
+program_map_section_t* program_map_section_ref(program_map_section_t* obj)
+{
+    if (!obj) {
+        return NULL;
+    }
+    g_return_val_if_fail(obj->ref_count > 0, NULL);
+    ++obj->ref_count;
+    return obj;
+}
+
+void program_map_section_unref(program_map_section_t* pms)
 {
     if (pms == NULL) {
         return;
     }
+    g_return_if_fail(pms->ref_count > 0);
+    --pms->ref_count;
+    if (pms->ref_count > 0) {
+        return;
+    }
 
-    g_free(pms->bytes);
     for (size_t i = 0; i < pms->descriptors_len; ++i) {
         descriptor_free(pms->descriptors[i]);
     }
@@ -415,6 +450,41 @@ void program_map_section_free(program_map_section_t* pms)
     free(pms->es_info);
 
     free(pms);
+}
+
+bool program_map_section_equal(const program_map_section_t* a, const program_map_section_t* b)
+{
+    if (!mpeg2ts_section_equal((const mpeg2ts_section_t*)a, (const mpeg2ts_section_t*)b)
+            || a->program_number != b->program_number
+            || a->pcr_pid != b->pcr_pid
+            || a->descriptors_len != b->descriptors_len
+            || a->es_info_len != b->es_info_len) {
+        return false;
+    }
+    for (size_t i = 0; i < a->descriptors_len; ++i) {
+        if (a->descriptors[i]->tag != b->descriptors[i]->tag
+                || a->descriptors[i]->data_len != b->descriptors[i]->data_len
+                || memcmp(a->descriptors[i]->data, b->descriptors[i]->data, a->descriptors[i]->data_len)) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < a->es_info_len; ++i) {
+        if (a->es_info[i]->stream_type != b->es_info[i]->stream_type
+                || a->es_info[i]->elementary_pid != b->es_info[i]->elementary_pid
+                || a->es_info[i]->descriptors_len != b->es_info[i]->descriptors_len) {
+            return false;
+        }
+        for (size_t j = 0; j < a->es_info[i]->descriptors_len; ++j) {
+            elementary_stream_info_t* es_a = a->es_info[i];
+            elementary_stream_info_t* es_b = b->es_info[i];
+            if (es_a->descriptors[i]->tag != es_b->descriptors[i]->tag
+                    || es_a->descriptors[i]->data_len != es_b->descriptors[i]->data_len
+                    || memcmp(es_a->descriptors[i]->data, es_b->descriptors[i]->data, es_a->descriptors[i]->data_len)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
@@ -431,8 +501,8 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
         return NULL;
     }
 
-    program_map_section_t* pms = program_map_section_new(buf + offset, buf_len - offset);
-    bitreader_t* b = bitreader_new(pms->bytes, pms->bytes_len);
+    program_map_section_t* pms = program_map_section_new();
+    bitreader_t* b = bitreader_new(buf + offset, buf_len - offset);
     GPtrArray* es_info = NULL;
 
     if (!section_header_read((mpeg2ts_section_t*)pms, b)) {
@@ -500,14 +570,14 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
 
     pms->crc_32 = bitreader_read_uint32(b);
 
-    if (b->error) {
+    if (b->error || pms->section_length + 3 - 4 > b->len) {
         g_critical("Invalid Program Map Section length.");
         goto fail;
     }
 
     // check CRC
     crc_t pms_crc = crc_init();
-    pms_crc = crc_update(pms_crc, pms->bytes, pms->section_length + 3 - 4);
+    pms_crc = crc_update(pms_crc, b->data, pms->section_length + 3 - 4);
     pms_crc = crc_finalize(pms_crc);
     if (pms_crc != pms->crc_32) {
         g_critical("PMT CRC_32 should be 0x%08X, but calculated as 0x%08X", pms->crc_32, pms_crc);
@@ -518,7 +588,7 @@ cleanup:
     bitreader_free(b);
     return pms;
 fail:
-    program_map_section_free(pms);
+    program_map_section_unref(pms);
     if (es_info) {
         g_ptr_array_set_free_func(es_info, (GDestroyNotify)es_info_free);
         g_ptr_array_free(es_info, true);
@@ -559,28 +629,55 @@ void program_map_section_print(program_map_section_t* pms)
     SKIT_LOG_UINT32(1, pms->crc_32);
 }
 
-static conditional_access_section_t* conditional_access_section_new(uint8_t* data, size_t len)
+static conditional_access_section_t* conditional_access_section_new(void)
 {
-    g_return_val_if_fail(data, NULL);
-
     conditional_access_section_t* cas = calloc(1, sizeof(*cas));
-    cas->bytes = g_memdup(data, len);
-    cas->bytes_len = len;
+    cas->ref_count = 1;
     return cas;
 }
 
-void conditional_access_section_free(conditional_access_section_t* cas)
+conditional_access_section_t* conditional_access_section_ref(conditional_access_section_t* obj)
+{
+    if (!obj) {
+        return NULL;
+    }
+    g_return_val_if_fail(obj->ref_count > 0, NULL);
+    ++obj->ref_count;
+    return obj;
+}
+
+void conditional_access_section_unref(conditional_access_section_t* cas)
 {
     if (cas == NULL) {
         return;
     }
+    g_return_if_fail(cas->ref_count > 0);
+    --cas->ref_count;
+    if (cas->ref_count > 0) {
+        return;
+    }
 
-    g_free(cas->bytes);
     for (size_t i = 0; i < cas->descriptors_len; ++i) {
         descriptor_free(cas->descriptors[i]);
     }
     free(cas->descriptors);
     free(cas);
+}
+
+bool conditional_access_section_equal(const conditional_access_section_t* a, const conditional_access_section_t* b)
+{
+    if (!mpeg2ts_section_equal((const mpeg2ts_section_t*)a, (const mpeg2ts_section_t*)b)
+            || a->descriptors_len != b->descriptors_len) {
+        return false;
+    }
+    for (size_t i = 0; i < a->descriptors_len; ++i) {
+        if (a->descriptors[i]->tag != b->descriptors[i]->tag
+                || a->descriptors[i]->data_len != b->descriptors[i]->data_len
+                || memcmp(a->descriptors[i]->data, b->descriptors[i]->data, a->descriptors[i]->data_len)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size_t buf_len)
@@ -597,8 +694,8 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
         return NULL;
     }
 
-    conditional_access_section_t* cas = conditional_access_section_new(buf + offset, buf_len - offset);
-    bitreader_t* b = bitreader_new(cas->bytes, cas->bytes_len);
+    conditional_access_section_t* cas = conditional_access_section_new();
+    bitreader_t* b = bitreader_new(buf + offset, buf_len - offset);
 
     if (!section_header_read((mpeg2ts_section_t*)cas, b)) {
         goto fail;
@@ -637,14 +734,14 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
     // the remaining bytes contain descriptors, most probably only one
     cas->crc_32 = bitreader_read_uint32(b);
 
-    if (b->error) {
+    if (b->error || cas->section_length + 3 - 4 > b->len) {
         g_critical("Invalid Program Map Section length.");
         goto fail;
     }
 
     // check CRC
     crc_t crc = crc_init();
-    crc = crc_update(crc, cas->bytes, cas->section_length + 3 - 4);
+    crc = crc_update(crc, b->data, cas->section_length + 3 - 4);
     crc = crc_finalize(crc);
     if (crc != cas->crc_32) {
         g_critical("CAT CRC_32 should be 0x%08X, but calculated as 0x%08X", cas->crc_32, crc);
@@ -655,7 +752,7 @@ cleanup:
     bitreader_free(b);
     return cas;
 fail:
-    conditional_access_section_free(cas);
+    conditional_access_section_unref(cas);
     cas = NULL;
     goto cleanup;
 }

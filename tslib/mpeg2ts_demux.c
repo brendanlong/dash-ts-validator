@@ -91,7 +91,7 @@ void mpeg2ts_program_free(mpeg2ts_program_t* m2p)
     g_hash_table_destroy(m2p->pids);
 
     // TODO: if this is a test with an initialization segment, then dont want to free the pmt
-    program_map_section_free(m2p->pmt);
+    program_map_section_unref(m2p->pmt);
     g_free(m2p->pmt_bytes);
 
     if (m2p->arg_destructor && m2p->arg) {
@@ -166,9 +166,9 @@ void mpeg2ts_stream_free(mpeg2ts_stream_t* m2s)
         return;
     }
     g_ptr_array_free(m2s->programs, true);
-    conditional_access_section_free(m2s->cat);
+    conditional_access_section_unref(m2s->cat);
     g_free(m2s->cat_bytes);
-    program_association_section_free(m2s->pat);
+    program_association_section_unref(m2s->pat);
     g_free(m2s->pat_bytes);
     demux_pid_handler_free(m2s->emsg_processor);
     demux_pid_handler_free(m2s->ts_processor);
@@ -201,10 +201,10 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet cat
-    if (!conditional_access_sections_equal(m2s->cat, new_cas)) {
+    if (!m2s->cat || m2s->cat->version_number != new_cas->version_number) {
         if (m2s->cat != NULL) {
-            g_info("New cat section in force, discarding the old one");
-            conditional_access_section_free(m2s->cat);
+            g_info("New CAT section in force, discarding the old one");
+            conditional_access_section_unref(m2s->cat);
         }
 
         m2s->cat = new_cas;
@@ -241,10 +241,10 @@ static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet PAT
-    if (!program_association_sections_equal(m2s->pat, new_pas)) {
+    if (!m2s->cat || m2s->pat->version_number != new_pas->version_number) {
         if (m2s->pat != NULL) {
             g_warning("New PAT section in force, discarding the old one");
-            program_association_section_free(m2s->pat);
+            program_association_section_unref(m2s->pat);
         }
 
         m2s->pat = new_pas;
@@ -259,7 +259,7 @@ static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
             m2s->pat_processor(m2s, m2s->arg);
         }
     } else {
-        program_association_section_free(new_pas);
+        program_association_section_unref(new_pas);
     }
 
 cleanup:
@@ -298,11 +298,11 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
     }
 
     // TODO: allow >1 packet PAT
-    if (!program_map_sections_equal(m2p->pmt, new_pms)) {
+    if (!m2p->pmt || m2p->pmt->version_number != new_pms->version_number) {
         if (m2p->pmt != NULL) {
             g_info("New PMT in force, discarding the old one");
             g_hash_table_remove_all(m2p->pids);
-            program_map_section_free(m2p->pmt);
+            program_map_section_unref(m2p->pmt);
         }
         m2p->pmt = new_pms;
 
@@ -317,7 +317,7 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
             m2p->pmt_processor(m2p, m2p->arg);
         }
     } else {
-        program_map_section_free(new_pms);
+        program_map_section_unref(new_pms);
     }
 
 cleanup:

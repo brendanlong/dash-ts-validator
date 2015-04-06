@@ -93,9 +93,9 @@ typedef struct {
     GPtrArray* pids;
     uint16_t pcr_pid;
     GHashTable* ecm_pids;
-    uint8_t pat_bytes[TS_SIZE];
-    uint8_t pmt_bytes[TS_SIZE];
-    uint8_t cat_bytes[TS_SIZE];
+    program_association_section_t* pat;
+    program_map_section_t* pmt;
+    conditional_access_section_t* cat;
     int status; // 0 == fail
     segment_type_t segment_type;
     GPtrArray* initialization_segment_ts;
@@ -119,8 +119,6 @@ typedef struct {
 const char* content_component_to_string(content_component_t);
 
 dash_validator_t* dash_validator_new(segment_type_t, dash_profile_t);
-void dash_validator_init(dash_validator_t*, segment_type_t, dash_profile_t);
-void dash_validator_destroy(dash_validator_t*);
 void dash_validator_free(dash_validator_t*);
 
 void index_segment_validator_free(index_segment_validator_t*);

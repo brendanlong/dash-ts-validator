@@ -590,15 +590,15 @@ bool check_segment_psi_identical(const char* f1, dash_validator_t* v1, const cha
     g_return_val_if_fail(v2 != NULL, false);
 
     bool identical = true;
-    if (memcmp(v1->pat_bytes, v2->pat_bytes, TS_SIZE)) {
+    if (!program_association_section_equal(v1->pat, v2->pat)) {
         g_warning("PAT in segments %s and %s are not identical.", f1, f2);
         identical = false;
     }
-    if (memcmp(v1->pmt_bytes, v2->pmt_bytes, TS_SIZE)) {
+    if (!program_map_section_equal(v1->pmt, v2->pmt)) {
         g_warning("PMT in segments %s and %s are not identical.", f1, f2);
         identical = false;
     }
-    if (memcmp(v1->cat_bytes, v2->cat_bytes, TS_SIZE)) {
+    if (!conditional_access_section_equal(v1->cat, v2->cat)) {
         g_warning("CAT in segments %s and %s are not identical.", f1, f2);
         identical = false;
     }

@@ -52,7 +52,7 @@ START_TEST(test_read_pat)
     ck_assert_uint_eq(program->program_number, 1);
     ck_assert_uint_eq(program->program_map_pid, 4096);
 
-    program_association_section_free(pas);
+    program_association_section_unref(pas);
 END_TEST
 
 START_TEST(test_read_pat_two_programs)
@@ -79,7 +79,7 @@ START_TEST(test_read_pat_two_programs)
     ck_assert_uint_eq(program->program_number, 0x0505);
     ck_assert_uint_eq(program->program_map_pid, 4098);
 
-    program_association_section_free(pas);
+    program_association_section_unref(pas);
 END_TEST
 
 START_TEST(test_read_pat_no_programs)
@@ -98,7 +98,7 @@ START_TEST(test_read_pat_no_programs)
     ck_assert_uint_eq(pas->num_programs, 0);
     ck_assert_uint_eq(pas->crc_32, 0xEF226217);
 
-    program_association_section_free(pas);
+    program_association_section_unref(pas);
 END_TEST
 
 START_TEST(test_read_pat_no_programs_bad_length)
@@ -107,7 +107,7 @@ START_TEST(test_read_pat_no_programs_bad_length)
 
     ck_assert_ptr_eq(pas, NULL);
 
-    program_association_section_free(pas);
+    program_association_section_unref(pas);
 END_TEST
 
 START_TEST(test_read_pat_no_programs_bad_crc)
@@ -116,7 +116,7 @@ START_TEST(test_read_pat_no_programs_bad_crc)
 
     ck_assert_ptr_eq(pas, NULL);
 
-    program_association_section_free(pas);
+    program_association_section_unref(pas);
 END_TEST
 
 START_TEST(test_read_pat_extra_data)
@@ -139,7 +139,7 @@ START_TEST(test_read_pat_extra_data)
     ck_assert_uint_eq(program->program_number, 1);
     ck_assert_uint_eq(program->program_map_pid, 4096);
 
-    program_association_section_free(pas);
+    program_association_section_unref(pas);
 END_TEST
 
 START_TEST(test_read_cat_no_descriptors)
@@ -155,7 +155,7 @@ START_TEST(test_read_cat_no_descriptors)
     ck_assert_uint_eq(cas->crc_32, 3709726542);
     ck_assert_uint_eq(cas->descriptors_len, 0);
 
-    conditional_access_section_free(cas);
+    conditional_access_section_unref(cas);
 END_TEST
 
 START_TEST(test_read_cat_complex)
@@ -180,7 +180,7 @@ START_TEST(test_read_cat_complex)
     ck_assert_uint_eq(ca_desc->ca_system_id, 0x6365);
     ck_assert_uint_eq(ca_desc->ca_pid, 302);
 
-    conditional_access_section_free(cas);
+    conditional_access_section_unref(cas);
 END_TEST
 
 START_TEST(test_read_cat_extra_data)
@@ -195,7 +195,7 @@ START_TEST(test_read_cat_extra_data)
     ck_assert_uint_eq(cas->last_section_number, 0);
     ck_assert_uint_eq(cas->crc_32, 3709726542);
 
-    conditional_access_section_free(cas);
+    conditional_access_section_unref(cas);
 END_TEST
 
 START_TEST(test_read_cat_not_enough_data)
@@ -286,7 +286,7 @@ START_TEST(test_read_pmt)
     ck_assert_uint_eq(ca_desc->ca_system_id, 0x6365);
     ck_assert_uint_eq(ca_desc->ca_pid, 302);
 
-    program_map_section_free(pms);
+    program_map_section_unref(pms);
 END_TEST
 
 START_TEST(test_read_pmt_extra_data)
@@ -313,7 +313,7 @@ START_TEST(test_read_pmt_extra_data)
     descriptor_t* desc = pms->descriptors[0];
     ck_assert_uint_eq(desc->tag, 37);
 
-    program_map_section_free(pms);
+    program_map_section_unref(pms);
 END_TEST
 
 Suite *suite(void)
