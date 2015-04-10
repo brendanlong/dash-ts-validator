@@ -35,8 +35,6 @@ test-driver
 /h264bitstream/libh264bitstream-uninstalled.pc
 /h264bitstream/libh264bitstream-uninstalled.sh
 
-/m4
-
 /tslib/apps/ts_validate_mult_segment
 
 /tests/*

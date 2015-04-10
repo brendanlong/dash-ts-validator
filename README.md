@@ -1,5 +1,7 @@
 # TS Validator
 
+[![Circle CI](https://circleci.com/gh/brendanlong/dash-ts-validator.svg?style=shield)](https://circleci.com/gh/brendanlong/dash-ts-validator)
+
 This is an interim release of the `ts_validator`.  The code and results still need a bit of work and polish, but the testing procedures are in place.
 
 ## Dependencies

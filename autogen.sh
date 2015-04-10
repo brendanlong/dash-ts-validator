@@ -1,3 +1,3 @@
 #!/bin/bash
-autoreconf --verbose --force --install --make
+autoreconf --install --verbose
 ./configure --enable-silent-rules $@

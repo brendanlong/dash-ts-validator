@@ -1,15 +1,13 @@
-AC_PREREQ([2.69])
+AC_PREREQ([2.59])
 AC_INIT([TS-Validator], [1.0], [b.long@cablelabs.com])
 AC_CONFIG_SRCDIR([tslib/mpd.h])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
-AM_INIT_AUTOMAKE([1.9 foreign subdir-objects serial-tests])
+AM_INIT_AUTOMAKE([1.12 foreign subdir-objects serial-tests])
 
 # Checks for programs.
 AC_PROG_CC
-AC_PROG_RANLIB
-AX_VALGRIND_CHECK
 LT_INIT
 
 # Checks for libraries.
@@ -31,7 +29,6 @@ PKG_CHECK_MODULES([CHECK], [check])
 AC_CHECK_HEADERS([arpa/inet.h inttypes.h stddef.h stdint.h stdlib.h string.h strings.h sys/time.h unistd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
-AC_CHECK_HEADER_STDBOOL
 AC_C_INLINE
 AC_TYPE_INT32_T
 AC_TYPE_INT64_T
