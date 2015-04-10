@@ -809,8 +809,16 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
 
     size_t timeline_i = 0;
     uint64_t start = representation->presentation_time_offset;
+    uint64_t period_end = representation->presentation_time_offset + convert_timescale(representation->adaptation_set->period->duration, 1);
     for (xmlNode* cur_node = node->children; cur_node; cur_node = cur_node->next) {
         if (xmlStrEqual(cur_node->name, "SegmentURL")) {
+            bool last_segment = true;
+            for (xmlNode* n = cur_node->next; n; n = n->next) {
+                if (xmlStrEqual(n->name, "SegmentURL")) {
+                    last_segment = false;
+                    break;
+                }
+            }
             if (segment_timeline != NULL) {
                 if (timeline_i >= segment_timeline->len) {
                     g_critical("<SegmentTimeline> does not have enough elements for the given segments!");
@@ -819,6 +827,8 @@ bool read_segment_list(xmlNode* node, representation_t* representation, char* ba
                 segment_timeline_s_t* s = g_ptr_array_index(segment_timeline, timeline_i);
                 start = s->start;
                 duration = s->duration;
+            } else if (last_segment || start + duration > period_end) {
+                duration = period_end - start;
             }
             if(!read_segment_url(cur_node, representation, start, duration, base_url, segment_bases)) {
                 goto fail;
@@ -1149,7 +1159,9 @@ static bool read_segment_template(xmlNode* node, representation_t* representatio
     for (size_t i = 0;
             start_time < period_end && (segment_timeline == NULL || timeline_i < segment_timeline->len);
             ++i, ++timeline_i) {
-
+        if (start_time + duration > period_end) {
+            duration = period_end - start_time;
+        }
         segment_t* segment = segment_new(representation);
         if (segment_timeline) {
             segment_timeline_s_t* s = g_ptr_array_index(segment_timeline, timeline_i);

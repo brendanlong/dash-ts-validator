@@ -65,11 +65,6 @@ START_TEST(test_full_mpd)
                                 <SegmentURL media='segment-3.ts'/> \
                                 <SegmentURL media='segment-4.ts'/> \
                                 <SegmentURL media='segment-5.ts'/> \
-                                <SegmentURL media='segment-6.ts'/> \
-                                <SegmentURL media='segment-7.ts'/> \
-                                <SegmentURL media='segment-8.ts'/> \
-                                <SegmentURL media='segment-9.ts'/> \
-                                <SegmentURL media='segment-10.ts'/> \
                             </SegmentList> \
                         </Representation> \
                         <Representation id='1080p' bandwidth='6800000' width='1920' height='1080'> \
@@ -77,7 +72,7 @@ START_TEST(test_full_mpd)
                             <SegmentTemplate media='segment-$Number$.ts' timescale='90000'> \
                                 <RepresentationIndex sourceURL='representation-index.sidx'/> \
                                 <SegmentTimeline> \
-                                    <S t='0' r='9' d='5400000'/> \
+                                    <S t='0' r='4' d='5400000'/> \
                                 </SegmentTimeline> \
                             </SegmentTemplate> \
                         </Representation> \
@@ -85,11 +80,8 @@ START_TEST(test_full_mpd)
                     <AdaptationSet mimeType='audio/mp2t'> \
                         <BaseURL>audio/</BaseURL> \
                         <Representation id='audio' bandwidth='128000'> \
-                            <SegmentTemplate media='segment-$Number$.ts' timescale='90000'> \
+                            <SegmentTemplate media='segment-$Number$.ts' timescale='90000' duration='5400000'> \
                                 <RepresentationIndex sourceURL='representation-index.sidx'/> \
-                                <SegmentTimeline> \
-                                    <S t='0' r='9' d='5400000'/> \
-                                </SegmentTimeline> \
                             </SegmentTemplate> \
                         </Representation> \
                     </AdaptationSet> \
@@ -240,7 +232,7 @@ START_TEST(test_full_mpd)
                 ck_assert_str_eq(representation->id, "720p");
                 ck_assert_uint_eq(representation->bandwidth, 3200000);
                 ck_assert_str_eq(representation->index_file_name, "/main/video/720p/representation-index.sidx");
-                ck_assert_int_eq(representation->segments->len, 10);
+                ck_assert_int_eq(representation->segments->len, 5);
 
                 ck_assert_int_eq(representation->profile, DASH_PROFILE_FULL);
                 ck_assert_ptr_eq(representation->mime_type, NULL);
@@ -284,7 +276,7 @@ START_TEST(test_full_mpd)
                 ck_assert_str_eq(representation->id, "1080p");
                 ck_assert_uint_eq(representation->bandwidth, 6800000);
                 ck_assert_str_eq(representation->index_file_name, "/main/video/1080p/representation-index.sidx");
-                ck_assert_int_eq(representation->segments->len, 10);
+                ck_assert_int_eq(representation->segments->len, 5);
 
                 ck_assert_int_eq(representation->profile, DASH_PROFILE_FULL);
                 ck_assert_ptr_eq(representation->mime_type, NULL);
@@ -344,7 +336,7 @@ START_TEST(test_full_mpd)
                 ck_assert_str_eq(representation->id, "audio");
                 ck_assert_uint_eq(representation->bandwidth, 128000);
                 ck_assert_str_eq(representation->index_file_name, "/main/audio/representation-index.sidx");
-                ck_assert_int_eq(representation->segments->len, 10);
+                ck_assert_int_eq(representation->segments->len, 5);
 
                 ck_assert_int_eq(representation->profile, DASH_PROFILE_FULL);
                 ck_assert_ptr_eq(representation->mime_type, NULL);
@@ -808,7 +800,7 @@ START_TEST(test_segment_list_in_representation)
     ck_assert_uint_eq(segment->media_range_start, 0);
     ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 4 * 90000 + 270000);
-    ck_assert_uint_eq(segment->duration, 2 * 90000);
+    ck_assert_uint_eq(segment->duration, 30 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
     ck_assert_str_eq(segment->index_file_name, segment->file_name);
     ck_assert_uint_eq(segment->index_range_start, 32);
@@ -896,7 +888,7 @@ START_TEST(test_segment_list_in_adaptation_set)
     ck_assert_uint_eq(segment->media_range_start, 0);
     ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 4 * 90000 + 270000);
-    ck_assert_uint_eq(segment->duration, 2 * 90000);
+    ck_assert_uint_eq(segment->duration, 30 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
     ck_assert_str_eq(segment->index_file_name, segment->file_name);
     ck_assert_uint_eq(segment->index_range_start, 32);
@@ -984,7 +976,7 @@ START_TEST(test_segment_list_in_period)
     ck_assert_uint_eq(segment->media_range_start, 0);
     ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 4 * 90000 + 270000);
-    ck_assert_uint_eq(segment->duration, 2 * 90000);
+    ck_assert_uint_eq(segment->duration, 30 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
     ck_assert_str_eq(segment->index_file_name, segment->file_name);
     ck_assert_uint_eq(segment->index_range_start, 32);
@@ -1084,7 +1076,7 @@ START_TEST(test_segment_template_in_representation)
     ck_assert_uint_eq(segment->media_range_start, 0);
     ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 2250000 + 10 * 90000);
-    ck_assert_uint_eq(segment->duration, 10 * 90000);
+    ck_assert_uint_eq(segment->duration, 4 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
     ck_assert_str_eq(segment->index_file_name, "/rep/$-4-7838-REP-asdf-175-175.sidx");
     ck_assert_uint_eq(segment->index_range_start, 32);
@@ -1184,7 +1176,7 @@ START_TEST(test_segment_template_in_adaptation_set)
     ck_assert_uint_eq(segment->media_range_start, 0);
     ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 2250000 + 10 * 90000);
-    ck_assert_uint_eq(segment->duration, 10 * 90000);
+    ck_assert_uint_eq(segment->duration, 4 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
     ck_assert_str_eq(segment->index_file_name, "/rep/$-4-7838-REP-asdf-175-175.sidx");
     ck_assert_uint_eq(segment->index_range_start, 32);
@@ -1284,7 +1276,7 @@ START_TEST(test_segment_template_in_period)
     ck_assert_uint_eq(segment->media_range_start, 0);
     ck_assert_uint_eq(segment->media_range_end, 0);
     ck_assert_uint_eq(segment->start, 2250000 + 10 * 90000);
-    ck_assert_uint_eq(segment->duration, 10 * 90000);
+    ck_assert_uint_eq(segment->duration, 4 * 90000);
     ck_assert_uint_eq(segment->end, segment->start + segment->duration);
     ck_assert_str_eq(segment->index_file_name, "/rep/$-4-7838-REP-asdf-175-175.sidx");
     ck_assert_uint_eq(segment->index_range_start, 32);
