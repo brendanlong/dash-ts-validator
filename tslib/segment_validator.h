@@ -32,7 +32,6 @@
 #include <glib.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <assert.h>
 #include "isobmff.h"
 #include "log.h"
 #include "mpd.h"

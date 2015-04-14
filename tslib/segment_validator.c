@@ -41,7 +41,7 @@ static int cat_processor(mpeg2ts_stream_t*, void*);
 static int pat_processor(mpeg2ts_stream_t*, void*);
 static int pmt_processor(mpeg2ts_program_t*, void*);
 static int validate_ts_packet(ts_packet_t*, elementary_stream_info_t*, void*);
-static int validate_pes_packet(pes_packet_t*, elementary_stream_info_t*, GQueue* ts_queue, void*);
+static void validate_pes_packet(pes_packet_t*, elementary_stream_info_t*, GPtrArray* ts_packets, void*);
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
 static int analyze_sidx_references(sidx_t*, int* num_subsegments, int* num_nested_sidx, dash_profile_t);
 
@@ -270,7 +270,7 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 
             // hook PES validation to PES demuxer
             pes_demux_t* pd = pes_demux_new(validate_pes_packet);
-            pd->pes_arg = dash_validator;
+            pd->arg = dash_validator;
 
             // hook PES demuxer to the PID processor
             demux_pid_handler_t* demux_handler = demux_pid_handler_new(pes_demux_process_ts_packet);
@@ -460,10 +460,10 @@ cleanup:
     return 1;
 }
 
-static bool validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash_validator_t* dash_validator)
+static bool validate_pes_packet_common(pes_packet_t* pes, GPtrArray* ts_packets, dash_validator_t* dash_validator)
 {
-    g_return_val_if_fail(ts_queue, false);
-    g_return_val_if_fail(ts_queue->length > 0, false);
+    g_return_val_if_fail(ts_packets, false);
+    g_return_val_if_fail(ts_packets->len > 0, false);
     g_return_val_if_fail(dash_validator, false);
 
     if (dash_validator->segment_type == INITIALIZATION_SEGMENT
@@ -478,7 +478,7 @@ static bool validate_pes_packet_common(pes_packet_t* pes, GQueue* ts_queue, dash
     }
 
     if (pes == NULL) {
-        ts_packet_t* ts = g_queue_peek_head(ts_queue);
+        ts_packet_t* ts = g_ptr_array_index(ts_packets, 0);
         if (ts->adaptation_field.random_access_indicator) {
             g_critical("DASH Conformance: Found partial PES packet starting with a TS packet with "
                     "random_access_indicator = 1. 6.4.2.2 Media stream access points: PES packet starting at I_SAU "
@@ -498,18 +498,18 @@ cleanup:
     return dash_validator->status;
 }
 
-int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
+void validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GPtrArray* ts_packets, void* arg)
 {
-    g_return_val_if_fail(ts_queue, 0);
-    g_return_val_if_fail(ts_queue->length > 0, 0);
-    g_return_val_if_fail(arg, 0);
+    g_return_if_fail(ts_packets);
+    g_return_if_fail(ts_packets->len > 0);
+    g_return_if_fail(arg);
 
     dash_validator_t* dash_validator = arg;
-    ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
+    ts_packet_t* first_ts = g_ptr_array_index(ts_packets, 0);
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->pid, dash_validator);
-    g_return_val_if_fail(pid_validator, 0);
+    g_return_if_fail(pid_validator);
 
-    if (!validate_pes_packet_common(pes, ts_queue, dash_validator)) {
+    if (!validate_pes_packet_common(pes, ts_packets, dash_validator)) {
         dash_validator->status = 0;
     }
 
@@ -542,7 +542,7 @@ int validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue
 
     if (dash_validator->current_subsegment && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
             dash_validator->adaptation_set->subsegment_alignment.b)) {
-        ts_packet_t* last_ts = g_queue_peek_tail(ts_queue);
+        ts_packet_t* last_ts = g_ptr_array_index(ts_packets, ts_packets->len - 1);
         uint64_t last_ts_end_byte = last_ts->pos_in_stream + 188 /* length of TS packet */; 
         if (first_ts->pos_in_stream < dash_validator->current_subsegment->end_byte
                 && last_ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
@@ -680,24 +680,24 @@ cleanup:
         dash_validator->current_subsegment->pes_count++;
     }
     pes_free(pes);
-    return 1;
+    return;
 fail:
     dash_validator->status = 0;
     goto cleanup;
 }
 
-static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GQueue* ts_queue, void* arg)
+static void validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GPtrArray* ts_packets, void* arg)
 {
-    g_return_val_if_fail(ts_queue, 0);
-    g_return_val_if_fail(ts_queue->length > 0, 0);
-    g_return_val_if_fail(arg, 0);
+    g_return_if_fail(ts_packets);
+    g_return_if_fail(ts_packets->len > 0);
+    g_return_if_fail(arg);
 
     dash_validator_t* dash_validator = arg;
-    if (!validate_pes_packet_common(pes, ts_queue, dash_validator)) {
+    if (!validate_pes_packet_common(pes, ts_packets, dash_validator)) {
         dash_validator->status = 0;
     }
 
-    ts_packet_t* first_ts = g_queue_peek_head(ts_queue);
+    ts_packet_t* first_ts = g_ptr_array_index(ts_packets, 0);
     if (!first_ts->payload_unit_start_indicator) {
         g_critical("DASH Conformance: First 'emsg' packet (PID = 0x0004) does not have "
                 "payload_unit_start_indicator = 1. 5.10.3.3.5 says, \"the transport stream packet carrying the start "
@@ -708,7 +708,7 @@ static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t*
     if (dash_validator->current_subsegment && dash_validator->adaptation_set->bitstream_switching) {
         subsegment_t* subsegment = dash_validator->current_subsegment;
         if (subsegment->ssix_offset_index < subsegment->ssix_offsets->len) {
-            ts_packet_t* last_ts = g_queue_peek_tail(ts_queue);
+            ts_packet_t* last_ts = g_ptr_array_index(ts_packets, ts_packets->len - 1);
             uint64_t last_ts_end = last_ts->pos_in_stream + TS_SIZE;
             uint64_t next_ssix_offset = g_array_index(subsegment->ssix_offsets, uint64_t,
                     subsegment->ssix_offset_index);
@@ -745,8 +745,8 @@ static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t*
         dash_validator->status = 0;
     }
 
-    for (GList* current = ts_queue->head; current; current = current->next) {
-        ts_packet_t* tsp = current->data;
+    for (size_t i = 0; i < ts_packets->len; ++i) {
+        ts_packet_t* tsp = g_ptr_array_index(ts_packets, i);
         if (tsp->transport_scrambling_control != 0) {
             g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
                     "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
@@ -771,7 +771,6 @@ static int validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t*
 
 cleanup:
     pes_free(pes);
-    return 1; // return code doesn't matter
 }
 
 #define TS_BUFFER_SIZE 4096 * TS_SIZE
@@ -812,7 +811,7 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
 
     // Connect handler for DASH EMSG streams
     pes_demux_t* emsg_pd = pes_demux_new(validate_emsg_pes_packet);
-    emsg_pd->pes_arg = dash_validator;
+    emsg_pd->arg = dash_validator;
     demux_pid_handler_t* emsg_handler = demux_pid_handler_new(pes_demux_process_ts_packet);
     emsg_handler->arg = emsg_pd;
     emsg_handler->arg_destructor = (arg_destructor_t)pes_demux_free;
