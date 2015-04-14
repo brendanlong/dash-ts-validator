@@ -47,6 +47,6 @@ typedef struct {
 
 pes_demux_t* pes_demux_new(pes_processor_t);
 void pes_demux_free(pes_demux_t*);
-int pes_demux_process_ts_packet(ts_packet_t*, elementary_stream_info_t*, void*);
+void pes_demux_process_ts_packet(ts_packet_t*, elementary_stream_info_t*, void*);
 
 #endif

@@ -37,13 +37,13 @@
 #include "psi.h"
 #include "descriptors.h"
 
-struct _mpeg2ts_stream_;
-struct _mpeg2ts_program_;
+struct _mpeg2ts_stream;
+struct _mpeg2ts_program;
 
-typedef int (*ts_pid_processor_t)(ts_packet_t*, elementary_stream_info_t*, void*);
-typedef int (*pat_processor_t)(struct _mpeg2ts_stream_*, void*);
-typedef int (*cat_processor_t)(struct _mpeg2ts_stream_*, void*);
-typedef int (*pmt_processor_t)(struct _mpeg2ts_program_*, void*);
+typedef void (*ts_pid_processor_t)(ts_packet_t*, elementary_stream_info_t*, void*);
+typedef void (*pat_processor_t)(struct _mpeg2ts_stream*, void*);
+typedef void (*cat_processor_t)(struct _mpeg2ts_stream*, void*);
+typedef void (*pmt_processor_t)(struct _mpeg2ts_program*, void*);
 
 typedef void (*arg_destructor_t)(void*);
 
@@ -53,7 +53,7 @@ typedef struct {
     ts_pid_processor_t process_ts_packet; // ts packet processor, needs to be registered with mpeg2ts_program
 } demux_pid_handler_t;
 
-struct _mpeg2ts_program_ {
+struct _mpeg2ts_program {
     uint16_t pid; // PMT PID
     uint16_t program_number;
 
@@ -76,7 +76,7 @@ struct _mpeg2ts_program_ {
     arg_destructor_t arg_destructor; // destructor for the callback argument
 };
 
-struct _mpeg2ts_stream_ {
+struct _mpeg2ts_stream {
     program_association_section_t* pat; // PAT
     uint8_t* pat_bytes;
     size_t pat_len;
@@ -93,8 +93,8 @@ struct _mpeg2ts_stream_ {
     arg_destructor_t arg_destructor;    // destructor for the callback argument
 };
 
-typedef struct _mpeg2ts_stream_  mpeg2ts_stream_t;
-typedef struct _mpeg2ts_program_ mpeg2ts_program_t;
+typedef struct _mpeg2ts_stream  mpeg2ts_stream_t;
+typedef struct _mpeg2ts_program mpeg2ts_program_t;
 
 typedef struct {
     demux_pid_handler_t* demux_handler;   /// demux handler

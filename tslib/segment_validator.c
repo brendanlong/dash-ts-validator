@@ -37,10 +37,10 @@
 #include "pes_demux.h"
 
 
-static int cat_processor(mpeg2ts_stream_t*, void*);
-static int pat_processor(mpeg2ts_stream_t*, void*);
-static int pmt_processor(mpeg2ts_program_t*, void*);
-static int validate_ts_packet(ts_packet_t*, elementary_stream_info_t*, void*);
+static void cat_processor(mpeg2ts_stream_t*, void*);
+static void pat_processor(mpeg2ts_stream_t*, void*);
+static void pmt_processor(mpeg2ts_program_t*, void*);
+static void validate_ts_packet(ts_packet_t*, elementary_stream_info_t*, void*);
 static void validate_pes_packet(pes_packet_t*, elementary_stream_info_t*, GPtrArray* ts_packets, void*);
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
 static int analyze_sidx_references(sidx_t*, int* num_subsegments, int* num_nested_sidx, dash_profile_t);
@@ -144,12 +144,12 @@ void dash_validator_free(dash_validator_t* obj)
     free(obj);
 }
 
-static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
+static void pat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
-    g_return_val_if_fail(m2s, 0);
-    g_return_val_if_fail(m2s->pat, 0);
-    g_return_val_if_fail(m2s->programs, 0);
-    g_return_val_if_fail(arg, 0);
+    g_return_if_fail(m2s);
+    g_return_if_fail(m2s->pat);
+    g_return_if_fail(m2s->programs);
+    g_return_if_fail(arg);
 
     dash_validator_t* dash_validator = arg;
     dash_validator->pat = program_association_section_ref(m2s->pat);
@@ -158,7 +158,7 @@ static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
         g_critical("DASH Conformance: 6.4.4.2  Media segments shall contain exactly one program (%u found)",
                        m2s->programs->len);
         dash_validator->status = 0;
-        return 0;
+        return;
     }
 
     for (gsize i = 0; i < m2s->programs->len; i++) {
@@ -166,20 +166,16 @@ static int pat_processor(mpeg2ts_stream_t* m2s, void* arg)
         m2p->pmt_processor = pmt_processor;
         m2p->arg = dash_validator;
     }
-
-    return 1;
 }
 
-int cat_processor(mpeg2ts_stream_t* m2s, void* arg)
+static void cat_processor(mpeg2ts_stream_t* m2s, void* arg)
 {
-    g_return_val_if_fail(m2s, 0);
-    g_return_val_if_fail(m2s->cat, 0);
-    g_return_val_if_fail(arg, 0);
+    g_return_if_fail(m2s);
+    g_return_if_fail(m2s->cat);
+    g_return_if_fail(arg);
 
     dash_validator_t* dash_validator = arg;
     dash_validator->cat = conditional_access_section_ref(m2s->cat);
-
-    return 1;
 }
 
 static pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_validator)
@@ -195,11 +191,11 @@ static pid_validator_t* dash_validator_find_pid(int pid, dash_validator_t* dash_
     return NULL;
 }
 
-static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
+static void pmt_processor(mpeg2ts_program_t* m2p, void* arg)
 {
-    g_return_val_if_fail(m2p, 0);
-    g_return_val_if_fail(m2p->pmt, 0);
-    g_return_val_if_fail(arg, 0);
+    g_return_if_fail(m2p);
+    g_return_if_fail(m2p->pmt);
+    g_return_if_fail(arg);
 
     dash_validator_t* dash_validator = arg;
     dash_validator->pmt = program_map_section_ref(m2p->pmt);
@@ -281,15 +277,14 @@ static int pmt_processor(mpeg2ts_program_t* m2p, void* arg)
             mpeg2ts_program_register_pid_processor(m2p, pi->es_info->elementary_pid, demux_handler, NULL);
         }
     }
-    return 1;
 }
 
-static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg)
+static void validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, void* arg)
 {
-    g_return_val_if_fail(arg, 0);
+    g_return_if_fail(arg);
     if (ts == NULL) {
         /* NULL TS packet sent to end stream */
-        return 0;
+        return;
     }
 
     dash_validator_t* dash_validator = arg;
@@ -457,7 +452,7 @@ static int validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, vo
 
     pid_validator->ts_count++;
 cleanup:
-    return 1;
+    return;
 }
 
 static bool validate_pes_packet_common(pes_packet_t* pes, GPtrArray* ts_packets, dash_validator_t* dash_validator)

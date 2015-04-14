@@ -402,14 +402,13 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
             pi->demux_validator->process_ts_packet(ts, pi->es_info, pi->demux_validator->arg);
         }
 
-        if(pi->demux_handler != NULL && pi->demux_handler->process_ts_packet != NULL) {
-            return pi->demux_handler->process_ts_packet(ts, pi->es_info, pi->demux_handler->arg);
+        if (pi->demux_handler != NULL && pi->demux_handler->process_ts_packet != NULL) {
+            pi->demux_handler->process_ts_packet(ts, pi->es_info, pi->demux_handler->arg);
+            return 0;
         }
         break;
     }
 
-    // if we are here, we have no clue what this PID is
-    g_debug("Unknown PID 0x%02X", ts->pid);
     ts_free(ts);
     return 0;
 }

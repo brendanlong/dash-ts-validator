@@ -50,8 +50,10 @@ void pes_demux_free(pes_demux_t* pdm)
     g_free(pdm);
 }
 
-int pes_demux_process_ts_packet(ts_packet_t* new_ts, elementary_stream_info_t* es_info, void* arg)
+void pes_demux_process_ts_packet(ts_packet_t* new_ts, elementary_stream_info_t* es_info, void* arg)
 {
+    g_return_if_fail(arg);
+
     pes_demux_t* pdm = arg;
 
     // If we have a new payload, handle the existing PES data in the queue first
@@ -113,5 +115,4 @@ int pes_demux_process_ts_packet(ts_packet_t* new_ts, elementary_stream_info_t* e
     if (new_ts != NULL) {
         g_ptr_array_add(pdm->ts_packets, new_ts);
     }
-    return 1;
 }
