@@ -28,64 +28,42 @@
  */
 #include "isobmff.h"
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <inttypes.h>
-#include <sys/stat.h>
+#include <glib.h>
+#include "log.h"
 
 
-GQuark isobmff_error_quark(void); // Silence -Wmissing-prototypes warning
-G_DEFINE_QUARK(ISOBMFF_ERROR, isobmff_error);
+static bool read_full_box(bitreader_t*, fullbox_t*, size_t box_size);
+static box_t* read_styp(bitreader_t*, size_t box_size, int* error);
+static box_t* read_sidx(bitreader_t*, size_t box_size, int* error);
+static box_t* read_pcrb(bitreader_t*, size_t box_size, int* error);
+static box_t* read_ssix(bitreader_t*, size_t box_size, int* error);
+static box_t* read_emsg(bitreader_t*, size_t box_size, int* error);
 
-static void parse_full_box(GDataInputStream*, fullbox_t*, uint64_t box_size, GError**);
-static box_t* parse_styp(GDataInputStream*, uint64_t box_size, GError**);
-static box_t* parse_sidx(GDataInputStream*, uint64_t box_size, GError**);
-static box_t* parse_pcrb(GDataInputStream*, uint64_t box_size, GError**);
-static box_t* parse_ssix(GDataInputStream*, uint64_t box_size, GError**);
-static box_t* parse_emsg(GDataInputStream*, uint64_t box_size, GError**);
+static void print_fullbox(const fullbox_t*);
+static void print_styp(const styp_t*);
+static void print_sidx(const sidx_t*);
+static void print_pcrb(const pcrb_t*);
+static void print_ssix(const ssix_t*);
+static void print_emsg(const emsg_t*);
 
-static void print_fullbox(fullbox_t*);
-static void print_styp(data_styp_t*);
-static void print_sidx(data_sidx_t*);
-static void print_pcrb(data_pcrb_t*);
-static void print_ssix(data_ssix_t*);
-static void print_emsg(data_emsg_t*);
+static void print_sidx_reference(const sidx_reference_t*);
+static void print_ssix_subsegment(const ssix_subsegment_t*);
 
-static void print_sidx_reference(data_sidx_reference_t*);
-static void print_ssix_subsegment(data_ssix_subsegment_t*);
-
-static void free_styp(data_styp_t*);
-static void free_sidx(data_sidx_t*);
-static void free_pcrb(data_pcrb_t*);
-static void free_ssix(data_ssix_t*);
-static void free_emsg(data_emsg_t*);
+static void free_styp(styp_t*);
+static void free_sidx(sidx_t*);
+static void free_pcrb(pcrb_t*);
+static void free_ssix(ssix_t*);
+static void free_emsg(emsg_t*);
 
 
 void uint32_to_string(char* str, uint32_t num)
 {
+    g_return_if_fail(str);
+
     str[0] = (num >> 24) & 0xff;
     str[1] = (num >> 16) & 0xff;
     str[2] = (num >>  8) & 0xff;
     str[3] = (num >>  0) & 0xff;
-}
-
-static uint32_t read_uint24(GDataInputStream* input, GError** error)
-{
-    uint32_t value = g_data_input_stream_read_uint16(input, NULL, error);
-    if (*error) {
-        return 0;
-    }
-    return (value << 8) + g_data_input_stream_read_byte(input, NULL, error);
-}
-
-static uint32_t read_uint48(GDataInputStream* input, GError** error)
-{
-    uint64_t value = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        return 0;
-    }
-    return (value << 16) + g_data_input_stream_read_uint16(input, NULL, error);
 }
 
 void free_box(box_t* box)
@@ -95,23 +73,23 @@ void free_box(box_t* box)
     }
     switch (box->type) {
     case BOX_TYPE_STYP: {
-        free_styp((data_styp_t*)box);
+        free_styp((styp_t*)box);
         break;
     }
     case BOX_TYPE_SIDX: {
-        free_sidx((data_sidx_t*)box);
+        free_sidx((sidx_t*)box);
         break;
     }
     case BOX_TYPE_PCRB: {
-        free_pcrb((data_pcrb_t*)box);
+        free_pcrb((pcrb_t*)box);
         break;
     }
     case BOX_TYPE_SSIX: {
-        free_ssix((data_ssix_t*)box);
+        free_ssix((ssix_t*)box);
         break;
     }
     case BOX_TYPE_EMSG: {
-        free_emsg((data_emsg_t*)box);
+        free_emsg((emsg_t*)box);
         break;
     }
     default:
@@ -131,64 +109,71 @@ void free_boxes(box_t** boxes, size_t num_boxes)
     g_free(boxes);
 }
 
-int read_boxes_from_file(char* file_name, box_t*** boxes_out, size_t* num_boxes)
+box_t** read_boxes_from_file(const char* file_name, size_t* num_boxes, int* error_out)
 {
-    int return_code = 0;
-    GFile* file = g_file_new_for_path(file_name);
+    g_return_val_if_fail(file_name, NULL);
+    g_return_val_if_fail(num_boxes, NULL);
+
+    box_t** boxes = NULL;
+    *num_boxes = 0;
+    bitreader_t* b = NULL;
+
+    gchar* file_contents = NULL;
+    size_t file_len;
     GError* error = NULL;
-    GFileInputStream* file_input = g_file_read(file, NULL, &error);
-    GDataInputStream* input = NULL;
-    if (error != NULL) {
-        g_critical("Error validating index segment, unable to read file %s. Error is: %s.", file_name, error->message);
-        g_error_free(error);
+    if (!g_file_get_contents(file_name, &file_contents, &file_len, &error)) {
+        g_critical("While looking for ISOBMFF boxes, failed to open file %s. Error is: %s.", file_name, error->message);
         goto fail;
     }
-    input = g_data_input_stream_new(G_INPUT_STREAM(file_input));
 
-    return_code = read_boxes_from_stream(input, boxes_out, num_boxes);
+    b = bitreader_new((uint8_t*)file_contents, file_len);
+    boxes = read_boxes_from_stream(b, num_boxes, error_out);
 cleanup:
-    if (input) {
-        g_object_unref(input);
+    bitreader_free(b);
+    g_free(file_contents);
+    if (error) {
+        g_error_free(error);
     }
-    if (file_input) {
-        g_object_unref(file_input);
-    }
-    g_object_unref(file);
-    return return_code;
+    return boxes;
 fail:
-    return_code = -1;
+    if (error_out) {
+        *error_out = 1;
+    }
     goto cleanup;
 }
 
-int read_boxes_from_stream(GDataInputStream* input, box_t*** boxes_out, size_t* num_boxes)
+box_t** read_boxes_from_stream(bitreader_t* b, size_t* num_boxes, int* error_out)
 {
-    int return_code = 0;
+    g_return_val_if_fail(b, NULL);
+    g_return_val_if_fail(num_boxes, NULL);
+
     GPtrArray* boxes = g_ptr_array_new();
-    while (true) {
-        GError* error = NULL;
-        box_t* box = parse_box(input, &error);
+    box_t** boxes_out = NULL;
+    while (!bitreader_eof(b)) {
+        int error = 0;
+        box_t* box = read_box(b, &error);
         if (error) {
-            g_critical("Failed to read box: %s.", error->message);
-            g_error_free(error);
             goto fail;
-        } else if (box == NULL) {
-            break;
         }
         g_ptr_array_add(boxes, box);
     }
     *num_boxes = boxes->len;
-    *boxes_out = (box_t**)g_ptr_array_free(boxes, false);
+    boxes_out = (box_t**)g_ptr_array_free(boxes, false);
 cleanup:
-    return return_code;
+    return boxes_out;
 fail:
-    return_code = -1;
+    if (error_out) {
+        *error_out = 1;
+    }
     g_ptr_array_set_free_func(boxes, (GDestroyNotify)free_box);
     g_ptr_array_free(boxes, true);
     goto cleanup;
 }
 
-box_t* parse_box(GDataInputStream* input, GError** error)
+box_t* read_box(bitreader_t* b, int* error_out)
 {
+    g_return_val_if_fail(b, NULL);
+
     /*
     aligned(8) class Box (unsigned int(32) boxtype, optional unsigned int(8)[16] extended_type) {
         unsigned int(32) size;
@@ -204,73 +189,82 @@ box_t* parse_box(GDataInputStream* input, GError** error)
     }
     */
     box_t* box = NULL;
-    uint64_t size = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        /* No more data */
-        g_error_free(*error);
-        *error = NULL;
-        return NULL;
-    }
+    uint64_t size = bitreader_read_uint32(b);
+    uint32_t type = bitreader_read_uint32(b);
+    char type_str[5] = {0};
+    uint32_to_string(type_str, type);
 
     if (size == 1) {
-        size = g_data_input_stream_read_uint64(input, NULL, error);
-        if (*error) {
-            goto fail;
-        }
+        size = bitreader_read_uint64(b);
+    } else if (size == 0) {
+        size = UINT64_MAX; // box extends to the end of the file
     }
 
-    uint32_t type = g_data_input_stream_read_uint32(input, NULL, error);
-    /* TODO: Handle usertype */
-    if (*error) {
+    if (b->error) {
+        g_critical("Error reading size or type for ISOBMFF box. Size: %"PRIu64", Type: 0x%"PRIx32" (%s)",
+                size, type, type_str);
         goto fail;
+    }
+
+    if (size < 8) {
+        g_critical("ISOBMFF box with type 0x%"PRIx32" (%s) has size %"PRIu64", but should be >= 8.",
+                type, type_str, size);
     }
 
     /* Ignore size for Box itself */
     uint64_t inner_size = size - 8;
-
+    int error = 0;
     switch (type) {
     case BOX_TYPE_STYP:
-        box = parse_styp(input, inner_size, error);
+        box = read_styp(b, inner_size, &error);
         break;
     case BOX_TYPE_SIDX:
-        box = parse_sidx(input, inner_size, error);
+        box = read_sidx(b, inner_size, &error);
         break;
     case BOX_TYPE_PCRB:
-        box = parse_pcrb(input, inner_size, error);
+        box = read_pcrb(b, inner_size, &error);
         break;
     case BOX_TYPE_SSIX:
-        box = parse_ssix(input, inner_size, error);
+        box = read_ssix(b, inner_size, &error);
         break;
     case BOX_TYPE_EMSG:
-        box = parse_emsg(input, inner_size, error);
+        box = read_emsg(b, inner_size, &error);
         break;
     default: {
         char tmp[5] = {0};
         uint32_to_string(tmp, type);
-        g_warning("Unknown box type: %s.", tmp);
-        g_input_stream_skip(G_INPUT_STREAM(input), size, NULL, error);
-        if (*error) {
-            goto fail;
-        }
+        g_debug("Unknown box type: %s.", tmp);
+        bitreader_skip_bytes(b, inner_size);
         box = g_new(box_t, 1);
     }
+    }
+    if (error) {
+        goto fail;
     }
     if (box) {
         box->type = type;
         box->size = size;
     }
-    if (*error) {
+    if (b->error) {
+        g_critical("Input error reading box with type 0x%"PRIx32" (%s) and size %"PRIu64". Not enough data available.",
+                type, type_str, size);
         goto fail;
     }
 
     return box;
 fail:
+    if (error_out) {
+        *error_out = 1;
+    }
     free_box(box);
     return NULL;
 }
 
-void parse_full_box(GDataInputStream* input, fullbox_t* box, uint64_t box_size, GError** error)
+bool read_full_box(bitreader_t* b, fullbox_t* box, uint64_t box_size)
 {
+    g_return_val_if_fail(b, false);
+    g_return_val_if_fail(box, false);
+
     /*
     aligned(8) class FullBox(unsigned int(32) boxtype, unsigned int(8) v, bit(24) f) extends Box(boxtype) {
         unsigned int(8) version = v;
@@ -278,25 +272,29 @@ void parse_full_box(GDataInputStream* input, fullbox_t* box, uint64_t box_size, 
     }
     */
     if (box_size < 4) {
-        *error = g_error_new(isobmff_error_quark(), ISOBMFF_ERROR_BAD_BOX_SIZE, "FullBox is 4 bytes, but this box size only has %"PRIu64" bytes remaining.", box_size);
-        return;
+        g_critical("FullBox is 4 bytes, but this box size only has %"PRIu64" bytes remaining.", box_size);
+        goto fail;
     }
-    box->version = g_data_input_stream_read_byte(input, NULL, error);
-    if (*error) {
-        return;
-    }
-
-    box->flags = read_uint24(input, error);
+    box->version = bitreader_read_uint8(b);
+    box->flags = bitreader_read_uint24(b);
+    return true;
+fail:
+    return false;
 }
 
-void free_styp(data_styp_t* box)
+void free_styp(styp_t* box)
 {
+    if (box == NULL) {
+        return;
+    }
     g_free(box->compatible_brands);
     g_free(box);
 }
 
-box_t* parse_styp(GDataInputStream* input, uint64_t box_size, GError** error)
+box_t* read_styp(bitreader_t* b, uint64_t box_size, int* error_out)
 {
+    g_return_val_if_fail(b, NULL);
+
     /*
     "A segment type has the same format as an 'ftyp' box [4.3], except that it takes the box type 'styp'."
     aligned(8) class FileTypeBox extends Box(‘ftyp’) {
@@ -305,41 +303,44 @@ box_t* parse_styp(GDataInputStream* input, uint64_t box_size, GError** error)
         unsigned int(32) compatible_brands[];
     }
     */
-    data_styp_t* box = g_new0(data_styp_t, 1);
+    styp_t* box = g_new0(styp_t, 1);
 
-    box->major_brand = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    box->minor_version = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-
+    box->major_brand = bitreader_read_uint32(b);
+    box->minor_version = bitreader_read_uint32(b);
     box->num_compatible_brands = (box_size - 8) / 4;
     if (box->num_compatible_brands != 0) {
-        box->compatible_brands = g_new(uint32_t, box->num_compatible_brands);
+        box->compatible_brands = g_try_new(uint32_t, box->num_compatible_brands);
+        if (!box->compatible_brands) {
+            g_critical("Failed to allocate 'styp' box's compatible brands. num_compatible_brands = %zu.",
+                    box->num_compatible_brands);
+            goto fail;
+        }
         for(size_t i = 0; i < box->num_compatible_brands; ++i) {
-            box->compatible_brands[i] = g_data_input_stream_read_uint32(input, NULL, error);
-            if (*error) {
-                goto fail;
-            }
+            box->compatible_brands[i] = bitreader_read_uint32(b);
         }
     }
     return (box_t*)box;
 fail:
+    if (error_out) {
+        *error_out = 1;
+    }
     free_styp(box);
     return NULL;
 }
 
-void free_sidx(data_sidx_t* box)
+void free_sidx(sidx_t* box)
 {
+    if (box == NULL) {
+        return;
+    }
     g_free(box->references);
     g_free(box);
 }
 
-box_t* parse_sidx(GDataInputStream* input, uint64_t box_size, GError** error)
+box_t* read_sidx(bitreader_t* b, uint64_t box_size, int* error_out)
 {
+    g_return_val_if_fail(b, NULL);
+
     /*
     aligned(8) class segment_indexBox extends FullBox("sidx", version, 0) {
         unsigned int(32) reference_id;
@@ -363,86 +364,66 @@ box_t* parse_sidx(GDataInputStream* input, uint64_t box_size, GError** error)
         }
     }
     */
-    data_sidx_t* box = g_new0(data_sidx_t, 1);
-    parse_full_box(input, (fullbox_t*)box, box_size, error);
-    if (*error) {
+    sidx_t* box = g_new0(sidx_t, 1);
+    if (!read_full_box(b, (fullbox_t*)box, box_size)) {
         goto fail;
     }
     box_size -= 4;
 
-    box->reference_id = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    box->timescale = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
+    box->reference_id = bitreader_read_uint32(b);
+    box->timescale = bitreader_read_uint32(b);
 
     if (box->version == 0) {
-        box->earliest_presentation_time = g_data_input_stream_read_uint32(input, NULL, error);
-        if (*error) {
-            goto fail;
-        }
-        box->first_offset = g_data_input_stream_read_uint32(input, NULL, error);
-        if (*error) {
-            goto fail;
-        }
+        box->earliest_presentation_time = bitreader_read_uint32(b);
+        box->first_offset = bitreader_read_uint32(b);
     } else {
-        box->earliest_presentation_time = g_data_input_stream_read_uint64(input, NULL, error);
-        if (*error) {
-            goto fail;
-        }
-        box->first_offset = g_data_input_stream_read_uint64(input, NULL, error);
-        if (*error) {
-            goto fail;
-        }
+        box->earliest_presentation_time = bitreader_read_uint64(b);
+        box->first_offset = bitreader_read_uint64(b);
     }
 
-    box->reserved = g_data_input_stream_read_uint16(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    box->reference_count = g_data_input_stream_read_uint16(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
+    bitreader_skip_bytes(b, 2); // reserved
+    box->reference_count = bitreader_read_uint16(b);
 
-    box->references = g_new(data_sidx_reference_t, box->reference_count);
-    for (size_t i = 0; i < box->reference_count; ++i) {
-        data_sidx_reference_t* reference = &box->references[i];
-        uint32_t tmp = g_data_input_stream_read_uint32(input, NULL, error);
-        if (*error) {
+    if (box->reference_count > 0) {
+        box->references = g_try_new(sidx_reference_t, box->reference_count);
+        if (!box->references) {
+            g_critical("Failed to allocate %"PRIu16" sidx_reference_t's.", box->reference_count);
             goto fail;
         }
-        reference->reference_type = tmp >> 31;
-        reference->referenced_size = tmp & 0x7fffffff;
-        reference->subsegment_duration = g_data_input_stream_read_uint32(input, NULL, error);
-        if (*error) {
-            goto fail;
+        for (size_t i = 0; i < box->reference_count; ++i) {
+            sidx_reference_t* reference = &box->references[i];
+            uint32_t tmp = bitreader_read_uint32(b);
+            reference->reference_type = tmp >> 31;
+            reference->referenced_size = tmp & 0x7fffffff;
+            reference->subsegment_duration = bitreader_read_uint32(b);
+            tmp = bitreader_read_uint32(b);
+            reference->starts_with_sap = tmp >> 31;
+            reference->sap_type = (tmp >> 28) & 0x7;
+            reference->sap_delta_time = tmp & 0x0fffffff;
         }
-        tmp = g_data_input_stream_read_uint32(input, NULL, error);
-        if (*error) {
-            goto fail;
-        }
-        reference->starts_with_sap = tmp >> 31;
-        reference->sap_type = (tmp >> 28) & 0x7;
-        reference->sap_delta_time = tmp & 0x0fffffff;
     }
     return (box_t*)box;
 fail:
+    if (error_out) {
+        *error_out = 1;
+    }
     free_sidx(box);
     return NULL;
 }
 
-void free_pcrb(data_pcrb_t* box)
+void free_pcrb(pcrb_t* box)
 {
+    if (box == NULL) {
+        return;
+    }
     g_free(box->pcr);
     g_free(box);
 }
 
-box_t* parse_pcrb(GDataInputStream* input, uint64_t box_size, GError** error)
+box_t* read_pcrb(bitreader_t* b, uint64_t box_size, int* error_out)
 {
+    g_return_val_if_fail(b, NULL);
+
     /* 6.4.7.2 MPEG-2 TS PCR information box
     aligned(8) class MPEG2TSPCRInfoBox extends Box(‘pcrb’, 0) {
         unsigned int(32) subsegment_count;
@@ -452,40 +433,48 @@ box_t* parse_pcrb(GDataInputStream* input, uint64_t box_size, GError** error)
         }
     }
     */
-    data_pcrb_t* box = g_new0(data_pcrb_t, 1);
+    pcrb_t* box = g_new0(pcrb_t, 1);
 
-    box->subsegment_count = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
+    box->subsegment_count = bitreader_read_uint32(b);
     box_size -= 4;
 
     uint64_t pcr_size = box->subsegment_count * (48 / 8);
-    if (pcr_size != box_size) {
-        *error = g_error_new(isobmff_error_quark(), ISOBMFF_ERROR_BAD_BOX_SIZE,
-                "pcrb box has subsegment_count %"PRIu32", indicating the remaining size should be %"PRIu64" bytes, but the box has %"PRIu64" bytes left.",
+    if (pcr_size < box_size) {
+        g_critical("pcrb box has subsegment_count %"PRIu32", indicating the remaining size should be %"PRIu64" bytes, "
+                "but the box has %"PRIu64" bytes left.",
                 box->subsegment_count, pcr_size, box_size);
         if (box_size == box->subsegment_count * 8) {
-            g_critical("Note: Your encoder appears to be writing 64-bit pcrb entries instead of 48-bit. See https://github.com/gpac/gpac/issues/34 for details.");
+            g_critical("Note: Your encoder appears to be writing 64-bit pcrb entries instead of 48-bit. See "
+                    "https://github.com/gpac/gpac/issues/34 for details.");
         }
         goto fail;
     }
-    box->pcr = g_new(uint64_t, box->subsegment_count);
-    for (size_t i = 0; i < box->subsegment_count; ++i) {
-        box->pcr[i] = read_uint48(input, error) >> 6;
-        if (*error) {
+    if (box->subsegment_count) {
+        box->pcr = g_try_new(uint64_t, box->subsegment_count);
+        if (!box->pcr) {
+            g_critical("Failed to allocate %"PRIu32" uint64_t's for 'pcrb' box's 'pcr'.", box->subsegment_count);
             goto fail;
+        }
+        for (size_t i = 0; i < box->subsegment_count; ++i) {
+            box->pcr[i] = bitreader_read_uint(b, 42);
+            bitreader_skip_bits(b, 6);
         }
     }
 
     return (box_t*)box;
 fail:
+    if (error_out) {
+        *error_out = 1;
+    }
     free_pcrb(box);
     return NULL;
 }
 
-void free_ssix(data_ssix_t* box)
+void free_ssix(ssix_t* box)
 {
+    if (box == NULL) {
+        return;
+    }
     for (size_t i = 0; i < box->subsegment_count; i++) {
         g_free(box->subsegments[i].ranges);
     }
@@ -493,8 +482,10 @@ void free_ssix(data_ssix_t* box)
     g_free(box);
 }
 
-box_t* parse_ssix(GDataInputStream* input, uint64_t box_size, GError** error)
+box_t* read_ssix(bitreader_t* b, uint64_t box_size, int* error_out)
 {
+    g_return_val_if_fail(b, NULL);
+
     /*
     aligned(8) class Subsegment_indexBox extends FullBox("ssix", 0, 0) {
        unsigned int(32) subsegment_count;
@@ -509,46 +500,50 @@ box_t* parse_ssix(GDataInputStream* input, uint64_t box_size, GError** error)
        }
     }
     */
-    data_ssix_t* box = g_new0(data_ssix_t, 1);
-    parse_full_box(input, (fullbox_t*)box, box_size, error);
-    if (*error) {
+    ssix_t* box = g_new0(ssix_t, 1);
+    if (!read_full_box(b, (fullbox_t*)box, box_size)) {
         goto fail;
     }
     box_size -= 4;
 
-    box->subsegment_count = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    box->subsegments = g_new0(data_ssix_subsegment_t, box->subsegment_count);
-
-    for (size_t i = 0; i < box->subsegment_count; i++) {
-        data_ssix_subsegment_t* subsegment = &box->subsegments[i];
-        subsegment->ranges_count = g_data_input_stream_read_uint32(input, NULL, error);
-        if (*error) {
+    box->subsegment_count = bitreader_read_uint32(b);
+    if (box->subsegment_count > 0) {
+        box->subsegments = g_try_new0(ssix_subsegment_t, box->subsegment_count);
+        if (!box->subsegments) {
+            g_critical("Failed to allocate %"PRIu32" ssix_subsegment_t for 'ssix' box.", box->subsegment_count);
             goto fail;
         }
-        subsegment->ranges = g_new0(data_ssix_subsegment_range_t, subsegment->ranges_count);
-        for (size_t j = 0; j < subsegment->ranges_count; ++j) {
-            data_ssix_subsegment_range_t* range = &subsegment->ranges[j];
-            range->level = g_data_input_stream_read_byte(input, NULL, error);
-            if (*error) {
-                goto fail;
-            }
-            range->range_size = read_uint24(input, error);
-            if (*error) {
-                goto fail;
+        for (size_t i = 0; i < box->subsegment_count; i++) {
+            ssix_subsegment_t* subsegment = &box->subsegments[i];
+            subsegment->ranges_count = bitreader_read_uint32(b);
+            if (subsegment->ranges_count > 0) {
+                subsegment->ranges = g_try_new0(ssix_subsegment_range_t, subsegment->ranges_count);
+                if (!subsegment->ranges) {
+                    g_critical("Failed to allocate %"PRIu32" ranges for 'ssix' box.", subsegment->ranges_count);
+                    goto fail;
+                }
+                for (size_t j = 0; j < subsegment->ranges_count; ++j) {
+                    ssix_subsegment_range_t* range = &subsegment->ranges[j];
+                    range->level = bitreader_read_uint8(b);
+                    range->range_size = bitreader_read_uint24(b);
+                }
             }
         }
     }
     return (box_t*)box;
 fail:
+    if (error_out) {
+        *error_out = 1;
+    }
     free_ssix(box);
     return NULL;
 }
 
-void free_emsg(data_emsg_t* box)
+void free_emsg(emsg_t* box)
 {
+    if (box == NULL) {
+        return;
+    }
     g_free(box->scheme_id_uri);
     g_free(box->value);
     g_free(box->message_data);
@@ -556,8 +551,10 @@ void free_emsg(data_emsg_t* box)
     g_free(box);
 }
 
-box_t* parse_emsg(GDataInputStream* input, uint64_t box_size, GError** error)
+box_t* read_emsg(bitreader_t* b, uint64_t box_size, int* error_out)
 {
+    g_return_val_if_fail(b, NULL);
+
     /*
     aligned(8) class DASHEventMessageBox extends FullBox("emsg", version = 0, flags = 0)
     {
@@ -570,60 +567,36 @@ box_t* parse_emsg(GDataInputStream* input, uint64_t box_size, GError** error)
         unsigned int(8) message_data[];
     }
     */
-    data_emsg_t* box = g_new0(data_emsg_t, 1);
-    parse_full_box(input, (fullbox_t*)box, box_size, error);
-    if (*error) {
+    emsg_t* box = g_new0(emsg_t, 1);
+    if (!read_full_box(b, (fullbox_t*)box, box_size)) {
         goto fail;
     }
     box_size -= 4;
 
-    gsize length;
-    box->scheme_id_uri = g_data_input_stream_read_upto(input, "\0", 1, &length, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    /* Skip NUL terminator */
-    g_data_input_stream_read_byte(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
+    size_t length;
+    box->scheme_id_uri = bitreader_read_string(b, &length);
     box_size -= length + 1;
 
-    box->value = g_data_input_stream_read_upto(input, "\0", 1, &length, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    /* Skip NUL terminator */
-    g_data_input_stream_read_byte(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
+    box->value = bitreader_read_string(b, &length);
     box_size -= length + 1;
 
-    box->timescale = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    box->presentation_time_delta = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    box->event_duration = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
-    box->id = g_data_input_stream_read_uint32(input, NULL, error);
-    if (*error) {
-        goto fail;
-    }
+    box->timescale = bitreader_read_uint32(b);
+    box->presentation_time_delta = bitreader_read_uint32(b);
+    box->event_duration = bitreader_read_uint32(b);
+    box->id = bitreader_read_uint32(b);
 
-    box->message_data_size = box_size - 17;
-    if (box->message_data_size != 0) {
-        box->message_data = g_new0(uint8_t, box->message_data_size);
-        g_input_stream_read(G_INPUT_STREAM(input), box->message_data, box->message_data_size, NULL, error);
-        if (*error) {
+    if (box_size < 17) {
+        g_critical("'emsg' box has size %zu, but needs to be >= 17.", box_size);
+        goto fail;
+    }
+    box->message_size = box_size - 17;
+    if (box->message_size != 0) {
+        box->message_data = g_try_new0(uint8_t, box->message_size);
+        if (!box->message_data) {
+            g_critical("Failed to allocate %zu bytes for 'emsg' box's message data.", box->message_size);
             goto fail;
         }
+        bitreader_read_bytes(b, box->message_data, box->message_size);
     }
 
     return (box_t*)box;
@@ -632,15 +605,18 @@ fail:
     return NULL;
 }
 
-void print_boxes(box_t** boxes, size_t num_boxes)
+void print_boxes(box_t* const* boxes, size_t num_boxes)
 {
+    g_return_if_fail(boxes);
     for (size_t i = 0; i < num_boxes; i++) {
         print_box(boxes[i]);
     }
 }
 
-void print_box(box_t* box)
+void print_box(const box_t* box)
 {
+    g_return_if_fail(box);
+
     char tmp[5] = {0};
     uint32_to_string(tmp, box->type);
     g_debug("####### %s ######", tmp);
@@ -648,38 +624,42 @@ void print_box(box_t* box)
 
     switch (box->type) {
     case BOX_TYPE_STYP: {
-        print_styp((data_styp_t*)box);
+        print_styp((const styp_t*)box);
         break;
     }
     case BOX_TYPE_SIDX: {
-        print_sidx((data_sidx_t*)box);
+        print_sidx((const sidx_t*)box);
         break;
     }
     case BOX_TYPE_PCRB: {
-        print_pcrb((data_pcrb_t*)box);
+        print_pcrb((const pcrb_t*)box);
         break;
     }
     case BOX_TYPE_SSIX: {
-        print_ssix((data_ssix_t*)box);
+        print_ssix((const ssix_t*)box);
         break;
     }
     case BOX_TYPE_EMSG: {
-        print_emsg((data_emsg_t*)box);
+        print_emsg((const emsg_t*)box);
         break;
     }
     }
     g_debug("###################\n");
 }
 
-void print_fullbox(fullbox_t* box)
+void print_fullbox(const fullbox_t* box)
 {
+    g_return_if_fail(box);
+
     g_debug("version = %u", box->version);
     g_debug("flags = 0x%04x", box->flags);
 }
 
-void print_emsg(data_emsg_t* emsg)
+void print_emsg(const emsg_t* emsg)
 {
-    print_fullbox((fullbox_t*)emsg);
+    g_return_if_fail(emsg);
+
+    print_fullbox((const fullbox_t*)emsg);
 
     g_debug("scheme_id_uri = %s", emsg->scheme_id_uri);
     g_debug("value = %s", emsg->value);
@@ -690,7 +670,7 @@ void print_emsg(data_emsg_t* emsg)
 
     g_debug("message_data:");
     GString* line = g_string_new(NULL);
-    for (size_t i = 0; i < emsg->message_data_size; i++) {
+    for (size_t i = 0; i < emsg->message_size; i++) {
         g_string_append_printf(line, "0x%x ", emsg->message_data[i]);
         if (i % 8 == 7) {
             g_debug("%s", line->str);
@@ -704,8 +684,10 @@ void print_emsg(data_emsg_t* emsg)
     g_string_free(line, true);
 }
 
-void print_styp(data_styp_t* styp)
+void print_styp(const styp_t* styp)
 {
+    g_return_if_fail(styp);
+
     char str_tmp[5] = {0};
     uint32_to_string(str_tmp, styp->major_brand);
     g_debug("major_brand = %s", str_tmp);
@@ -718,9 +700,11 @@ void print_styp(data_styp_t* styp)
     }
 }
 
-void print_sidx(data_sidx_t* sidx)
+void print_sidx(const sidx_t* sidx)
 {
-    print_fullbox((fullbox_t*)sidx);
+    g_return_if_fail(sidx);
+
+    print_fullbox((const fullbox_t*)sidx);
 
     g_debug("reference_id = 0x%04x", sidx->reference_id);
     g_debug("timescale = %u", sidx->timescale);
@@ -728,7 +712,6 @@ void print_sidx(data_sidx_t* sidx)
     g_debug("earliest_presentation_time = %"PRId64, sidx->earliest_presentation_time);
     g_debug("first_offset = %"PRId64, sidx->first_offset);
 
-    g_debug("reserved = %u", sidx->reserved);
     g_debug("reference_count = %u", sidx->reference_count);
 
     for(size_t i = 0; i < sidx->reference_count; i++) {
@@ -736,20 +719,24 @@ void print_sidx(data_sidx_t* sidx)
     }
 }
 
-void print_sidx_reference(data_sidx_reference_t* reference)
+void print_sidx_reference(const sidx_reference_t* reference)
 {
+    g_return_if_fail(reference);
+
     g_debug("    SidxReference:");
 
     g_debug("        reference_type = %u", reference->reference_type);
     g_debug("        referenced_size = %u", reference->referenced_size);
     g_debug("        subsegment_duration = %u", reference->subsegment_duration);
-    g_debug("        starts_with_sap = %u", reference->starts_with_sap);
+    g_debug("        starts_with_sap = %s", BOOL_TO_STR(reference->starts_with_sap));
     g_debug("        sap_type = %u", reference->sap_type);
     g_debug("        sap_delta_time = %u", reference->sap_delta_time);
 }
 
-void print_ssix_subsegment(data_ssix_subsegment_t* subsegment)
+void print_ssix_subsegment(const ssix_subsegment_t* subsegment)
 {
+    g_return_if_fail(subsegment);
+
     g_debug("    SsixSubsegment:");
 
     g_debug("        ranges_count = %u", subsegment->ranges_count);
@@ -759,17 +746,21 @@ void print_ssix_subsegment(data_ssix_subsegment_t* subsegment)
     }
 }
 
-void print_pcrb(data_pcrb_t* pcrb)
+void print_pcrb(const pcrb_t* pcrb)
 {
+    g_return_if_fail(pcrb);
+
     g_debug("subsegment_count = %"PRIu32, pcrb->subsegment_count);
     for (size_t i = 0; i < pcrb->subsegment_count; ++i) {
         g_debug("    pcr = %"PRIu64, pcrb->pcr[i]);
     }
 }
 
-void print_ssix(data_ssix_t* ssix)
+void print_ssix(const ssix_t* ssix)
 {
-    print_fullbox((fullbox_t*)ssix);
+    g_return_if_fail(ssix);
+
+    print_fullbox((const fullbox_t*)ssix);
 
     g_debug("subsegment_count = %u", ssix->subsegment_count);
 

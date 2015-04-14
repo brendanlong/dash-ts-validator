@@ -45,19 +45,25 @@ void bitreader_free(bitreader_t*);
 bool bitreader_eof(const bitreader_t*);
 size_t bitreader_pos(const bitreader_t*);
 size_t bitreader_bytes_left(const bitreader_t*);
+uint8_t bitreader_peek_bit(bitreader_t*, size_t bit_offset);
 uint8_t bitreader_read_bit(bitreader_t*);
 void bitreader_skip_bit(bitreader_t*);
 void bitreader_skip_bits(bitreader_t*, size_t bits_len);
 void bitreader_skip_bytes(bitreader_t*, size_t bytes_len);
 void bitreader_read_bytes(bitreader_t*, uint8_t* bytes_out, size_t bytes_len);
 uint64_t bitreader_read_bits(bitreader_t*, size_t bits_len);
+uint64_t bitreader_peek_bits(bitreader_t*, size_t bits_len, size_t bit_offset);
 uint64_t bitreader_read_uint(bitreader_t*, size_t bytes_len);
+uint64_t bitreader_peek_uint(bitreader_t*, size_t bytes_len, size_t byte_offset);
+uint8_t bitreader_peek_uint8(bitreader_t*, size_t byte_offset);
 uint8_t bitreader_read_uint8(bitreader_t*);
 uint16_t bitreader_read_uint16(bitreader_t*);
 uint32_t bitreader_read_uint24(bitreader_t*);
 uint32_t bitreader_read_uint32(bitreader_t*);
+uint64_t bitreader_read_uint48(bitreader_t*);
 uint64_t bitreader_read_uint64(bitreader_t*);
 
 uint64_t bitreader_read_90khz_timestamp(bitreader_t*);
+char* bitreader_read_string(bitreader_t*, size_t* length);
 
 #endif

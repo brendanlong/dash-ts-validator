@@ -67,12 +67,23 @@ size_t bitreader_bytes_left(const bitreader_t* b)
     return b->len - b->bytes_read;
 }
 
+uint8_t bitreader_peek_bit(bitreader_t* b, size_t bit_offset)
+{
+    if (bitreader_eof(b)) {
+        goto fail;
+    }
+    return (b->data[b->bytes_read] >> (7 - b->bits_read)) & 1;
+fail:
+    b->error = true;
+    return 0;
+}
+
 uint8_t bitreader_read_bit(bitreader_t* b)
 {
     if (bitreader_eof(b)) {
         goto fail;
     }
-    bool result = (b->data[b->bytes_read] >> (7 - b->bits_read)) & 1;
+    bool result = bitreader_peek_bit(b, 0);
     ++b->bits_read;
     if (b->bits_read == 8) {
         ++b->bytes_read;
@@ -117,6 +128,22 @@ void bitreader_skip_bytes(bitreader_t* b, size_t bytes)
     bitreader_skip_bits(b, bytes * 8);
 }
 
+uint64_t bitreader_peek_bits(bitreader_t* b, size_t bits, size_t bits_offset)
+{
+    if (bitreader_eof(b) || bits > 64) {
+        goto fail;
+    }
+    uint64_t result = 0;
+    for (size_t i = 0; i < bits; ++i) {
+        result <<= 1;
+        result += bitreader_peek_bit(b, bits_offset + i);
+    }
+    return result;
+fail:
+    b->error = true;
+    return 0;
+}
+
 uint64_t bitreader_read_bits(bitreader_t* b, size_t bits)
 {
     if (bitreader_eof(b) || bits > 64) {
@@ -141,6 +168,32 @@ void bitreader_read_bytes(bitreader_t* b, uint8_t* bytes_out, size_t bytes_len)
     }
 }
 
+uint64_t bitreader_peek_uint(bitreader_t* b, size_t bits, size_t bits_offset)
+{
+    if (bitreader_eof(b) || bits > 64) {
+        goto fail;
+    }
+    uint64_t result;
+    if (!b->bits_read && !(bits % 8) && !(bits_offset %8)) {
+        size_t bytes = bits / 8;
+        size_t bytes_offset = bits_offset / 8;
+        if (b->bytes_read + bytes + bytes_offset > b->len) {
+            goto fail;
+        }
+        result = 0;
+        for (size_t i = 0; i < bytes; ++i) {
+            result <<= 8;
+            result += b->data[bytes_offset + b->bytes_read + i];
+        }
+    } else {
+        result = bitreader_peek_bits(b, bits, bits_offset);
+    }
+    return result;
+fail:
+    b->error = true;
+    return 0;
+}
+
 uint64_t bitreader_read_uint(bitreader_t* b, size_t bits)
 {
     if (bitreader_eof(b) || bits > 64) {
@@ -148,16 +201,8 @@ uint64_t bitreader_read_uint(bitreader_t* b, size_t bits)
     }
     uint64_t result;
     if (!b->bits_read && !(bits % 8)) {
-        size_t bytes = bits / 8;
-        if (b->bytes_read + bytes > b->len) {
-            goto fail;
-        }
-        result = 0;
-        for (size_t i = 0; i < bytes; ++i) {
-            result <<= 8;
-            result += b->data[b->bytes_read];
-            ++b->bytes_read;
-        }
+        result = bitreader_peek_uint(b, bits, 0);
+        b->bytes_read += bits / 8;
     } else {
         result = bitreader_read_bits(b, bits);
     }
@@ -170,6 +215,15 @@ fail:
 uint8_t bitreader_read_uint8(bitreader_t* b)
 {
     return (uint8_t)bitreader_read_uint(b, 8);
+}
+
+uint8_t bitreader_peek_uint8(bitreader_t* b, size_t bits_offset)
+{
+    if (bits_offset > SIZE_MAX / 8) {
+        b->error = true;
+        return 0;
+    }
+    return (uint8_t)bitreader_peek_uint(b, 8, bits_offset * 8);
 }
 
 uint16_t bitreader_read_uint16(bitreader_t* b)
@@ -187,9 +241,14 @@ uint32_t bitreader_read_uint32(bitreader_t* b)
     return (uint32_t)bitreader_read_uint(b, 32);
 }
 
+uint64_t bitreader_read_uint48(bitreader_t* b)
+{
+    return bitreader_read_uint(b, 48);
+}
+
 uint64_t bitreader_read_uint64(bitreader_t* b)
 {
-    return (uint64_t)bitreader_read_uint(b, 64);
+    return bitreader_read_uint(b, 64);
 }
 
 uint64_t bitreader_read_90khz_timestamp(bitreader_t* b)
@@ -202,4 +261,19 @@ uint64_t bitreader_read_90khz_timestamp(bitreader_t* b)
     bitreader_skip_bit(b);
 
     return v;
+}
+
+char* bitreader_read_string(bitreader_t* b, size_t* length_out) {
+    size_t length;
+    for (length = 0; bitreader_peek_uint8(b, length); ++length);
+    ++length;
+
+    char* str = malloc(length);
+    for (size_t i = 0; i < length; ++i) {
+        str[i] = bitreader_read_uint8(b);
+    }
+    if (length_out) {
+        *length_out = length;
+    }
+    return str;
 }

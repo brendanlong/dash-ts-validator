@@ -29,15 +29,11 @@
 #ifndef ISOBMFF_CONFORMANCE_H
 #define ISOBMFF_CONFORMANCE_H
 
-#include <glib.h>
-#include <gio/gio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "bitreader.h"
 
-typedef enum {
-    ISOBMFF_ERROR_BAD_BOX_SIZE
-} isobmff_error_t;
 
 typedef enum {
     BRAND_RISX = 0x72697378,
@@ -63,16 +59,16 @@ typedef struct {
     uint32_t minor_version;
     size_t num_compatible_brands;
     uint32_t* compatible_brands;
-} data_styp_t;
+} styp_t;
 
 typedef struct {
     uint8_t reference_type;
     uint32_t referenced_size;
     uint32_t subsegment_duration;
-    uint8_t starts_with_sap;
+    bool starts_with_sap;
     uint8_t sap_type;
     uint32_t sap_delta_time;
-} data_sidx_reference_t;
+} sidx_reference_t;
 
 typedef struct {
     uint64_t size;
@@ -84,20 +80,19 @@ typedef struct {
     uint64_t earliest_presentation_time;
     uint64_t first_offset;
 
-    uint16_t reserved;
     uint16_t reference_count;
-    data_sidx_reference_t* references;
-} data_sidx_t;
+    sidx_reference_t* references;
+} sidx_t;
 
 typedef struct {
     uint8_t level;
     uint32_t range_size;
-} data_ssix_subsegment_range_t;
+} ssix_subsegment_range_t;
 
 typedef struct {
     uint32_t ranges_count;
-    data_ssix_subsegment_range_t* ranges;
-} data_ssix_subsegment_t;
+    ssix_subsegment_range_t* ranges;
+} ssix_subsegment_t;
 
 typedef struct {
     uint64_t size;
@@ -105,15 +100,15 @@ typedef struct {
     uint8_t version;
     uint32_t flags;
     uint32_t subsegment_count;
-    data_ssix_subsegment_t* subsegments;
-} data_ssix_t;
+    ssix_subsegment_t* subsegments;
+} ssix_t;
 
 typedef struct {
     uint64_t size;
     uint32_t type;
     uint32_t subsegment_count;
     uint64_t* pcr;
-} data_pcrb_t;
+} pcrb_t;
 
 typedef struct {
     uint64_t size;
@@ -127,8 +122,8 @@ typedef struct {
     uint32_t event_duration;
     uint32_t id;
     uint8_t* message_data;
-    size_t message_data_size;
-} data_emsg_t;
+    size_t message_size;
+} emsg_t;
 
 typedef enum {
     BOX_TYPE_EMSG = 0x656d7367,
@@ -138,14 +133,14 @@ typedef enum {
     BOX_TYPE_STYP = 0x73747970
 } box_type_t;
 
-int read_boxes_from_file(char* file_name, box_t*** boxes_out, size_t* num_boxes);
-int read_boxes_from_stream(GDataInputStream* input, box_t*** boxes_out, size_t* num_boxes);
+box_t** read_boxes_from_file(const char* file_name, size_t* num_boxes, int* error);
+box_t** read_boxes_from_stream(bitreader_t*, size_t* num_boxes, int* error);
 
-box_t* parse_box(GDataInputStream*, GError**);
-void print_box(box_t*);
+box_t* read_box(bitreader_t*, int* error);
+void print_box(const box_t*);
 void free_box(box_t* box);
 
-void print_boxes(box_t** boxes, size_t num_boxes);
+void print_boxes(box_t* const* boxes, size_t num_boxes);
 void free_boxes(box_t** boxes, size_t num_boxes);
 
 void uint32_to_string(char* str_out, uint32_t num);

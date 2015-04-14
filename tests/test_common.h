@@ -32,7 +32,7 @@
 #include <check.h>
 
 #define assert_arrays_eq(check, x, x_len, y, y_len) \
-ck_assert_int_eq(x_len, y_len); \
+ck_assert_uint_eq(x_len, y_len); \
 for (size_t _q = 0; _q < x_len; ++_q) { \
     check((x)[_q], (y)[_q]); \
 }

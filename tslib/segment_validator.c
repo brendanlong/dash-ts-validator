@@ -43,7 +43,7 @@ static int pmt_processor(mpeg2ts_program_t*, void*);
 static int validate_ts_packet(ts_packet_t*, elementary_stream_info_t*, void*);
 static int validate_pes_packet(pes_packet_t*, elementary_stream_info_t*, GQueue* ts_queue, void*);
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
-static int analyze_sidx_references(data_sidx_t*, int* num_subsegments, int* num_nested_sidx, dash_profile_t);
+static int analyze_sidx_references(sidx_t*, int* num_subsegments, int* num_nested_sidx, dash_profile_t);
 
 
 const char* content_component_to_string(content_component_t content_component)
@@ -943,7 +943,7 @@ fail:
     goto cleanup;
 }
 
-int analyze_sidx_references(data_sidx_t* sidx, int* pnum_subsegments, int* pnum_nested_sidx, dash_profile_t profile)
+int analyze_sidx_references(sidx_t* sidx, int* pnum_subsegments, int* pnum_nested_sidx, dash_profile_t profile)
 {
     g_return_val_if_fail(sidx, -1);
     g_return_val_if_fail(pnum_subsegments, -1);
@@ -953,7 +953,7 @@ int analyze_sidx_references(data_sidx_t* sidx, int* pnum_subsegments, int* pnum_
     int originalnum_subsegments = *pnum_subsegments;
 
     for(int i = 0; i < sidx->reference_count; i++) {
-        data_sidx_reference_t ref = sidx->references[i];
+        sidx_reference_t ref = sidx->references[i];
         if (ref.reference_type == 1) {
             (*pnum_nested_sidx)++;
         } else {
@@ -998,7 +998,9 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         goto fail;
     }
 
-    if (read_boxes_from_file(file_name, &boxes, &num_boxes) != 0) {
+    int error = 0;
+    boxes = read_boxes_from_file(file_name, &num_boxes, &error);
+    if (error) {
         goto fail;
     }
     print_boxes(boxes, num_boxes);
@@ -1018,7 +1020,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                 "‘styp’ box");
         validator->error = true;
     } else {
-        data_styp_t* styp = (data_styp_t*)boxes[box_index];
+        styp_t* styp = (styp_t*)boxes[box_index];
         bool found_brand = false;
         uint32_t expected_brand = is_single_index ? BRAND_SISX : BRAND_RISX;
         for(size_t i = 0; i < styp->num_compatible_brands; ++i) {
@@ -1052,7 +1054,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         if (boxes[i]->type != BOX_TYPE_SIDX) {
             continue;
         }
-        data_sidx_t* sidx = (data_sidx_t*)boxes[i];
+        sidx_t* sidx = (sidx_t*)boxes[i];
         if (sidx->timescale != representation->timescale) {
             g_critical("DASH Conformance: 'sidx' in box %zu of %s has timescale %"PRIu32", but SegmentBase@timescale "
                     "is %"PRIu32". 5.3.9.6 Segment timeline: the value of @timescale shall be identical to the value "
@@ -1062,7 +1064,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         }
     }
 
-    data_sidx_t* master_sidx = NULL;
+    sidx_t* master_sidx = NULL;
     uint32_t master_reference_id = 0;
     if (!is_single_index) {
         box_t* box = boxes[box_index];
@@ -1078,7 +1080,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             validator->error = true;
         } else {
             // walk all references: they should all be of type 1 and should point to sidx boxes
-            master_sidx = (data_sidx_t*)boxes[box_index];
+            master_sidx = (sidx_t*)boxes[box_index];
             master_reference_id = master_sidx->reference_id;
             if (master_reference_id != adaptation_set->video_pid) {
                 g_critical("ERROR validating Representation Index Segment: master ref ID does not equal video PID. "
@@ -1086,7 +1088,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                 validator->error = true;
             }
             for (size_t i = 0; i < master_sidx->reference_count; i++) {
-                data_sidx_reference_t ref = master_sidx->references[i];
+                sidx_reference_t ref = master_sidx->references[i];
                 if (ref.reference_type != 1) {
                     g_critical("DASH Conformance: In Representation Index Segment %s, found reference_type != 1 in "
                             "first 'sidx'. The first 'sidx' should index the representation index itself. 6.4.6.3 "
@@ -1126,7 +1128,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
     uint64_t referenced_size = 0;
 
     // now walk all the boxes, validating that the number of sidx boxes is correct and doing a few other checks
-    data_sidx_t* current_sidx = NULL;
+    sidx_t* current_sidx = NULL;
     for (box_index = sidx_start; box_index < num_boxes; ++box_index) {
         box_t* box = boxes[box_index];
         switch(box->type) {
@@ -1141,7 +1143,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             ssix_present = false;
             pcrb_present = false;
 
-            data_sidx_t* sidx = (data_sidx_t*)box;
+            sidx_t* sidx = (sidx_t*)box;
             current_sidx = sidx;
             if (num_nested_sidx > 0) {
                 num_nested_sidx--;
@@ -1188,7 +1190,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             break;
         }
         case BOX_TYPE_SSIX: {
-            data_ssix_t* ssix = (data_ssix_t*)box;
+            ssix_t* ssix = (ssix_t*)box;
             referenced_size += ssix->size;
             g_debug("Validating ssix box");
             if (ssix_present) {
@@ -1222,9 +1224,9 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                         g_array_index(subrepresentation->dependency_level, uint32_t, l);
                     bool found = false;
                     for (uint32_t ss = 0; ss < ssix->subsegment_count && !found; ++ss) {
-                        data_ssix_subsegment_t* subsegment = &ssix->subsegments[ss];
+                        ssix_subsegment_t* subsegment = &ssix->subsegments[ss];
                         for (uint32_t r = 0; r < subsegment->ranges_count && !found; ++r) {
-                            data_ssix_subsegment_range_t* range = &subsegment->ranges[r];
+                            ssix_subsegment_range_t* range = &subsegment->ranges[r];
                             if (range->level == level) {
                                 found = true;
                             }
@@ -1245,7 +1247,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             break;
         }
         case BOX_TYPE_PCRB: {
-            data_pcrb_t* pcrb = (data_pcrb_t*)box;
+            pcrb_t* pcrb = (pcrb_t*)box;
             referenced_size += pcrb->size;
             g_info("Validating pcrb box");
             if (pcrb_present) {
@@ -1302,7 +1304,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
         box_t* box = boxes[box_index];
         switch (box->type) {
         case BOX_TYPE_SIDX: {
-            data_sidx_t* sidx = (data_sidx_t*)box;
+            sidx_t* sidx = (sidx_t*)box;
 
             if (num_nested_sidx > 0) {
                 num_nested_sidx--;
@@ -1322,7 +1324,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
 
             // fill in subsegment locations here
             for (size_t i = 0; i < sidx->reference_count; i++) {
-                data_sidx_reference_t ref = sidx->references[i];
+                sidx_reference_t ref = sidx->references[i];
                 if (ref.reference_type == 0) {
                     subsegment_t* subsegment = subsegment_new();
                     subsegment->reference_id = sidx->reference_id;
@@ -1343,7 +1345,7 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
             break;
         }
         case BOX_TYPE_SSIX: {
-            data_ssix_t* ssix = (data_ssix_t*)box;
+            ssix_t* ssix = (ssix_t*)box;
             if (ssix->subsegment_count != subsegments->len) {
                 g_critical("Error: 'ssix' has %"PRIu32" subsegments, but the proceeding 'sidx' box has %u. 8.16.4.3 "
                         "of ISO/IEC 14496-12 says: subsegment_count shall be equal to reference_count (i.e., the "
@@ -1352,11 +1354,11 @@ index_segment_validator_t* validate_index_segment(char* file_name, segment_t* se
                 goto fail;
             }
             for (uint32_t i = 0; i < ssix->subsegment_count; ++i) {
-                data_ssix_subsegment_t* s = &ssix->subsegments[i];
+                ssix_subsegment_t* s = &ssix->subsegments[i];
                 subsegment_t* subsegment = g_ptr_array_index(subsegments, i);
                 uint64_t byte_offset = subsegment->start_byte;
                 for (uint32_t j = 0; j < s->ranges_count; ++j) {
-                    data_ssix_subsegment_range_t* range = &s->ranges[j];
+                    ssix_subsegment_range_t* range = &s->ranges[j];
                     g_array_append_val(subsegment->ssix_offsets, byte_offset);
                     byte_offset += range->range_size;
                 }
@@ -1384,29 +1386,25 @@ int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)
 {
     g_return_val_if_fail(buffer, -1);
 
-    box_t** boxes = NULL;
+    bitreader_t* b = bitreader_new(buffer, len);
     size_t num_boxes;
-
-    GDataInputStream* input = g_data_input_stream_new(g_memory_input_stream_new_from_data(buffer, len, NULL));
-    int return_code = read_boxes_from_stream(input, &boxes, &num_boxes);
-    if (return_code != 0) {
+    int error = 0;
+    box_t** boxes = read_boxes_from_stream(b, &num_boxes, &error);
+    if (error) {
         goto fail;
     }
-
     print_boxes(boxes, num_boxes);
 
     for (size_t i = 0; i < num_boxes; i++) {
-        data_emsg_t* box = (data_emsg_t*)boxes[i];
+        emsg_t* box = (emsg_t*)boxes[i];
         if (box->type != BOX_TYPE_EMSG) {
             char tmp[5] = {0};
             uint32_to_string(tmp, box->type);
             g_critical("DASH Conformance: Saw a box with type %s in a PES packet for PID 0x0004, which is reserved "
                     "for 'emsg' boxes. 5.10.3.3.5: \"[...] the packet payload will start with the `emsg` box [...].\"",
                     tmp);
-            return_code = -1;
+            error = 1;
         }
-
-        // GORP: anything else to verify here??
 
         if (box->presentation_time_delta + box->event_duration > segment_duration) {
             g_critical("ERROR validating EMSG: event lasts longer tha segment duration.");
@@ -1415,10 +1413,10 @@ int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)
     }
 
 cleanup:
-    g_object_unref(input);
+    bitreader_free(b);
     free_boxes(boxes, num_boxes);
-    return return_code;
+    return !error;
 fail:
-    return_code = -1;
+    error = 1;
     goto cleanup;
 }

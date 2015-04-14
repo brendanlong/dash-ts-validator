@@ -15,8 +15,8 @@ SUBDIRS = h264bitstream
 
 noinst_LIBRARIES = tslib/libts.a
 bin_PROGRAMS = tslib/apps/ts_validate_mult_segment
-TESTS = tests/check_bitreader tests/check_cets_ecm tests/check_descriptors tests/check_mpd tests/check_pes \
-        tests/check_psi tests/check_ts
+TESTS = tests/check_bitreader tests/check_cets_ecm tests/check_descriptors tests/check_isobmff tests/check_mpd \
+        tests/check_pes tests/check_psi tests/check_ts
 noinst_PROGRAMS = $(TESTS)
 
 .PHONY: check-valgrind ;
@@ -47,6 +47,10 @@ tests_check_cets_ecm_LDADD = $(TEST_LIBS)
 tests_check_descriptors_SOURCES = tests/descriptors.c tests/main.c
 tests_check_descriptors_CFLAGS = $(TEST_CFLAGS)
 tests_check_descriptors_LDADD = $(TEST_LIBS)
+
+tests_check_isobmff_SOURCES = tests/isobmff.c tests/main.c
+tests_check_isobmff_CFLAGS = $(TEST_CFLAGS)
+tests_check_isobmff_LDADD = $(TEST_LIBS)
 
 tests_check_mpd_SOURCES = tests/mpd.c tests/main.c
 tests_check_mpd_CFLAGS = $(TEST_CFLAGS)
