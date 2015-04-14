@@ -142,6 +142,36 @@ START_TEST(test_read_pat_extra_data)
     program_association_section_unref(pas);
 END_TEST
 
+START_TEST(test_pat_equal)
+    uint8_t bytes[] = {0, 0, 176, 13, 0, 1, 193, 0, 0, 0, 1, 240, 0, 42, 177, 4, 178};
+    program_association_section_t* pas = program_association_section_read(bytes, sizeof(bytes));
+    program_association_section_t* pas1 = program_association_section_read(bytes, sizeof(bytes));
+
+    uint8_t bytes2[] = {0, 0, 176, 17, 1, 1, 193, 0, 0, 0, 1, 240, 0, 5, 5, 240, 2, 0x60, 0xF6, 0x9B, 0xB6};
+    program_association_section_t* pas2 = program_association_section_read(bytes2, sizeof(bytes2));
+
+    ck_assert_ptr_ne(pas, NULL);
+    ck_assert_ptr_ne(pas1, NULL);
+    ck_assert_ptr_ne(pas2, NULL);
+    ck_assert_ptr_ne(pas, pas1);
+    ck_assert_ptr_ne(pas, pas2);
+
+    ck_assert(program_association_section_equal(pas, pas));
+    ck_assert(program_association_section_equal(pas, pas1));
+    ck_assert(program_association_section_equal(pas2, pas2));
+    ck_assert(program_association_section_equal(NULL, NULL));
+
+    ck_assert(!program_association_section_equal(pas, pas2));
+    ck_assert(!program_association_section_equal(pas1, pas2));
+    ck_assert(!program_association_section_equal(pas2, pas));
+    ck_assert(!program_association_section_equal(pas, NULL));
+    ck_assert(!program_association_section_equal(NULL, pas2));
+
+    program_association_section_unref(pas);
+    program_association_section_unref(pas1);
+    program_association_section_unref(pas2);
+END_TEST
+
 START_TEST(test_read_cat_no_descriptors)
     uint8_t bytes[] = {0, 1, 128, 9, 0, 0, 0, 0, 0, 221, 29, 239, 78};
     conditional_access_section_t* cas = conditional_access_section_read(bytes, sizeof(bytes));
@@ -210,6 +240,36 @@ START_TEST(test_read_cat_bad_section_length)
     conditional_access_section_t* cas = conditional_access_section_read(bytes, sizeof(bytes));
 
     ck_assert_ptr_eq(cas, NULL);
+END_TEST
+
+START_TEST(test_cat_equal)
+    uint8_t bytes[] = {0, 1, 128, 9, 0, 0, 0, 0, 0, 221, 29, 239, 78};
+    conditional_access_section_t* cas = conditional_access_section_read(bytes, sizeof(bytes));
+    conditional_access_section_t* cas1 = conditional_access_section_read(bytes, sizeof(bytes));
+    uint8_t bytes2[] = {0, 1, 128, 27, 0, 0, 17, 5, 129, 9, 16, 99, 101, 1, 46, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0x15, 0xB7, 0xB5, 0x08};
+    conditional_access_section_t* cas2 = conditional_access_section_read(bytes2, sizeof(bytes2));
+
+    ck_assert_ptr_ne(cas, NULL);
+    ck_assert_ptr_ne(cas1, NULL);
+    ck_assert_ptr_ne(cas2, NULL);
+    ck_assert_ptr_ne(cas, cas1);
+    ck_assert_ptr_ne(cas, cas2);
+
+    ck_assert(conditional_access_section_equal(cas, cas));
+    ck_assert(conditional_access_section_equal(cas, cas1));
+    ck_assert(conditional_access_section_equal(cas2, cas2));
+    ck_assert(conditional_access_section_equal(NULL, NULL));
+
+    ck_assert(!conditional_access_section_equal(cas, cas2));
+    ck_assert(!conditional_access_section_equal(cas1, cas2));
+    ck_assert(!conditional_access_section_equal(cas2, cas));
+    ck_assert(!conditional_access_section_equal(cas, NULL));
+    ck_assert(!conditional_access_section_equal(NULL, cas2));
+
+    conditional_access_section_unref(cas);
+    conditional_access_section_unref(cas1);
+    conditional_access_section_unref(cas2);
 END_TEST
 
 START_TEST(test_read_pmt)
@@ -316,6 +376,44 @@ START_TEST(test_read_pmt_extra_data)
     program_map_section_unref(pms);
 END_TEST
 
+START_TEST(test_pmt_equal)
+    uint8_t bytes[] = {0, 2, 128, 120, 0, 1, 1, 0, 0, 1, 0, 0, 17, 37, 15, 255, 255, 73, 68, 51, 32, 255, 73, 68, 51, 32,
+            0, 31, 0, 1, 27, 1, 0, 0, 18, 9, 16, 99, 101, 1, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 1, 1, 0, 24,
+            10, 4, 101, 110, 103, 0, 9, 16, 99, 101, 1, 45, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 21, 1, 2, 0, 33, 38,
+            13, 255, 255, 73, 68, 51, 32, 255, 73, 68, 51, 32, 0, 15, 9, 16, 99, 101, 1, 46, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 56, 19, 253, 173};
+    uint8_t bytes2[] = {0, 2, 128, 120, 0, 5, 1, 0, 0, 1, 0, 0, 17, 37, 15, 255, 255, 73, 68, 51, 32, 255, 73, 68, 51, 32,
+            0, 31, 0, 1, 27, 1, 0, 0, 18, 9, 16, 99, 101, 1, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 1, 1, 0, 24,
+            10, 4, 101, 110, 103, 0, 9, 16, 99, 101, 1, 45, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 21, 1, 2, 0, 33, 38,
+            13, 255, 255, 73, 68, 51, 32, 255, 73, 68, 51, 32, 0, 15, 9, 16, 99, 101, 1, 46, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0x8E, 0xB4, 0xFE, 0x5D};
+    program_map_section_t* pms = program_map_section_read(bytes, sizeof(bytes));
+    program_map_section_t* pms1 = program_map_section_read(bytes, sizeof(bytes));
+    program_map_section_t* pms2 = program_map_section_read(bytes2, sizeof(bytes2));
+
+    ck_assert_ptr_ne(pms, NULL);
+    ck_assert_ptr_ne(pms1, NULL);
+    ck_assert_ptr_ne(pms2, NULL);
+
+    ck_assert_ptr_ne(pms, pms1);
+    ck_assert_ptr_ne(pms, pms2);
+
+    ck_assert(program_map_section_equal(pms, pms));
+    ck_assert(program_map_section_equal(pms, pms1));
+    ck_assert(program_map_section_equal(pms2, pms2));
+    ck_assert(program_map_section_equal(NULL, NULL));
+
+    ck_assert(!program_map_section_equal(pms, pms2));
+    ck_assert(!program_map_section_equal(pms1, pms2));
+    ck_assert(!program_map_section_equal(pms2, pms));
+    ck_assert(!program_map_section_equal(pms, NULL));
+    ck_assert(!program_map_section_equal(NULL, pms2));
+
+    program_map_section_unref(pms);
+    program_map_section_unref(pms1);
+    program_map_section_unref(pms2);
+END_TEST
+
 Suite *suite(void)
 {
     Suite *s;
@@ -332,13 +430,16 @@ Suite *suite(void)
     tcase_add_test(tc_core, test_read_pat_no_programs_bad_length);
     tcase_add_test(tc_core, test_read_pat_no_programs_bad_crc);
     tcase_add_test(tc_core, test_read_pat_extra_data);
+    tcase_add_test(tc_core, test_pat_equal);
     tcase_add_test(tc_core, test_read_cat_no_descriptors);
     tcase_add_test(tc_core, test_read_cat_complex);
     tcase_add_test(tc_core, test_read_cat_extra_data);
     tcase_add_test(tc_core, test_read_cat_not_enough_data);
     tcase_add_test(tc_core, test_read_cat_bad_section_length);
+    tcase_add_test(tc_core, test_cat_equal);
     tcase_add_test(tc_core, test_read_pmt);
     tcase_add_test(tc_core, test_read_pmt_extra_data);
+    tcase_add_test(tc_core, test_pmt_equal);
 
     suite_add_tcase(s, tc_core);
 

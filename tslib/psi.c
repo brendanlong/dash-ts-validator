@@ -227,6 +227,9 @@ void program_association_section_unref(program_association_section_t* pas)
 
 bool program_association_section_equal(const program_association_section_t* a, const program_association_section_t* b)
 {
+    if (a == b) {
+        return true;
+    }
     if (!mpeg2ts_section_equal((const mpeg2ts_section_t*)a, (const mpeg2ts_section_t*)b)
             || a->transport_stream_id != b->transport_stream_id
             || a->num_programs != b->num_programs) {
@@ -454,6 +457,9 @@ void program_map_section_unref(program_map_section_t* pms)
 
 bool program_map_section_equal(const program_map_section_t* a, const program_map_section_t* b)
 {
+    if (a == b) {
+        return true;
+    }
     if (!mpeg2ts_section_equal((const mpeg2ts_section_t*)a, (const mpeg2ts_section_t*)b)
             || a->program_number != b->program_number
             || a->pcr_pid != b->pcr_pid
@@ -469,17 +475,17 @@ bool program_map_section_equal(const program_map_section_t* a, const program_map
         }
     }
     for (size_t i = 0; i < a->es_info_len; ++i) {
-        if (a->es_info[i]->stream_type != b->es_info[i]->stream_type
-                || a->es_info[i]->elementary_pid != b->es_info[i]->elementary_pid
-                || a->es_info[i]->descriptors_len != b->es_info[i]->descriptors_len) {
+        elementary_stream_info_t* es_a = a->es_info[i];
+        elementary_stream_info_t* es_b = b->es_info[i];
+        if (es_a->stream_type != es_b->stream_type
+                || es_a->elementary_pid != es_b->elementary_pid
+                || es_a->descriptors_len != es_b->descriptors_len) {
             return false;
         }
-        for (size_t j = 0; j < a->es_info[i]->descriptors_len; ++j) {
-            elementary_stream_info_t* es_a = a->es_info[i];
-            elementary_stream_info_t* es_b = b->es_info[i];
-            if (es_a->descriptors[i]->tag != es_b->descriptors[i]->tag
-                    || es_a->descriptors[i]->data_len != es_b->descriptors[i]->data_len
-                    || memcmp(es_a->descriptors[i]->data, es_b->descriptors[i]->data, es_a->descriptors[i]->data_len)) {
+        for (size_t j = 0; j < es_a->descriptors_len; ++j) {
+            if (es_a->descriptors[j]->tag != es_b->descriptors[j]->tag
+                    || es_a->descriptors[j]->data_len != es_b->descriptors[j]->data_len
+                    || memcmp(es_a->descriptors[j]->data, es_b->descriptors[j]->data, es_a->descriptors[j]->data_len)) {
                 return false;
             }
         }
@@ -666,6 +672,9 @@ void conditional_access_section_unref(conditional_access_section_t* cas)
 
 bool conditional_access_section_equal(const conditional_access_section_t* a, const conditional_access_section_t* b)
 {
+    if (a == b) {
+        return true;
+    }
     if (!mpeg2ts_section_equal((const mpeg2ts_section_t*)a, (const mpeg2ts_section_t*)b)
             || a->descriptors_len != b->descriptors_len) {
         return false;
