@@ -130,10 +130,10 @@ typedef struct {
     bool tref_extension_flag;
     uint64_t tref;
 
-    uint8_t* payload;
-    size_t payload_len;
-
     uint64_t payload_pos_in_stream;
+
+    size_t payload_len;
+    uint8_t* payload; // this needs to stay at the end of pes_packet_t to make testing more convenient. See tests/pes.c
 } pes_packet_t;
 
 void pes_free(pes_packet_t*);
