@@ -32,12 +32,12 @@
 #include "log.h"
 
 
-static bool read_full_box(bitreader_t*, fullbox_t*, size_t box_size);
-static box_t* read_styp(bitreader_t*, size_t box_size, int* error);
-static box_t* read_sidx(bitreader_t*, size_t box_size, int* error);
-static box_t* read_pcrb(bitreader_t*, size_t box_size, int* error);
-static box_t* read_ssix(bitreader_t*, size_t box_size, int* error);
-static box_t* read_emsg(bitreader_t*, size_t box_size, int* error);
+static bool read_full_box(bitreader_t*, fullbox_t*);
+static box_t* read_styp(bitreader_t*, int* error);
+static box_t* read_sidx(bitreader_t*, int* error);
+static box_t* read_pcrb(bitreader_t*, int* error);
+static box_t* read_ssix(bitreader_t*, int* error);
+static box_t* read_emsg(bitreader_t*, int* error);
 
 static void print_fullbox(const fullbox_t*);
 static void print_styp(const styp_t*);
@@ -189,6 +189,7 @@ box_t* read_box(bitreader_t* b, int* error_out)
     }
     */
     box_t* box = NULL;
+    bitreader_t* box_reader = NULL;
     uint64_t size = bitreader_read_uint32(b);
     uint32_t type = bitreader_read_uint32(b);
     char type_str[5] = {0};
@@ -197,7 +198,7 @@ box_t* read_box(bitreader_t* b, int* error_out)
     if (size == 1) {
         size = bitreader_read_uint64(b);
     } else if (size == 0) {
-        size = UINT64_MAX; // box extends to the end of the file
+        size = bitreader_bytes_left(b); // box extends to the end of the file
     }
 
     if (b->error) {
@@ -212,29 +213,32 @@ box_t* read_box(bitreader_t* b, int* error_out)
     }
 
     /* Ignore size for Box itself */
-    uint64_t inner_size = size - 8;
+    box_reader = bitreader_read_bytes_as_bitreader(b, size - 8);
+    if (!box_reader) {
+        g_critical("Failed to read box with type 0x%"PRIx32" (%s), not data to read.", type, type_str);
+        goto fail;
+    }
     int error = 0;
     switch (type) {
     case BOX_TYPE_STYP:
-        box = read_styp(b, inner_size, &error);
+        box = read_styp(box_reader, &error);
         break;
     case BOX_TYPE_SIDX:
-        box = read_sidx(b, inner_size, &error);
+        box = read_sidx(box_reader, &error);
         break;
     case BOX_TYPE_PCRB:
-        box = read_pcrb(b, inner_size, &error);
+        box = read_pcrb(box_reader, &error);
         break;
     case BOX_TYPE_SSIX:
-        box = read_ssix(b, inner_size, &error);
+        box = read_ssix(box_reader, &error);
         break;
     case BOX_TYPE_EMSG:
-        box = read_emsg(b, inner_size, &error);
+        box = read_emsg(box_reader, &error);
         break;
     default: {
         char tmp[5] = {0};
         uint32_to_string(tmp, type);
         g_debug("Unknown box type: %s.", tmp);
-        bitreader_skip_bytes(b, inner_size);
         box = g_new(box_t, 1);
     }
     }
@@ -245,22 +249,31 @@ box_t* read_box(bitreader_t* b, int* error_out)
         box->type = type;
         box->size = size;
     }
-    if (b->error) {
-        g_critical("Input error reading box with type 0x%"PRIx32" (%s) and size %"PRIu64". Not enough data available.",
-                type, type_str, size);
+    if (box_reader->error) {
+        g_critical("Input error reading box with type 0x%"PRIx32" (%s) and size %"PRIu64". Buffer had size %zu.",
+                type, type_str, size, box_reader->len + 8);
+        goto fail;
+    }
+    if (!bitreader_eof(box_reader)) {
+        g_critical("Box with type 0x%"PRIx32" (%s) had extra data that was ignored. Size was %"PRIu64", buffer had "
+                "size %zu. Reader has %zu bits left.",
+                type, type_str, size, box_reader->len + 8, bitreader_bits_left(box_reader));
         goto fail;
     }
 
+cleanup:
+    bitreader_free(box_reader);
     return box;
 fail:
     if (error_out) {
         *error_out = 1;
     }
     free_box(box);
-    return NULL;
+    box = NULL;
+    goto cleanup;
 }
 
-bool read_full_box(bitreader_t* b, fullbox_t* box, uint64_t box_size)
+bool read_full_box(bitreader_t* b, fullbox_t* box)
 {
     g_return_val_if_fail(b, false);
     g_return_val_if_fail(box, false);
@@ -271,15 +284,9 @@ bool read_full_box(bitreader_t* b, fullbox_t* box, uint64_t box_size)
         bit(24) flags = f;
     }
     */
-    if (box_size < 4) {
-        g_critical("FullBox is 4 bytes, but this box size only has %"PRIu64" bytes remaining.", box_size);
-        goto fail;
-    }
     box->version = bitreader_read_uint8(b);
     box->flags = bitreader_read_uint24(b);
-    return true;
-fail:
-    return false;
+    return !b->error;
 }
 
 void free_styp(styp_t* box)
@@ -291,7 +298,7 @@ void free_styp(styp_t* box)
     g_free(box);
 }
 
-box_t* read_styp(bitreader_t* b, uint64_t box_size, int* error_out)
+box_t* read_styp(bitreader_t* b, int* error_out)
 {
     g_return_val_if_fail(b, NULL);
 
@@ -307,7 +314,7 @@ box_t* read_styp(bitreader_t* b, uint64_t box_size, int* error_out)
 
     box->major_brand = bitreader_read_uint32(b);
     box->minor_version = bitreader_read_uint32(b);
-    box->num_compatible_brands = (box_size - 8) / 4;
+    box->num_compatible_brands = bitreader_bytes_left(b) / 4;
     if (box->num_compatible_brands != 0) {
         box->compatible_brands = g_try_new(uint32_t, box->num_compatible_brands);
         if (!box->compatible_brands) {
@@ -337,7 +344,7 @@ void free_sidx(sidx_t* box)
     g_free(box);
 }
 
-box_t* read_sidx(bitreader_t* b, uint64_t box_size, int* error_out)
+box_t* read_sidx(bitreader_t* b, int* error_out)
 {
     g_return_val_if_fail(b, NULL);
 
@@ -365,10 +372,9 @@ box_t* read_sidx(bitreader_t* b, uint64_t box_size, int* error_out)
     }
     */
     sidx_t* box = g_new0(sidx_t, 1);
-    if (!read_full_box(b, (fullbox_t*)box, box_size)) {
+    if (!read_full_box(b, (fullbox_t*)box)) {
         goto fail;
     }
-    box_size -= 4;
 
     box->reference_id = bitreader_read_uint32(b);
     box->timescale = bitreader_read_uint32(b);
@@ -420,7 +426,7 @@ void free_pcrb(pcrb_t* box)
     g_free(box);
 }
 
-box_t* read_pcrb(bitreader_t* b, uint64_t box_size, int* error_out)
+box_t* read_pcrb(bitreader_t* b, int* error_out)
 {
     g_return_val_if_fail(b, NULL);
 
@@ -436,14 +442,13 @@ box_t* read_pcrb(bitreader_t* b, uint64_t box_size, int* error_out)
     pcrb_t* box = g_new0(pcrb_t, 1);
 
     box->subsegment_count = bitreader_read_uint32(b);
-    box_size -= 4;
 
     uint64_t pcr_size = box->subsegment_count * (48 / 8);
-    if (pcr_size < box_size) {
+    if (pcr_size != bitreader_bytes_left(b)) {
         g_critical("pcrb box has subsegment_count %"PRIu32", indicating the remaining size should be %"PRIu64" bytes, "
                 "but the box has %"PRIu64" bytes left.",
-                box->subsegment_count, pcr_size, box_size);
-        if (box_size == box->subsegment_count * 8) {
+                box->subsegment_count, pcr_size, bitreader_bytes_left(b));
+        if (bitreader_bytes_left(b) == box->subsegment_count * 8) {
             g_critical("Note: Your encoder appears to be writing 64-bit pcrb entries instead of 48-bit. See "
                     "https://github.com/gpac/gpac/issues/34 for details.");
         }
@@ -482,7 +487,7 @@ void free_ssix(ssix_t* box)
     g_free(box);
 }
 
-box_t* read_ssix(bitreader_t* b, uint64_t box_size, int* error_out)
+box_t* read_ssix(bitreader_t* b, int* error_out)
 {
     g_return_val_if_fail(b, NULL);
 
@@ -501,12 +506,16 @@ box_t* read_ssix(bitreader_t* b, uint64_t box_size, int* error_out)
     }
     */
     ssix_t* box = g_new0(ssix_t, 1);
-    if (!read_full_box(b, (fullbox_t*)box, box_size)) {
+    if (!read_full_box(b, (fullbox_t*)box)) {
         goto fail;
     }
-    box_size -= 4;
 
     box->subsegment_count = bitreader_read_uint32(b);
+    if (box->subsegment_count * 4 > bitreader_bytes_left(b)) {
+        g_critical("Not enough bytes left in 'ssix' box to read the required %"PRIu32" subsegments.",
+                box->subsegment_count);
+        goto fail;
+    }
     if (box->subsegment_count > 0) {
         box->subsegments = g_try_new0(ssix_subsegment_t, box->subsegment_count);
         if (!box->subsegments) {
@@ -516,6 +525,11 @@ box_t* read_ssix(bitreader_t* b, uint64_t box_size, int* error_out)
         for (size_t i = 0; i < box->subsegment_count; i++) {
             ssix_subsegment_t* subsegment = &box->subsegments[i];
             subsegment->ranges_count = bitreader_read_uint32(b);
+            if (subsegment->ranges_count * 4 > bitreader_bytes_left(b)) {
+                g_critical("Not enough bytes left in 'ssix' box to read the required %"PRIu32" ranges.",
+                        subsegment->ranges_count);
+                goto fail;
+            }
             if (subsegment->ranges_count > 0) {
                 subsegment->ranges = g_try_new0(ssix_subsegment_range_t, subsegment->ranges_count);
                 if (!subsegment->ranges) {
@@ -551,7 +565,7 @@ void free_emsg(emsg_t* box)
     g_free(box);
 }
 
-box_t* read_emsg(bitreader_t* b, uint64_t box_size, int* error_out)
+box_t* read_emsg(bitreader_t* b, int* error_out)
 {
     g_return_val_if_fail(b, NULL);
 
@@ -568,28 +582,21 @@ box_t* read_emsg(bitreader_t* b, uint64_t box_size, int* error_out)
     }
     */
     emsg_t* box = g_new0(emsg_t, 1);
-    if (!read_full_box(b, (fullbox_t*)box, box_size)) {
+    if (!read_full_box(b, (fullbox_t*)box)) {
         goto fail;
     }
-    box_size -= 4;
 
     size_t length;
     box->scheme_id_uri = bitreader_read_string(b, &length);
-    box_size -= length + 1;
 
     box->value = bitreader_read_string(b, &length);
-    box_size -= length + 1;
 
     box->timescale = bitreader_read_uint32(b);
     box->presentation_time_delta = bitreader_read_uint32(b);
     box->event_duration = bitreader_read_uint32(b);
     box->id = bitreader_read_uint32(b);
 
-    if (box_size < 17) {
-        g_critical("'emsg' box has size %zu, but needs to be >= 17.", box_size);
-        goto fail;
-    }
-    box->message_size = box_size - 17;
+    box->message_size = bitreader_bytes_left(b);
     if (box->message_size != 0) {
         box->message_data = g_try_new0(uint8_t, box->message_size);
         if (!box->message_data) {

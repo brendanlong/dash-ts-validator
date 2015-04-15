@@ -412,6 +412,63 @@ START_TEST(test_read_styp_no_compatible_brands)
     bitreader_free(b);
 END_TEST
 
+START_TEST(test_read_styp_too_short)
+    uint8_t bytes[] = {0, 0, 0, 12, 's', 't', 'y', 'p', 'a', 'b', 'c', 'd'};
+
+    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    size_t boxes_len;
+    int error = 0;
+    box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
+
+    ck_assert(error);
+    ck_assert_ptr_eq(boxes, NULL);
+
+    bitreader_free(b);
+END_TEST
+
+START_TEST(test_read_styp_data_too_short)
+    uint8_t bytes[] = {0, 0, 0, 12, 's', 't', 'y', 'p', 'a', 'b', 'c'};
+
+    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    size_t boxes_len;
+    int error = 0;
+    box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
+
+    ck_assert(error);
+    ck_assert_ptr_eq(boxes, NULL);
+
+    bitreader_free(b);
+END_TEST
+
+START_TEST(test_read_styp_data_too_long)
+    uint8_t bytes[] = {0, 0, 0, 20, 's', 't', 'y', 'p', 'a', 'b', 'c', 'd', 1, 'f', 'g', 'h', 'r', 'i', 's', 'x',
+            'r', 's', 't', 'l'};
+
+    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    size_t boxes_len;
+    int error = 0;
+    box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
+
+    ck_assert(error);
+    ck_assert_ptr_eq(boxes, NULL);
+
+    bitreader_free(b);
+END_TEST
+
+START_TEST(test_read_styp_size_not_divisible_by_four)
+    uint8_t bytes[] = {0, 0, 0, 18, 's', 't', 'y', 'p', 'a', 'b', 'c', 'd', 1, 'f', 'g', 'h', 'r', 'i'};
+
+    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    size_t boxes_len;
+    int error = 0;
+    box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
+
+    ck_assert(error);
+    ck_assert_ptr_eq(boxes, NULL);
+
+    bitreader_free(b);
+END_TEST
+
 Suite *suite(void)
 {
     Suite *s;
@@ -427,6 +484,10 @@ Suite *suite(void)
     tcase_add_test(tc_core, test_read_representation_index_with_pcrb);
     tcase_add_test(tc_core, test_read_styp);
     tcase_add_test(tc_core, test_read_styp_no_compatible_brands);
+    tcase_add_test(tc_core, test_read_styp_too_short);
+    tcase_add_test(tc_core, test_read_styp_data_too_short);
+    tcase_add_test(tc_core, test_read_styp_data_too_long);
+    tcase_add_test(tc_core, test_read_styp_size_not_divisible_by_four);
 
     suite_add_tcase(s, tc_core);
 
