@@ -26,14 +26,17 @@
  */
 #include "bitreader.h"
 
-#include <assert.h>
 #include <stdlib.h>
+
+static void bitreader_set_error(bitreader_t* b)
+{
+    if (b) {
+        b->error = true;
+    }
+}
 
 bitreader_t* bitreader_new(const uint8_t* data, size_t len)
 {
-    if (!data) {
-        return NULL;
-    }
     bitreader_t* b = malloc(sizeof(*b));
     bitreader_init(b, data, len);
     return b;
@@ -41,7 +44,6 @@ bitreader_t* bitreader_new(const uint8_t* data, size_t len)
 
 void bitreader_init(bitreader_t* b, const uint8_t* data, size_t len)
 {
-    assert(data);
     b->data = data;
     b->len = len;
     b->bytes_read = 0;
@@ -56,15 +58,23 @@ void bitreader_free(bitreader_t* b)
 
 bool bitreader_eof(const bitreader_t* b)
 {
-    return bitreader_bytes_left(b) == 0;
+    return bitreader_bits_left(b) == 0;
+}
+
+size_t bitreader_bits_left(const bitreader_t* b)
+{
+    if (!b || !b->data || b->bytes_read >= b->len) {
+        return 0;
+    }
+    return (b->len - b->bytes_read) * 8 - b->bits_read;
 }
 
 size_t bitreader_bytes_left(const bitreader_t* b)
 {
-    if (!b || !b->data || b->bytes_read > b->len) {
+    if (!b || !b->data || b->bytes_read >= b->len) {
         return 0;
     }
-    return b->len - b->bytes_read;
+    return b->len - b->bytes_read - (b->bits_read ? 1 : 0);
 }
 
 uint8_t bitreader_peek_bit(bitreader_t* b, size_t bit_offset)
@@ -74,7 +84,7 @@ uint8_t bitreader_peek_bit(bitreader_t* b, size_t bit_offset)
     }
     return (b->data[b->bytes_read] >> (7 - b->bits_read)) & 1;
 fail:
-    b->error = true;
+    bitreader_set_error(b);
     return 0;
 }
 
@@ -90,11 +100,11 @@ uint8_t bitreader_read_bit(bitreader_t* b)
         b->bits_read = 0;
     }
     if (b->bytes_read > b->len || (b->bits_read > 0 && b->bytes_read >= b->len)) {
-        b->error = true;
+        goto fail;
     }
     return result;
 fail:
-    b->error = true;
+    bitreader_set_error(b);
     return 0;
 }
 
@@ -119,7 +129,7 @@ void bitreader_skip_bits(bitreader_t* b, size_t bits)
     }
     return;
 fail:
-    b->error = true;
+    bitreader_set_error(b);
 }
 
 void bitreader_skip_bytes(bitreader_t* b, size_t bytes)
@@ -140,7 +150,7 @@ uint64_t bitreader_peek_bits(bitreader_t* b, size_t bits, size_t bits_offset)
     }
     return result;
 fail:
-    b->error = true;
+    bitreader_set_error(b);
     return 0;
 }
 
@@ -156,16 +166,36 @@ uint64_t bitreader_read_bits(bitreader_t* b, size_t bits)
     }
     return result;
 fail:
-    b->error = true;
+    bitreader_set_error(b);
     return 0;
 }
 
 void bitreader_read_bytes(bitreader_t* b, uint8_t* bytes_out, size_t bytes_len)
 {
+    if (bitreader_eof(b)) {
+        goto fail;
+    }
     /* TODO: Optimize */
     for (size_t i = 0; i < bytes_len; ++i) {
         bytes_out[i] = bitreader_read_uint8(b);
     }
+    return;
+fail:
+    bitreader_set_error(b);
+}
+
+bitreader_t* bitreader_read_bytes_as_bitreader(bitreader_t* b, size_t bytes_len)
+{
+    if (bitreader_eof(b) || bitreader_bytes_left(b) < bytes_len) {
+        goto fail;
+    }
+    bitreader_t* sub = bitreader_new(b->data + b->bytes_read, bytes_len);
+    sub->bits_read = b->bits_read;
+    b->bytes_read += bytes_len;
+    return sub;
+fail:
+    bitreader_set_error(b);
+    return NULL;
 }
 
 uint64_t bitreader_peek_uint(bitreader_t* b, size_t bits, size_t bits_offset)
@@ -190,7 +220,7 @@ uint64_t bitreader_peek_uint(bitreader_t* b, size_t bits, size_t bits_offset)
     }
     return result;
 fail:
-    b->error = true;
+    bitreader_set_error(b);
     return 0;
 }
 
@@ -208,7 +238,7 @@ uint64_t bitreader_read_uint(bitreader_t* b, size_t bits)
     }
     return result;
 fail:
-    b->error = true;
+    bitreader_set_error(b);
     return 0;
 }
 
@@ -220,10 +250,12 @@ uint8_t bitreader_read_uint8(bitreader_t* b)
 uint8_t bitreader_peek_uint8(bitreader_t* b, size_t bits_offset)
 {
     if (bits_offset > SIZE_MAX / 8) {
-        b->error = true;
-        return 0;
+        goto fail;
     }
     return (uint8_t)bitreader_peek_uint(b, 8, bits_offset * 8);
+fail:
+    bitreader_set_error(b);
+    return 0;
 }
 
 uint16_t bitreader_read_uint16(bitreader_t* b)
@@ -253,6 +285,9 @@ uint64_t bitreader_read_uint64(bitreader_t* b)
 
 uint64_t bitreader_read_90khz_timestamp(bitreader_t* b)
 {
+    if (bitreader_eof(b)) {
+        goto fail;
+    }
     uint64_t v = bitreader_read_bits(b, 3) << 30;
     bitreader_skip_bit(b);
     v |= bitreader_read_bits(b, 15) << 15;
@@ -260,20 +295,37 @@ uint64_t bitreader_read_90khz_timestamp(bitreader_t* b)
     v |= bitreader_read_bits(b, 15);
     bitreader_skip_bit(b);
 
+    if (b->error) {
+        goto fail;
+    }
     return v;
+fail:
+    bitreader_set_error(b);
+    return 0;
 }
 
 char* bitreader_read_string(bitreader_t* b, size_t* length_out) {
+    char* str = NULL;
+    if (bitreader_eof(b)) {
+        goto fail;
+    }
     size_t length;
     for (length = 0; bitreader_peek_uint8(b, length); ++length);
     ++length;
 
-    char* str = malloc(length);
+    str = malloc(length);
     for (size_t i = 0; i < length; ++i) {
         str[i] = bitreader_read_uint8(b);
+    }
+    if (b->error) {
+        goto fail;
     }
     if (length_out) {
         *length_out = length;
     }
     return str;
+fail:
+    bitreader_set_error(b);
+    free(str);
+    return NULL;
 }
