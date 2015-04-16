@@ -33,7 +33,7 @@
 #include "test_common.h"
 
 START_TEST(test_bitreader_aligned)
-    uint8_t bytes[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 170, '5', 0, '\t', 255, 29, 54, 5, 9};
+    uint8_t bytes[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 170, '5', 0, '\t', 255, 29, 54, 5, 9,'a', 'b', 0};
     bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
 
     ck_assert_int_eq(bitreader_read_uint8(b), 1);
@@ -52,6 +52,11 @@ START_TEST(test_bitreader_aligned)
     assert_bytes_eq(bytes_out, 3, bytes + 19, 3);
     bitreader_skip_bits(b, 4);
     ck_assert_uint_eq(bitreader_read_90khz_timestamp(b), 7638712964);
+    size_t str_len;
+    char* str = bitreader_read_string(b, &str_len);
+    ck_assert_str_eq(str, "ab");
+    ck_assert_uint_eq(str_len, strlen("ab"));
+    free(str);
 
     ck_assert(bitreader_eof(b));
     ck_assert(!b->error);
