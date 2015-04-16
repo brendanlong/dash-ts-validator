@@ -43,7 +43,7 @@ static void pes_print_header(const pes_packet_t*);
 
 static pes_packet_t* pes_new(void)
 {
-    pes_packet_t* pes = g_new0(pes_packet_t, 1);
+    pes_packet_t* pes = g_slice_new0(pes_packet_t);
     return pes;
 }
 
@@ -53,7 +53,7 @@ void pes_free(pes_packet_t* pes)
         return;
     }
     free(pes->payload);
-    free(pes);
+    g_slice_free(pes_packet_t, pes);
 }
 
 pes_packet_t* pes_read(const uint8_t* buf, size_t len)

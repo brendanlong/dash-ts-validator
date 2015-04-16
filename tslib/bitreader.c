@@ -26,6 +26,7 @@
  */
 #include "bitreader.h"
 
+#include <glib.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -38,7 +39,7 @@ static void bitreader_set_error(bitreader_t* b)
 
 bitreader_t* bitreader_new(const uint8_t* data, size_t len)
 {
-    bitreader_t* b = malloc(sizeof(*b));
+    bitreader_t* b = g_slice_new(bitreader_t);
     bitreader_init(b, data, len);
     return b;
 }
@@ -54,7 +55,7 @@ void bitreader_init(bitreader_t* b, const uint8_t* data, size_t len)
 
 void bitreader_free(bitreader_t* b)
 {
-    free(b);
+    g_slice_free(bitreader_t, b);
 }
 
 bool bitreader_eof(const bitreader_t* b)

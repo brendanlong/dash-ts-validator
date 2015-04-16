@@ -36,10 +36,7 @@ descriptor_t* ca_descriptor_read(descriptor_t* desc);
 
 descriptor_t* descriptor_new(void)
 {
-    descriptor_t* desc = malloc(sizeof(*desc));
-    desc->tag = 0;
-    desc->data = NULL;
-    desc->data_len = 0;
+    descriptor_t* desc = g_slice_new0(descriptor_t);
     return desc;
 }
 
@@ -54,7 +51,7 @@ void descriptor_free(descriptor_t* desc)
         break;
     }
     free(desc->data);
-    free(desc);
+    g_slice_free(descriptor_t, desc);
 }
 
 descriptor_t* descriptor_read(uint8_t* data, size_t data_len)
@@ -117,14 +114,14 @@ void descriptor_print(const descriptor_t* desc, int level)
 
 ca_descriptor_t* ca_descriptor_new(descriptor_t* desc)
 {
-    ca_descriptor_t* cad = calloc(1, sizeof(*cad));
+    ca_descriptor_t* cad = g_slice_new0(ca_descriptor_t);
     cad->descriptor.tag = CA_DESCRIPTOR;
     if (desc != NULL) {
         cad->descriptor.data = desc->data;
         desc->data = NULL;
         cad->descriptor.data_len = desc->data_len;
     }
-    free(desc);
+    g_slice_free(descriptor_t, desc);
     return cad;
 }
 

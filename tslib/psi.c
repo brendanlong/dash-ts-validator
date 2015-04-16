@@ -187,7 +187,7 @@ static bool section_header_read(mpeg2ts_section_t* section, bitreader_t* b)
 
 static program_association_section_t* program_association_section_new(void)
 {
-    program_association_section_t* pas = calloc(1, sizeof(*pas));
+    program_association_section_t* pas = g_slice_new0(program_association_section_t);
     pas->ref_count = 1;
     return pas;
 }
@@ -213,7 +213,7 @@ void program_association_section_unref(program_association_section_t* pas)
         return;
     }
     free(pas->programs);
-    free(pas);
+    g_slice_free(program_association_section_t, pas);
 }
 
 bool program_association_section_equal(const program_association_section_t* a, const program_association_section_t* b)
@@ -343,7 +343,7 @@ void program_association_section_print(const program_association_section_t* pas)
 
 static elementary_stream_info_t* es_info_new(void)
 {
-    elementary_stream_info_t* es = calloc(1, sizeof(*es));
+    elementary_stream_info_t* es = g_slice_new0(elementary_stream_info_t);
     return es;
 }
 
@@ -357,7 +357,7 @@ static void es_info_free(elementary_stream_info_t* es)
         descriptor_free(es->descriptors[i]);
     }
     g_free(es->descriptors);
-    free(es);
+    g_slice_free(elementary_stream_info_t, es);
 }
 
 static elementary_stream_info_t* es_info_read(bitreader_t* b)
@@ -408,7 +408,7 @@ static void es_info_print(const elementary_stream_info_t* es, int level)
 
 static program_map_section_t* program_map_section_new(void)
 {
-    program_map_section_t* pms = calloc(1, sizeof(*pms));
+    program_map_section_t* pms = g_slice_new0(program_map_section_t);
     pms->ref_count = 1;
     return pms;
 }
@@ -443,7 +443,7 @@ void program_map_section_unref(program_map_section_t* pms)
     }
     free(pms->es_info);
 
-    free(pms);
+    g_slice_free(program_map_section_t, pms);
 }
 
 bool program_map_section_equal(const program_map_section_t* a, const program_map_section_t* b)
@@ -628,7 +628,7 @@ void program_map_section_print(program_map_section_t* pms)
 
 static conditional_access_section_t* conditional_access_section_new(void)
 {
-    conditional_access_section_t* cas = calloc(1, sizeof(*cas));
+    conditional_access_section_t* cas = g_slice_new0(conditional_access_section_t);
     cas->ref_count = 1;
     return cas;
 }
@@ -658,7 +658,7 @@ void conditional_access_section_unref(conditional_access_section_t* cas)
         descriptor_free(cas->descriptors[i]);
     }
     free(cas->descriptors);
-    free(cas);
+    g_slice_free(conditional_access_section_t, cas);
 }
 
 bool conditional_access_section_equal(const conditional_access_section_t* a, const conditional_access_section_t* b)

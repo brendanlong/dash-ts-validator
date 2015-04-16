@@ -32,7 +32,7 @@
 
 static cets_ecm_t* cets_ecm_new(void)
 {
-    cets_ecm_t* obj = g_new0(cets_ecm_t, 1);
+    cets_ecm_t* obj = g_slice_new0(cets_ecm_t);
     return obj;
 }
 
@@ -42,9 +42,9 @@ void cets_ecm_free(cets_ecm_t* obj)
         return;
     }
     for (size_t i = 0; i < obj->num_states; ++i) {
-        g_free(obj->states[i].au);
+        g_slice_free1(obj->states[i].num_au * sizeof(*obj->states[i].au), obj->states[i].au);
     }
-    g_free(obj);
+    g_slice_free(cets_ecm_t, obj);
 }
 
 cets_ecm_t* cets_ecm_read(uint8_t* data, size_t len)
@@ -66,7 +66,7 @@ cets_ecm_t* cets_ecm_read(uint8_t* data, size_t len)
         cets_ecm_state_t* state = &ecm->states[i];
         state->transport_scrambling_control = bitreader_read_bits(b, 2);
         state->num_au = bitreader_read_bits(b, 6);
-        state->au = g_new0(cets_ecm_au_t, state->num_au);
+        state->au = g_slice_alloc(state->num_au * sizeof(*state->au));
         for (size_t j = 0; j < state->num_au; ++j) {
             cets_ecm_au_t* au = &state->au[j];
             au->key_id_flag = bitreader_read_bit(b);

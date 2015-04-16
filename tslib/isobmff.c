@@ -93,7 +93,7 @@ void free_box(box_t* box)
         break;
     }
     default:
-        g_free(box);
+        g_slice_free(box_t, box);
         break;
     }
 }
@@ -239,7 +239,7 @@ box_t* read_box(bitreader_t* b, int* error_out)
         char tmp[5] = {0};
         uint32_to_string(tmp, type);
         g_debug("Unknown box type: %s.", tmp);
-        box = g_new(box_t, 1);
+        box = g_slice_new(box_t);
     }
     }
     if (error) {
@@ -295,7 +295,7 @@ void free_styp(styp_t* box)
         return;
     }
     g_free(box->compatible_brands);
-    g_free(box);
+    g_slice_free(styp_t, box);
 }
 
 box_t* read_styp(bitreader_t* b, int* error_out)
@@ -310,7 +310,7 @@ box_t* read_styp(bitreader_t* b, int* error_out)
         unsigned int(32) compatible_brands[];
     }
     */
-    styp_t* box = g_new0(styp_t, 1);
+    styp_t* box = g_slice_new0(styp_t);
 
     box->major_brand = bitreader_read_uint32(b);
     box->minor_version = bitreader_read_uint32(b);
@@ -341,7 +341,7 @@ void free_sidx(sidx_t* box)
         return;
     }
     g_free(box->references);
-    g_free(box);
+    g_slice_free(sidx_t, box);
 }
 
 box_t* read_sidx(bitreader_t* b, int* error_out)
@@ -371,7 +371,7 @@ box_t* read_sidx(bitreader_t* b, int* error_out)
         }
     }
     */
-    sidx_t* box = g_new0(sidx_t, 1);
+    sidx_t* box = g_slice_new0(sidx_t);
     if (!read_full_box(b, (fullbox_t*)box)) {
         goto fail;
     }
@@ -423,7 +423,7 @@ void free_pcrb(pcrb_t* box)
         return;
     }
     g_free(box->pcr);
-    g_free(box);
+    g_slice_free(pcrb_t, box);
 }
 
 box_t* read_pcrb(bitreader_t* b, int* error_out)
@@ -439,7 +439,7 @@ box_t* read_pcrb(bitreader_t* b, int* error_out)
         }
     }
     */
-    pcrb_t* box = g_new0(pcrb_t, 1);
+    pcrb_t* box = g_slice_new0(pcrb_t);
 
     box->subsegment_count = bitreader_read_uint32(b);
 
@@ -484,7 +484,7 @@ void free_ssix(ssix_t* box)
         g_free(box->subsegments[i].ranges);
     }
     g_free(box->subsegments);
-    g_free(box);
+    g_slice_free(ssix_t, box);
 }
 
 box_t* read_ssix(bitreader_t* b, int* error_out)
@@ -505,7 +505,7 @@ box_t* read_ssix(bitreader_t* b, int* error_out)
        }
     }
     */
-    ssix_t* box = g_new0(ssix_t, 1);
+    ssix_t* box = g_slice_new0(ssix_t);
     if (!read_full_box(b, (fullbox_t*)box)) {
         goto fail;
     }
@@ -562,7 +562,7 @@ void free_emsg(emsg_t* box)
     g_free(box->value);
     g_free(box->message_data);
 
-    g_free(box);
+    g_slice_free(emsg_t, box);
 }
 
 box_t* read_emsg(bitreader_t* b, int* error_out)
@@ -581,7 +581,7 @@ box_t* read_emsg(bitreader_t* b, int* error_out)
         unsigned int(8) message_data[];
     }
     */
-    emsg_t* box = g_new0(emsg_t, 1);
+    emsg_t* box = g_slice_new0(emsg_t);
     if (!read_full_box(b, (fullbox_t*)box)) {
         goto fail;
     }

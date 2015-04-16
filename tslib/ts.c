@@ -48,7 +48,7 @@ ts_packet_t* ts_new(uint8_t* buf, size_t buf_size)
     g_return_val_if_fail(buf, NULL);
     g_return_val_if_fail(buf_size >= TS_SIZE, NULL);
 
-    ts_packet_t* ts = calloc(1, sizeof(ts_packet_t));
+    ts_packet_t* ts = g_slice_new0(ts_packet_t);
     ts->pcr_int = PCR_INVALID; // invalidate interpolated PCR
     memcpy(ts->bytes, buf, TS_SIZE);
     return ts;
@@ -59,10 +59,10 @@ ts_packet_t* ts_copy(const ts_packet_t* original)
     if (!original) {
         return NULL;
     }
-    ts_packet_t* ts = g_memdup(original, sizeof(*original));
-    ts->payload = g_memdup(original->payload, original->payload_len);
-    ts->adaptation_field.private_data = g_memdup(original->adaptation_field.private_data,
-            ts->adaptation_field.private_data_len);
+    ts_packet_t* ts = g_slice_dup(ts_packet_t, original);
+    ts->payload = g_slice_copy(original->payload_len, original->payload);
+    ts->adaptation_field.private_data = g_slice_copy(ts->adaptation_field.private_data_len,
+            original->adaptation_field.private_data);
     return ts;
 }
 
@@ -71,9 +71,9 @@ void ts_free(ts_packet_t* ts)
     if (ts == NULL) {
         return;
     }
-    free(ts->payload);
-    free(ts->adaptation_field.private_data);
-    free(ts);
+    g_slice_free1(ts->payload_len, ts->payload);
+    g_slice_free1(ts->adaptation_field.private_data_len, ts->adaptation_field.private_data);
+    g_slice_free(ts_packet_t, ts);
 }
 
 bool ts_read_adaptation_field(ts_adaptation_field_t* af, bitreader_t* b)
@@ -113,7 +113,7 @@ bool ts_read_adaptation_field(ts_adaptation_field_t* af, bitreader_t* b)
                 af->private_data_len = bitreader_read_uint8(b);
 
                 if(af->private_data_len > 0) {
-                    af->private_data = malloc(af->private_data_len);
+                    af->private_data = g_slice_alloc(af->private_data_len);
                     bitreader_read_bytes(b, af->private_data, af->private_data_len);
                 }
             }
@@ -204,7 +204,7 @@ ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num)
 
     if (ts->has_payload) {
         ts->payload_len = TS_SIZE - b->bytes_read;
-        ts->payload = malloc(ts->payload_len);
+        ts->payload = g_slice_alloc(ts->payload_len);
         bitreader_read_bytes(b, ts->payload, ts->payload_len);
     }
 
