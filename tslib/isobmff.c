@@ -461,7 +461,7 @@ box_t* read_pcrb(bitreader_t* b, int* error_out)
             goto fail;
         }
         for (size_t i = 0; i < box->subsegment_count; ++i) {
-            box->pcr[i] = bitreader_read_uint(b, 42);
+            box->pcr[i] = bitreader_read_bits(b, 42);
             bitreader_skip_bits(b, 6);
         }
     }

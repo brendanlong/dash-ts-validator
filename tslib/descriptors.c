@@ -146,7 +146,7 @@ descriptor_t* ca_descriptor_read(descriptor_t* desc)
 
     cad->ca_system_id = bitreader_read_uint16(b);
     bitreader_skip_bits(b, 3);
-    cad->ca_pid = bitreader_read_uint(b, 13);
+    cad->ca_pid = bitreader_read_bits(b, 13);
     if (b->error) {
         g_critical("CA descriptor invalid");
         goto fail;
