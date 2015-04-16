@@ -94,25 +94,16 @@ static bool read_descriptors(bitreader_t* b, size_t len, descriptor_t*** descrip
 
     bool ret = true;
     GPtrArray* descriptors = g_ptr_array_new();
+    bitreader_t* desc_b = bitreader_read_bytes_as_bitreader(b, len);
 
-    uint8_t* bytes = malloc(len);
-    for (size_t i = 0; i < len; ++i) {
-        bytes[i] = bitreader_read_uint8(b);
-    }
-    if (b->error) {
-        goto fail;
-    }
-
-    size_t start = 0;
-    while (start < len) {
-        descriptor_t* desc = descriptor_read(bytes + start, len - start);
+    while (!bitreader_eof(desc_b)) {
+        descriptor_t* desc = descriptor_read_from_bitreader(desc_b);
         if (!desc) {
             goto fail;
         }
         g_ptr_array_add(descriptors, desc);
-        start += desc->data_len + 2;
     }
-    if (start != len) {
+    if (desc_b->error) {
         g_critical("descriptors have invalid length");
         goto fail;
     }
@@ -120,7 +111,7 @@ static bool read_descriptors(bitreader_t* b, size_t len, descriptor_t*** descrip
     *descriptors_out = (descriptor_t**)g_ptr_array_free(descriptors, false);
 
 cleanup:
-    free(bytes);
+    bitreader_free(desc_b);
     return ret;
 fail:
     g_ptr_array_set_free_func(descriptors, (GDestroyNotify)descriptor_free);

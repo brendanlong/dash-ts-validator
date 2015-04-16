@@ -28,6 +28,7 @@
 #ifndef TSLIB_DESCRIPTORS_H
 #define TSLIB_DESCRIPTORS_H
 
+#include <bitreader.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -90,6 +91,7 @@ typedef struct {
 descriptor_t* descriptor_new(void);
 void descriptor_free(descriptor_t* desc);
 descriptor_t* descriptor_read(uint8_t* data, size_t len);
+descriptor_t* descriptor_read_from_bitreader(bitreader_t*);
 void descriptor_print(const descriptor_t* desc, int level);
 
 typedef struct {

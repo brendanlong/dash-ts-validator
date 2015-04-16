@@ -27,6 +27,7 @@
 #include "bitreader.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 static void bitreader_set_error(bitreader_t* b)
 {
@@ -134,8 +135,16 @@ fail:
 
 void bitreader_skip_bytes(bitreader_t* b, size_t bytes)
 {
-    /* TODO: Optimize */
-    bitreader_skip_bits(b, bytes * 8);
+    if (!b) {
+        return;
+    }
+    if (bitreader_eof(b) || b->bytes_read + bytes > b->len) {
+        goto fail;
+    }
+    b->bytes_read += bytes;
+    return;
+fail:
+    bitreader_set_error(b);
 }
 
 uint64_t bitreader_peek_bits(bitreader_t* b, size_t bits, size_t bits_offset)
@@ -144,6 +153,10 @@ uint64_t bitreader_peek_bits(bitreader_t* b, size_t bits, size_t bits_offset)
         goto fail;
     }
     uint64_t result = 0;
+    while (bits >= 8) {
+        result = (result << 8) + bitreader_read_uint8(b);
+        bits -= 8;
+    }
     for (size_t i = 0; i < bits; ++i) {
         result <<= 1;
         result += bitreader_peek_bit(b, bits_offset + i);
@@ -172,12 +185,19 @@ fail:
 
 void bitreader_read_bytes(bitreader_t* b, uint8_t* bytes_out, size_t bytes_len)
 {
-    if (bitreader_eof(b)) {
+    if (bytes_len == 0) {
+        return;
+    }
+    if (bitreader_eof(b) || bytes_len > bitreader_bytes_left(b)) {
         goto fail;
     }
-    /* TODO: Optimize */
-    for (size_t i = 0; i < bytes_len; ++i) {
-        bytes_out[i] = bitreader_read_uint8(b);
+    if (!b->bits_read) {
+        memcpy(bytes_out, b->data + b->bytes_read, bytes_len);
+        b->bytes_read += bytes_len;
+    } else {
+        for (size_t i = 0; i < bytes_len; ++i) {
+            bytes_out[i] = bitreader_read_uint8(b);
+        }
     }
     return;
 fail:
@@ -204,7 +224,7 @@ uint64_t bitreader_peek_uint(bitreader_t* b, size_t bits, size_t bits_offset)
         goto fail;
     }
     uint64_t result;
-    if (!b->bits_read && !(bits % 8) && !(bits_offset %8)) {
+    if (!b->bits_read && !(bits % 8) && !(bits_offset % 8)) {
         size_t bytes = bits / 8;
         size_t bytes_offset = bits_offset / 8;
         if (b->bytes_read + bytes + bytes_offset > b->len) {

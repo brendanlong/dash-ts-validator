@@ -28,7 +28,6 @@
 #include "descriptors.h"
 
 #include <stdlib.h>
-#include "bitreader.h"
 #include "log.h"
 
 ca_descriptor_t* ca_descriptor_new(descriptor_t* desc);
@@ -62,15 +61,22 @@ descriptor_t* descriptor_read(uint8_t* data, size_t data_len)
 {
     g_return_val_if_fail(data, NULL);
 
-    descriptor_t* desc = descriptor_new();
     bitreader_t* b = bitreader_new(data, data_len);
+    descriptor_t* desc = descriptor_read_from_bitreader(b);
+    bitreader_free(b);
+    return desc;
+}
+
+descriptor_t* descriptor_read_from_bitreader(bitreader_t* b)
+{
+    g_return_val_if_fail(b, NULL);
+
+    descriptor_t* desc = descriptor_new();
 
     desc->tag = bitreader_read_uint8(b);
     desc->data_len = bitreader_read_uint8(b);
     desc->data = malloc(desc->data_len);
-    for (size_t i = 0; i < desc->data_len; ++i) {
-        desc->data[i] = bitreader_read_uint8(b);
-    }
+    bitreader_read_bytes(b, desc->data, desc->data_len);
 
     if (b->error) {
         g_critical("Descriptor length is invalid.");
@@ -85,7 +91,6 @@ descriptor_t* descriptor_read(uint8_t* data, size_t data_len)
     }
 
 cleanup:
-    bitreader_free(b);
     return desc;
 fail:
     descriptor_free(desc);
@@ -151,9 +156,7 @@ descriptor_t* ca_descriptor_read(descriptor_t* desc)
     }
     cad->private_data_len = cad->descriptor.data_len - 4; // we just read 4 bytes
     cad->private_data = malloc(cad->private_data_len);
-    for (size_t i = 0; i < cad->private_data_len; ++i) {
-        cad->private_data[i] = bitreader_read_uint8(b);
-    }
+    bitreader_read_bytes(b, cad->private_data, cad->private_data_len);
     if (b->error) {
         g_critical("CA descriptor invalid");
         goto fail;
