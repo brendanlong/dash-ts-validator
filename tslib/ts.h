@@ -43,7 +43,7 @@
 
 #define PCR_MAX          (1LL << 42)
 #define PCR_INVALID       UINT64_MAX
-#define PCR_IS_VALID(P)  ( ( (P) >= 0 ) && ((P) <  PCR_MAX))
+#define PCR_IS_VALID(P)  ((P) <  PCR_MAX)
 
 /* 2.4.3.4 Adaptation field */
 typedef struct {
@@ -59,12 +59,10 @@ typedef struct {
     bool extension_flag;
 
     /* if pcr_flag == 1 */
-    uint64_t program_clock_reference_base;
-    uint16_t program_clock_reference_extension;
+    uint64_t program_clock_reference;
 
     /* if opcr_flag == 1 */
-    uint64_t original_program_clock_reference_base;
-    uint16_t original_program_clock_reference_extension;
+    uint64_t original_program_clock_reference;
 
     /* if splicing_point_flag == 1 */
     uint8_t splice_countdown;
@@ -123,7 +121,5 @@ enum {
 void ts_copy(ts_packet_t*, const ts_packet_t*);
 bool ts_read(ts_packet_t*, uint8_t* buf, size_t buf_size, uint64_t packet_num);
 void ts_print(const ts_packet_t* ts);
-
-int64_t ts_read_pcr(const ts_packet_t* ts);
 
 #endif

@@ -295,11 +295,8 @@ static void validate_ts_packet(ts_packet_t* ts, elementary_stream_info_t* esi, v
         dash_validator->status = 0;
     }
 
-    if (dash_validator->pcr_pid == ts->pid) {
-        int64_t pcr = ts_read_pcr(ts);
-        if (PCR_IS_VALID(pcr)) {
-            dash_validator->last_pcr = pcr;
-        }
+    if (dash_validator->pcr_pid == ts->pid && ts->adaptation_field.pcr_flag) {
+        dash_validator->last_pcr = ts->adaptation_field.program_clock_reference;
     }
 
     while (dash_validator->current_subsegment

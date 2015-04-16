@@ -88,7 +88,7 @@ typedef struct {
 typedef struct {
     dash_profile_t profile;
     bool is_encrypted;
-    int64_t  last_pcr;
+    uint64_t  last_pcr;
     GPtrArray* pids;
     uint16_t pcr_pid;
     GHashTable* ecm_pids;

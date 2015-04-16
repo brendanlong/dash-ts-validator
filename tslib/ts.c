@@ -46,6 +46,8 @@ static bool ts_init(ts_packet_t* ts)
 
     memset(ts, 0, sizeof(*ts));
     ts->pcr_int = PCR_INVALID; // invalidate interpolated PCR
+    ts->adaptation_field.program_clock_reference = PCR_INVALID;
+    ts->adaptation_field.original_program_clock_reference = PCR_INVALID;
     return true;
 }
 
@@ -67,25 +69,22 @@ bool ts_read_adaptation_field(ts_adaptation_field_t* af, bitreader_t* b)
     size_t start_pos = b->bytes_read;
 
     if (af->length > 0) {
-        af->discontinuity_indicator = bitreader_read_bit(b);
-        af->random_access_indicator = bitreader_read_bit(b);
-        af->elementary_stream_priority_indicator = bitreader_read_bit(b);
-        af->pcr_flag = bitreader_read_bit(b);
-        af->opcr_flag = bitreader_read_bit(b);
-        af->splicing_point_flag = bitreader_read_bit(b);
-        af->private_data_flag = bitreader_read_bit(b);
-        af->extension_flag = bitreader_read_bit(b);
+        uint8_t tmp = bitreader_read_uint8(b);
+        af->discontinuity_indicator = tmp & 128;
+        af->random_access_indicator = tmp & 64;
+        af->elementary_stream_priority_indicator = tmp & 32;
+        af->pcr_flag = tmp & 16;
+        af->opcr_flag = tmp & 8;
+        af->splicing_point_flag = tmp & 4;
+        af->private_data_flag = tmp & 2;
+        af->extension_flag = tmp & 1;
 
         if (af->length > 1) {
             if(af->pcr_flag) {
-                af->program_clock_reference_base = bitreader_read_bits(b, 33);
-                bitreader_skip_bits(b, 6);
-                af->program_clock_reference_extension = bitreader_read_bits(b, 9);
+                af->program_clock_reference = bitreader_read_pcr(b);
             }
             if (af->opcr_flag) {
-                af->original_program_clock_reference_base = bitreader_read_bits(b, 33);
-                bitreader_skip_bits(b, 6);
-                af->original_program_clock_reference_extension = bitreader_read_bits(b, 9);
+                af->original_program_clock_reference = bitreader_read_pcr(b);
             }
             if (af->splicing_point_flag) {
                 af->splice_countdown = bitreader_read_uint8(b); //TODO: it's signed, two's compliment #
@@ -117,8 +116,7 @@ bool ts_read_adaptation_field(ts_adaptation_field_t* af, bitreader_t* b)
                     af->piecewise_rate = bitreader_read_bits(b, 22);
                 }
                 if (af->seamless_splice_flag) {
-                    bitreader_skip_bits(b, 4);
-                    af->dts_next_au = bitreader_read_90khz_timestamp(b);
+                    af->dts_next_au = bitreader_read_90khz_timestamp(b, 4);
                 }
 
                 size_t res_len = af->extension_length + b->bytes_read - afe_start_pos;
@@ -162,19 +160,23 @@ bool ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num
         goto fail;
     }
 
-    ts->transport_error_indicator = bitreader_read_bit(b);
+    /* micro-optimized because 25% of execution time was in the next few lines */
+    uint16_t tmp = bitreader_read_uint16(b);
+    ts->transport_error_indicator = tmp & (1 << 15);
     if (ts->transport_error_indicator) {
         g_warning("At least one uncorrectable bit error exists in this TS packet");
     }
 
-    ts->payload_unit_start_indicator = bitreader_read_bit(b);
-    ts->transport_priority = bitreader_read_bit(b);
-    ts->pid = bitreader_read_bits(b, 13);
+    ts->payload_unit_start_indicator = tmp & (1 << 14);
+    ts->transport_priority = tmp & (1 << 13);
+    ts->pid = tmp & ((1 << 13) - 1);
 
-    ts->transport_scrambling_control = bitreader_read_bits(b, 2);
-    ts->has_adaptation_field = bitreader_read_bit(b);
-    ts->has_payload = bitreader_read_bit(b);
-    ts->continuity_counter = bitreader_read_bits(b, 4);
+    tmp = bitreader_read_uint8(b);
+    ts->transport_scrambling_control = tmp >> 6;
+    ts->has_adaptation_field = tmp & 32;
+    ts->has_payload = tmp & 16;
+    ts->continuity_counter = tmp & 15;
+    /* end micro-optimization */
 
     if (ts->has_adaptation_field && !ts_read_adaptation_field(&(ts->adaptation_field), b)) {
         goto fail;
@@ -213,12 +215,10 @@ void ts_print_adaptation_field(const ts_adaptation_field_t* af)
 
         if (af->length > 1) {
             if (af->pcr_flag) {
-                SKIT_LOG_UINT_DBG(2, af->program_clock_reference_base);
-                SKIT_LOG_UINT_DBG(2, af->program_clock_reference_extension);
+                SKIT_LOG_UINT_DBG(2, af->program_clock_reference);
             }
             if (af->opcr_flag) {
-                SKIT_LOG_UINT_DBG(2, af->original_program_clock_reference_base);
-                SKIT_LOG_UINT_DBG(2, af->original_program_clock_reference_extension);
+                SKIT_LOG_UINT_DBG(2, af->original_program_clock_reference);
             }
             if (af->splicing_point_flag) {
                 SKIT_LOG_UINT_DBG(2, af->splice_countdown);
@@ -271,17 +271,4 @@ void ts_print(const ts_packet_t* ts)
         ts_print_adaptation_field(&ts->adaptation_field);
     }
     SKIT_LOG_UINT64_DBG("", (uint64_t)ts->payload_len);
-}
-
-int64_t ts_read_pcr(const ts_packet_t* ts)
-{
-    g_return_val_if_fail(ts, 0);
-
-    if (ts->has_adaptation_field && ts->adaptation_field.pcr_flag) {
-        uint64_t pcr = 300 * ts->adaptation_field.program_clock_reference_base;
-        pcr += ts->adaptation_field.program_clock_reference_extension;
-        return pcr;
-    } else {
-        return PCR_INVALID;
-    }
 }

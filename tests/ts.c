@@ -69,10 +69,8 @@ START_TEST(test_read_ts)
     ck_assert(!af->private_data_flag);
     ck_assert(!af->extension_flag);
 
-    ck_assert_uint_eq(af->program_clock_reference_base, 0);
-    ck_assert_uint_eq(af->program_clock_reference_extension, 0);
-    ck_assert_uint_eq(af->original_program_clock_reference_base, 0);
-    ck_assert_uint_eq(af->original_program_clock_reference_extension, 0);
+    ck_assert_uint_eq(af->program_clock_reference, PCR_INVALID);
+    ck_assert_uint_eq(af->original_program_clock_reference, PCR_INVALID);
     ck_assert_uint_eq(af->splice_countdown, 0);
     ck_assert_uint_eq(af->private_data_len, 0);
     ck_assert_uint_eq(af->extension_length, 0);
@@ -84,8 +82,6 @@ START_TEST(test_read_ts)
     ck_assert_uint_eq(af->piecewise_rate, 0);
     ck_assert_uint_eq(af->splice_type, 0);
     ck_assert_uint_eq(af->dts_next_au, 0);
-
-    ck_assert_uint_eq(ts_read_pcr(&ts), PCR_INVALID);
 END_TEST
 
 START_TEST(test_read_ts_too_short)
@@ -166,7 +162,7 @@ START_TEST(test_read_ts_with_adaptation_field)
     ck_assert(!af->private_data_flag);
     ck_assert(!af->extension_flag);
 
-    ck_assert_uint_eq(ts_read_pcr(&ts), 810000000);
+    ck_assert_uint_eq(af->program_clock_reference, 810000000);
 END_TEST
 
 Suite *suite(void)

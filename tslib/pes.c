@@ -133,8 +133,7 @@ static bool pes_read_header(pes_packet_t* ph, bitreader_t* b)
 
         // byte 9..14
         if (ph->pts_flag) {
-            bitreader_skip_bits(b, 4);
-            ph->pts = bitreader_read_90khz_timestamp(b);
+            ph->pts = bitreader_read_90khz_timestamp(b, 4);
         }
         // byte 15..19
         if (ph->dts_flag) {
@@ -143,13 +142,11 @@ static bool pes_read_header(pes_packet_t* ph, bitreader_t* b)
                         "- [...] The value '01' is forbidden.");
                 return false;
             }
-            bitreader_skip_bits(b, 4);
-            ph->dts = bitreader_read_90khz_timestamp(b);
+            ph->dts = bitreader_read_90khz_timestamp(b, 4);
         }
 
         if (ph->escr_flag) {
-            bitreader_skip_bits(b, 2);
-            ph->escr_base = bitreader_read_90khz_timestamp(b);
+            ph->escr_base = bitreader_read_90khz_timestamp(b, 2);
             ph->escr_extension = bitreader_read_bits(b, 9);
             bitreader_skip_bit(b);
         }
@@ -228,8 +225,7 @@ static bool pes_read_header(pes_packet_t* ph, bitreader_t* b)
                     bitreader_skip_bits(b, 6);
                     ph->tref_extension_flag = bitreader_read_bit(b);
                     if(ph->tref_extension_flag) {
-                        bitreader_skip_bits(b, 4);
-                        ph->tref = bitreader_read_90khz_timestamp(b);
+                        ph->tref = bitreader_read_90khz_timestamp(b, 4);
                     }
                 }
                 size_t pes_extension_bytes_left = b->bytes_read - pes_extension_field_start;

@@ -30,8 +30,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define check_overflow(b, bits) \
+if (bitreader_would_overflow(b, bits)) { \
+    bitreader_set_error(b); \
+    return 0; \
+}
+
+#define check_overflow_void(b, bits) \
+if (bitreader_would_overflow(b, bits)) { \
+    bitreader_set_error(b); \
+    return; \
+}
+
 static void bitreader_skip_bits_unchecked(bitreader_t* b, size_t bits);
-static uint8_t bitreader_read_bit_unchecked(bitreader_t* b);
+static bool bitreader_read_bit_unchecked(bitreader_t* b);
 static uint8_t bitreader_read_uint8_unchecked(bitreader_t* b);
 
 static void bitreader_set_error(bitreader_t* b)
@@ -88,23 +100,18 @@ size_t bitreader_bytes_left(const bitreader_t* b)
     return bitreader_bits_left(b) / 8;
 }
 
-uint8_t bitreader_read_bit_unchecked(bitreader_t* b)
+bool bitreader_read_bit_unchecked(bitreader_t* b)
 {
-    bool result = (b->data[b->bytes_read] >> (7 - b->bits_read)) & 1;
+    uint8_t result = b->data[b->bytes_read];
+    result &= 128 >> b->bits_read;
     bitreader_skip_bits_unchecked(b, 1);
     return result;
 }
 
-uint8_t bitreader_read_bit(bitreader_t* b)
+bool bitreader_read_bit(bitreader_t* b)
 {
-    if (bitreader_eof(b)) {
-        goto fail;
-    }
-    bool result = bitreader_read_bit_unchecked(b);
-    return result;
-fail:
-    bitreader_set_error(b);
-    return 0;
+    check_overflow(b, 1);
+    return bitreader_read_bit_unchecked(b);
 }
 
 static void bitreader_skip_bit_unchecked(bitreader_t* b)
@@ -126,24 +133,14 @@ void bitreader_skip_bits_unchecked(bitreader_t* b, size_t bits)
 
 void bitreader_skip_bits(bitreader_t* b, size_t bits)
 {
-    if (bitreader_would_overflow(b, bits)) {
-        goto fail;
-    }
+    check_overflow_void(b, bits);
     bitreader_skip_bits_unchecked(b, bits);
-    return;
-fail:
-    bitreader_set_error(b);
 }
 
 void bitreader_skip_bytes(bitreader_t* b, size_t bytes)
 {
-    if (bitreader_would_overflow(b, bytes * 8)) {
-        goto fail;
-    }
+    check_overflow_void(b, bytes * 8);
     b->bytes_read += bytes;
-    return;
-fail:
-    bitreader_set_error(b);
 }
 
 static void bitreader_rewind_bytes_unchecked(bitreader_t* b, size_t bytes)
@@ -154,32 +151,55 @@ static void bitreader_rewind_bytes_unchecked(bitreader_t* b, size_t bytes)
 void bitreader_rewind_bytes(bitreader_t* b, size_t bytes)
 {
     if (!b || b->bytes_read < bytes) {
-        goto fail;
+        bitreader_set_error(b);
+        return;
     }
     bitreader_rewind_bytes_unchecked(b, bytes);
-    return;
-fail:
-    bitreader_set_error(b);
+}
+
+static uint64_t bitreader_read_bytes_aligned_unchecked(bitreader_t* b, uint8_t bytes)
+{
+    uint64_t result = b->data[b->bytes_read];
+    for (size_t i = 1; i < bytes; ++i) {
+        result <<= 8;
+        result += b->data[b->bytes_read + i];
+    }
+    b->bytes_read += bytes;
+    return result;
+}
+
+static uint64_t bitreader_read_bits_unaligned_unchecked(bitreader_t* b, uint8_t bits)
+{
+    uint8_t result = b->data[b->bytes_read];
+    result >>= 8 - bits - b->bits_read;
+    result &= (1 << bits) - 1;
+    bitreader_skip_bits_unchecked(b, bits);
+    return result;
 }
 
 static uint64_t bitreader_read_bits_unchecked(bitreader_t* b, uint8_t bits)
 {
     uint64_t result = 0;
+    /* Try to turn this into an aligned read */
+    if (b->bits_read && bits >= 8) {
+        size_t to_read = 8 - b->bits_read;
+        result = bitreader_read_bits_unaligned_unchecked(b, to_read);
+        bits -= to_read;
+    }
+
+    /* Do aligned reads if we can */
+    while (!b->bits_read && bits >= 8) {
+        result <<= 8;
+        result += b->data[b->bytes_read];
+        ++b->bytes_read;
+        bits -= 8;
+    }
+
+    /* Handle leftovers */
     while (bits > 0) {
         size_t to_read = MIN(bits, 8 - b->bits_read);
         result <<= to_read;
-        if (to_read == 8) {
-            result += b->data[b->bytes_read];
-            ++b->bytes_read;
-        } else if (to_read == 1) {
-            result += bitreader_read_bit_unchecked(b);
-        } else {
-            uint8_t byte = b->data[b->bytes_read];
-            byte >>= 8 - to_read - b->bits_read;
-            byte &= (1 << to_read) - 1;
-            result += byte;
-            bitreader_skip_bits_unchecked(b, to_read);
-        }
+        result += bitreader_read_bits_unaligned_unchecked(b, to_read);
         bits -= to_read;
     }
     return result;
@@ -187,13 +207,12 @@ static uint64_t bitreader_read_bits_unchecked(bitreader_t* b, uint8_t bits)
 
 uint64_t bitreader_read_bits(bitreader_t* b, uint8_t bits)
 {
-    if (bits > 64 || bitreader_would_overflow(b, bits)) {
-        goto fail;
+    check_overflow(b, bits);
+    if (bits > 64) {
+        bitreader_set_error(b);
+        return 0;
     }
     return bitreader_read_bits_unchecked(b, bits);
-fail:
-    bitreader_set_error(b);
-    return 0;
 }
 
 void bitreader_read_bytes(bitreader_t* b, uint8_t* bytes_out, size_t bytes_len)
@@ -201,9 +220,7 @@ void bitreader_read_bytes(bitreader_t* b, uint8_t* bytes_out, size_t bytes_len)
     if (bytes_len == 0) {
         return;
     }
-    if (bitreader_would_overflow(b, bytes_len * 8)) {
-        goto fail;
-    }
+    check_overflow_void(b, bytes_len * 8);
     if (!b->bits_read) {
         memcpy(bytes_out, b->data + b->bytes_read, bytes_len);
         b->bytes_read += bytes_len;
@@ -212,64 +229,74 @@ void bitreader_read_bytes(bitreader_t* b, uint8_t* bytes_out, size_t bytes_len)
             bytes_out[i] = bitreader_read_uint8_unchecked(b);
         }
     }
-    return;
-fail:
-    bitreader_set_error(b);
 }
 
 bitreader_t* bitreader_read_bytes_as_bitreader(bitreader_t* b, size_t bytes_len)
 {
-    if (bitreader_would_overflow(b, bytes_len * 8)) {
-        goto fail;
-    }
+    check_overflow(b, bytes_len * 8);
     bitreader_t* sub = bitreader_new(b->data + b->bytes_read, bytes_len);
     sub->bits_read = b->bits_read;
     b->bytes_read += bytes_len;
     return sub;
-fail:
-    bitreader_set_error(b);
-    return NULL;
+}
+
+static uint64_t bitreader_read_uint(bitreader_t* b, uint8_t bytes)
+{
+    check_overflow(b, bytes * 8);
+    if (b->bits_read) {
+        return bitreader_read_bits_unchecked(b, bytes * 8);
+    } else {
+        return bitreader_read_bytes_aligned_unchecked(b, bytes);
+    }
 }
 
 uint8_t bitreader_read_uint8_unchecked(bitreader_t* b)
 {
-    return (uint8_t)bitreader_read_bits_unchecked(b, 8);
+    if (b->bits_read) {
+        return (uint8_t)bitreader_read_bits_unchecked(b, 8);
+    } else {
+        return b->data[b->bytes_read++];
+    }
 }
 
 uint8_t bitreader_read_uint8(bitreader_t* b)
 {
-    return (uint8_t)bitreader_read_bits(b, 8);
+    check_overflow(b, 8);
+    return (uint8_t)bitreader_read_uint8_unchecked(b);
 }
 
 uint16_t bitreader_read_uint16(bitreader_t* b)
 {
-    return (uint16_t)bitreader_read_bits(b, 16);
+    return (uint16_t)bitreader_read_uint(b, 2);
 }
 
 uint32_t bitreader_read_uint24(bitreader_t* b)
 {
-    return (uint32_t)bitreader_read_bits(b, 24);
+    return (uint32_t)bitreader_read_uint(b, 3);
 }
 
 uint32_t bitreader_read_uint32(bitreader_t* b)
 {
-    return (uint32_t)bitreader_read_bits(b, 32);
+    return (uint32_t)bitreader_read_uint(b, 4);
 }
 
 uint64_t bitreader_read_uint48(bitreader_t* b)
 {
-    return bitreader_read_bits(b, 48);
+    return bitreader_read_uint(b, 6);
 }
 
 uint64_t bitreader_read_uint64(bitreader_t* b)
 {
-    return bitreader_read_bits(b, 64);
+    return bitreader_read_uint(b, 8);
 }
 
-uint64_t bitreader_read_90khz_timestamp(bitreader_t* b)
+uint64_t bitreader_read_90khz_timestamp(bitreader_t* b, uint8_t skip_bits)
 {
-    if (bitreader_would_overflow(b, 36)) {
+    if (bitreader_would_overflow(b, 36 + skip_bits)) {
         goto fail;
+    }
+    if (skip_bits) {
+        bitreader_skip_bits_unchecked(b, skip_bits);
     }
     uint64_t v = bitreader_read_bits_unchecked(b, 3) << 30;
     bitreader_skip_bit_unchecked(b);
@@ -278,6 +305,20 @@ uint64_t bitreader_read_90khz_timestamp(bitreader_t* b)
     v |= bitreader_read_bits_unchecked(b, 15);
     bitreader_skip_bit_unchecked(b);
     return v;
+fail:
+    bitreader_set_error(b);
+    return 0;
+}
+
+uint64_t bitreader_read_pcr(bitreader_t* b)
+{
+    if (bitreader_would_overflow(b, 48)) {
+        goto fail;
+    }
+    uint64_t result = 300 * bitreader_read_bits_unchecked(b, 33);
+    bitreader_skip_bits_unchecked(b, 6);
+    result += bitreader_read_bits_unchecked(b, 9);
+    return result;
 fail:
     bitreader_set_error(b);
     return 0;

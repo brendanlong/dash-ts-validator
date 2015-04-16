@@ -50,8 +50,8 @@ START_TEST(test_bitreader_aligned)
     uint8_t bytes_out[3];
     bitreader_read_bytes(b, bytes_out, 3);
     assert_bytes_eq(bytes_out, 3, bytes + 19, 3);
-    bitreader_skip_bits(b, 4);
-    ck_assert_uint_eq(bitreader_read_90khz_timestamp(b), 7638712964);
+    bitreader_skip_bits(b, 1);
+    ck_assert_uint_eq(bitreader_read_90khz_timestamp(b, 3), 7638712964);
     size_t str_len;
     char* str = bitreader_read_string(b, &str_len);
     ck_assert_str_eq(str, "ab");
@@ -82,7 +82,7 @@ START_TEST(test_bitreader_unaligned)
     bitreader_read_bytes(b, bytes_out, 3);
     assert_bytes_eq(bytes_out, 3, bytes_expected, 3);
     bitreader_skip_bits(b, 4);
-    ck_assert_uint_eq(bitreader_read_90khz_timestamp(b), 4063422055);
+    ck_assert_uint_eq(bitreader_read_90khz_timestamp(b, 0), 4063422055);
 
     ck_assert(!b->error);
     ck_assert(!bitreader_eof(b));
