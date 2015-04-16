@@ -116,7 +116,6 @@ box_t** read_boxes_from_file(const char* file_name, size_t* num_boxes, int* erro
 
     box_t** boxes = NULL;
     *num_boxes = 0;
-    bitreader_t* b = NULL;
 
     gchar* file_contents = NULL;
     size_t file_len;
@@ -126,10 +125,9 @@ box_t** read_boxes_from_file(const char* file_name, size_t* num_boxes, int* erro
         goto fail;
     }
 
-    b = bitreader_new((uint8_t*)file_contents, file_len);
+    bitreader_new_stack(b, (uint8_t*)file_contents, file_len);
     boxes = read_boxes_from_stream(b, num_boxes, error_out);
 cleanup:
-    bitreader_free(b);
     g_free(file_contents);
     if (error) {
         g_error_free(error);

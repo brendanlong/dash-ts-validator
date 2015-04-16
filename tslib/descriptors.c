@@ -58,9 +58,8 @@ descriptor_t* descriptor_read(uint8_t* data, size_t data_len)
 {
     g_return_val_if_fail(data, NULL);
 
-    bitreader_t* b = bitreader_new(data, data_len);
+    bitreader_new_stack(b, data, data_len);
     descriptor_t* desc = descriptor_read_from_bitreader(b);
-    bitreader_free(b);
     return desc;
 }
 
@@ -142,7 +141,7 @@ descriptor_t* ca_descriptor_read(descriptor_t* desc)
     g_return_val_if_fail(desc->data, NULL);
 
     ca_descriptor_t* cad = ca_descriptor_new(desc);
-    bitreader_t* b = bitreader_new(cad->descriptor.data, cad->descriptor.data_len);
+    bitreader_new_stack(b, cad->descriptor.data, cad->descriptor.data_len);
 
     cad->ca_system_id = bitreader_read_uint16(b);
     bitreader_skip_bits(b, 3);
@@ -160,7 +159,6 @@ descriptor_t* ca_descriptor_read(descriptor_t* desc)
     }
 
 cleanup:
-    bitreader_free(b);
     return (descriptor_t*)cad;
 fail:
     descriptor_free((descriptor_t*)cad);

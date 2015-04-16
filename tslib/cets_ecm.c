@@ -52,7 +52,7 @@ cets_ecm_t* cets_ecm_read(uint8_t* data, size_t len)
     g_return_val_if_fail(data, NULL);
 
     cets_ecm_t* ecm = cets_ecm_new();
-    bitreader_t* b = bitreader_new(data, len);
+    bitreader_new_stack(b, data, len);
 
     ecm->num_states = bitreader_read_bits(b, 2);
     ecm->next_key_id_flag = bitreader_read_bit(b);
@@ -100,7 +100,6 @@ cets_ecm_t* cets_ecm_read(uint8_t* data, size_t len)
     }
 
 cleanup:
-    bitreader_free(b);
     return ecm;
 fail:
     cets_ecm_free(ecm);

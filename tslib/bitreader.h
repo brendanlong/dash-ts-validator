@@ -39,6 +39,11 @@ typedef struct {
     bool error;
 } bitreader_t;
 
+#define bitreader_new_stack(name, data, len) \
+bitreader_t _##name; \
+bitreader_t *name = &_##name; \
+bitreader_init(name, data, len);
+
 bitreader_t* bitreader_new(const uint8_t* data, size_t len);
 void bitreader_init(bitreader_t*, const uint8_t* data, size_t len);
 void bitreader_free(bitreader_t*);

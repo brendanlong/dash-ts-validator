@@ -61,7 +61,7 @@ pes_packet_t* pes_read(const uint8_t* buf, size_t len)
     g_return_val_if_fail(buf, NULL);
 
     pes_packet_t* pes = pes_new();
-    bitreader_t* b = bitreader_new(buf, len);
+    bitreader_new_stack(b, buf, len);
 
     if (!pes_read_header(pes, b)) {
         goto fail;
@@ -83,7 +83,6 @@ pes_packet_t* pes_read(const uint8_t* buf, size_t len)
     }
 
 cleanup:
-    bitreader_free(b);
     return pes;
 fail:
     pes_free(pes);

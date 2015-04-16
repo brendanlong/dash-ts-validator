@@ -173,7 +173,7 @@ ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num)
 
     ts_packet_t* ts = ts_new(buf, buf_size);
     ts->pos_in_stream = packet_num * TS_SIZE;
-    bitreader_t* b = bitreader_new(ts->bytes, TS_SIZE);
+    bitreader_new_stack(b, ts->bytes, TS_SIZE);
 
     uint8_t sync_byte = bitreader_read_uint8(b);
     if (sync_byte != TS_SYNC_BYTE) {
@@ -211,7 +211,6 @@ ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num)
     }
 
 cleanup:
-    bitreader_free(b);
     return ts;
 fail:
     ts_free(ts);

@@ -1380,7 +1380,7 @@ int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)
 {
     g_return_val_if_fail(buffer, -1);
 
-    bitreader_t* b = bitreader_new(buffer, len);
+    bitreader_new_stack(b, buffer, len);
     size_t num_boxes;
     int error = 0;
     box_t** boxes = read_boxes_from_stream(b, &num_boxes, &error);
@@ -1407,7 +1407,6 @@ int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration)
     }
 
 cleanup:
-    bitreader_free(b);
     free_boxes(boxes, num_boxes);
     return !error;
 fail:

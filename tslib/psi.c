@@ -250,7 +250,7 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
     }
 
     program_association_section_t* pas = program_association_section_new();
-    bitreader_t* b = bitreader_new(buf + offset, buf_len - offset);
+    bitreader_new_stack(b, buf + offset, buf_len - offset);
 
     if (!section_header_read((mpeg2ts_section_t*)pas, b)) {
         goto fail;
@@ -310,7 +310,6 @@ program_association_section_t* program_association_section_read(uint8_t* buf, si
     }
 
 cleanup:
-    bitreader_free(b);
     return pas;
 fail:
     program_association_section_unref(pas);
@@ -499,7 +498,7 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
     }
 
     program_map_section_t* pms = program_map_section_new();
-    bitreader_t* b = bitreader_new(buf + offset, buf_len - offset);
+    bitreader_new_stack(b, buf + offset, buf_len - offset);
     GPtrArray* es_info = NULL;
 
     if (!section_header_read((mpeg2ts_section_t*)pms, b)) {
@@ -582,7 +581,6 @@ program_map_section_t* program_map_section_read(uint8_t* buf, size_t buf_len)
     }
 
 cleanup:
-    bitreader_free(b);
     return pms;
 fail:
     program_map_section_unref(pms);
@@ -695,7 +693,7 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
     }
 
     conditional_access_section_t* cas = conditional_access_section_new();
-    bitreader_t* b = bitreader_new(buf + offset, buf_len - offset);
+    bitreader_new_stack(b, buf + offset, buf_len - offset);
 
     if (!section_header_read((mpeg2ts_section_t*)cas, b)) {
         goto fail;
@@ -749,7 +747,6 @@ conditional_access_section_t* conditional_access_section_read(uint8_t* buf, size
     }
 
 cleanup:
-    bitreader_free(b);
     return cas;
 fail:
     conditional_access_section_unref(cas);
