@@ -615,6 +615,9 @@ fail:
 void print_boxes(box_t* const* boxes, size_t num_boxes)
 {
     g_return_if_fail(boxes);
+    if (tslib_loglevel < TSLIB_LOG_LEVEL_DEBUG) {
+        return;
+    }
     for (size_t i = 0; i < num_boxes; i++) {
         print_box(boxes[i]);
     }
