@@ -1,7 +1,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 CFLAGS = -std=c99 -g -isystem$(top_srcdir)/h264bitstream -I$(top_srcdir)/tslib \
-    -O \
+    -O2 \
     -fstack-protector -fPIE -ftrapv -D_FORTIFY_SOURCE=2 \
     -Wall -Winit-self -Wstrict-overflow=3 -Wfloat-equal -Wshadow \
     -Wpointer-arith -Wtype-limits -Wbad-function-cast -Wcast-qual \
