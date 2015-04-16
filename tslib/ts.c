@@ -195,11 +195,8 @@ ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num)
     ts->has_payload = bitreader_read_bit(b);
     ts->continuity_counter = bitreader_read_bits(b, 4);
 
-    if (ts->has_adaptation_field) {
-        memset(&(ts->adaptation_field), 0, sizeof(ts->adaptation_field));
-        if (!ts_read_adaptation_field(&(ts->adaptation_field), b)) {
-            goto fail;
-        }
+    if (ts->has_adaptation_field && !ts_read_adaptation_field(&(ts->adaptation_field), b)) {
+        goto fail;
     }
 
     if (ts->has_payload) {
