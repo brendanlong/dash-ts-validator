@@ -37,43 +37,25 @@
 #include "log.h"
 
 
-static ts_packet_t* ts_new(uint8_t* buf, size_t buf_len);
 static bool ts_read_adaptation_field(ts_adaptation_field_t*, bitreader_t*);
-
 static void ts_print_adaptation_field(const ts_adaptation_field_t*);
 
-
-ts_packet_t* ts_new(uint8_t* buf, size_t buf_size)
+static bool ts_init(ts_packet_t* ts)
 {
-    g_return_val_if_fail(buf, NULL);
-    g_return_val_if_fail(buf_size >= TS_SIZE, NULL);
+    g_return_val_if_fail(ts, false);
 
-    ts_packet_t* ts = g_slice_new0(ts_packet_t);
+    memset(ts, 0, sizeof(*ts));
     ts->pcr_int = PCR_INVALID; // invalidate interpolated PCR
-    memcpy(ts->bytes, buf, TS_SIZE);
-    return ts;
+    return true;
 }
 
-ts_packet_t* ts_copy(const ts_packet_t* original)
+void ts_copy(ts_packet_t* new_ts, const ts_packet_t* original)
 {
     if (!original) {
-        return NULL;
-    }
-    ts_packet_t* ts = g_slice_dup(ts_packet_t, original);
-    ts->payload = g_slice_copy(original->payload_len, original->payload);
-    ts->adaptation_field.private_data = g_slice_copy(ts->adaptation_field.private_data_len,
-            original->adaptation_field.private_data);
-    return ts;
-}
-
-void ts_free(ts_packet_t* ts)
-{
-    if (ts == NULL) {
+        ts_init(new_ts);
         return;
     }
-    g_slice_free1(ts->payload_len, ts->payload);
-    g_slice_free1(ts->adaptation_field.private_data_len, ts->adaptation_field.private_data);
-    g_slice_free(ts_packet_t, ts);
+    memcpy(new_ts, original, sizeof(*new_ts));
 }
 
 bool ts_read_adaptation_field(ts_adaptation_field_t* af, bitreader_t* b)
@@ -113,7 +95,6 @@ bool ts_read_adaptation_field(ts_adaptation_field_t* af, bitreader_t* b)
                 af->private_data_len = bitreader_read_uint8(b);
 
                 if(af->private_data_len > 0) {
-                    af->private_data = g_slice_alloc(af->private_data_len);
                     bitreader_read_bytes(b, af->private_data, af->private_data_len);
                 }
             }
@@ -163,17 +144,17 @@ bool ts_read_adaptation_field(ts_adaptation_field_t* af, bitreader_t* b)
     return !b->error;
 }
 
-ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num)
+bool ts_read(ts_packet_t* ts, uint8_t* buf, size_t buf_size, uint64_t packet_num)
 {
-    g_return_val_if_fail(buf, NULL);
+    g_return_val_if_fail(buf, false);
     if (buf_size < TS_SIZE) {
         g_critical("TS packet buffer should be %d bytes, but is %zu bytes.", TS_SIZE, buf_size);
-        return NULL;
+        return false;
     }
 
-    ts_packet_t* ts = ts_new(buf, buf_size);
+    ts_init(ts);
     ts->pos_in_stream = packet_num * TS_SIZE;
-    bitreader_new_stack(b, ts->bytes, TS_SIZE);
+    bitreader_new_stack(b, buf, TS_SIZE);
 
     uint8_t sync_byte = bitreader_read_uint8(b);
     if (sync_byte != TS_SYNC_BYTE) {
@@ -201,7 +182,6 @@ ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num)
 
     if (ts->has_payload) {
         ts->payload_len = TS_SIZE - b->bytes_read;
-        ts->payload = g_slice_alloc(ts->payload_len);
         bitreader_read_bytes(b, ts->payload, ts->payload_len);
     }
 
@@ -210,12 +190,9 @@ ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num)
         goto fail;
     }
 
-cleanup:
-    return ts;
+    return true;
 fail:
-    ts_free(ts);
-    ts = NULL;
-    goto cleanup;
+    return false;
 }
 
 void ts_print_adaptation_field(const ts_adaptation_field_t* af)

@@ -41,7 +41,7 @@ static void cat_processor(mpeg2ts_stream_t*, void*);
 static void pat_processor(mpeg2ts_stream_t*, void*);
 static void pmt_processor(mpeg2ts_program_t*, void*);
 static void validate_ts_packet(ts_packet_t*, elementary_stream_info_t*, void*);
-static void validate_pes_packet(pes_packet_t*, elementary_stream_info_t*, GPtrArray* ts_packets, void*);
+static void validate_pes_packet(pes_packet_t*, elementary_stream_info_t*, GArray* ts_packets, void*);
 static int validate_emsg_msg(uint8_t* buffer, size_t len, unsigned segment_duration);
 static int analyze_sidx_references(sidx_t*, int* num_subsegments, int* num_nested_sidx, dash_profile_t);
 
@@ -125,7 +125,7 @@ dash_validator_t* dash_validator_new(segment_type_t segment_type, dash_profile_t
     obj->subsegments = g_ptr_array_new_with_free_func((GDestroyNotify)subsegment_free);
     obj->pids = g_ptr_array_new_with_free_func((GDestroyNotify)pid_validator_free);
     obj->ecm_pids = g_hash_table_new(g_direct_hash, g_direct_equal);
-    obj->initialization_segment_ts = g_ptr_array_new_with_free_func((GDestroyNotify)ts_free);
+    obj->initialization_segment_ts = g_array_new(false, false, sizeof(ts_packet_t));
     return obj;
 }
 
@@ -140,7 +140,7 @@ void dash_validator_free(dash_validator_t* obj)
     g_ptr_array_free(obj->subsegments, true);
     g_ptr_array_free(obj->pids, true);
     g_hash_table_destroy(obj->ecm_pids);
-    g_ptr_array_free(obj->initialization_segment_ts, true);
+    g_array_free(obj->initialization_segment_ts, true);
     free(obj);
 }
 
@@ -455,7 +455,7 @@ cleanup:
     return;
 }
 
-static bool validate_pes_packet_common(pes_packet_t* pes, GPtrArray* ts_packets, dash_validator_t* dash_validator)
+static bool validate_pes_packet_common(pes_packet_t* pes, GArray* ts_packets, dash_validator_t* dash_validator)
 {
     g_return_val_if_fail(ts_packets, false);
     g_return_val_if_fail(ts_packets->len > 0, false);
@@ -473,7 +473,7 @@ static bool validate_pes_packet_common(pes_packet_t* pes, GPtrArray* ts_packets,
     }
 
     if (pes == NULL) {
-        ts_packet_t* ts = g_ptr_array_index(ts_packets, 0);
+        ts_packet_t* ts = &g_array_index(ts_packets, ts_packet_t, 0);
         if (ts->adaptation_field.random_access_indicator) {
             g_critical("DASH Conformance: Found partial PES packet starting with a TS packet with "
                     "random_access_indicator = 1. 6.4.2.2 Media stream access points: PES packet starting at I_SAU "
@@ -493,14 +493,14 @@ cleanup:
     return dash_validator->status;
 }
 
-void validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GPtrArray* ts_packets, void* arg)
+void validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GArray* ts_packets, void* arg)
 {
     g_return_if_fail(ts_packets);
     g_return_if_fail(ts_packets->len > 0);
     g_return_if_fail(arg);
 
     dash_validator_t* dash_validator = arg;
-    ts_packet_t* first_ts = g_ptr_array_index(ts_packets, 0);
+    ts_packet_t* first_ts = &g_array_index(ts_packets, ts_packet_t, 0);
     pid_validator_t* pid_validator = dash_validator_find_pid(first_ts->pid, dash_validator);
     g_return_if_fail(pid_validator);
 
@@ -537,7 +537,7 @@ void validate_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GPtrA
 
     if (dash_validator->current_subsegment && (dash_validator->adaptation_set->subsegment_alignment.has_int ||
             dash_validator->adaptation_set->subsegment_alignment.b)) {
-        ts_packet_t* last_ts = g_ptr_array_index(ts_packets, ts_packets->len - 1);
+        ts_packet_t* last_ts = &g_array_index(ts_packets, ts_packet_t, ts_packets->len - 1);
         uint64_t last_ts_end_byte = last_ts->pos_in_stream + 188 /* length of TS packet */; 
         if (first_ts->pos_in_stream < dash_validator->current_subsegment->end_byte
                 && last_ts->pos_in_stream >= dash_validator->current_subsegment->end_byte) {
@@ -681,7 +681,7 @@ fail:
     goto cleanup;
 }
 
-static void validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GPtrArray* ts_packets, void* arg)
+static void validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t* esi, GArray* ts_packets, void* arg)
 {
     g_return_if_fail(ts_packets);
     g_return_if_fail(ts_packets->len > 0);
@@ -692,7 +692,7 @@ static void validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t
         dash_validator->status = 0;
     }
 
-    ts_packet_t* first_ts = g_ptr_array_index(ts_packets, 0);
+    ts_packet_t* first_ts = &g_array_index(ts_packets, ts_packet_t, 0);
     if (!first_ts->payload_unit_start_indicator) {
         g_critical("DASH Conformance: First 'emsg' packet (PID = 0x0004) does not have "
                 "payload_unit_start_indicator = 1. 5.10.3.3.5 says, \"the transport stream packet carrying the start "
@@ -703,7 +703,7 @@ static void validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t
     if (dash_validator->current_subsegment && dash_validator->adaptation_set->bitstream_switching) {
         subsegment_t* subsegment = dash_validator->current_subsegment;
         if (subsegment->ssix_offset_index < subsegment->ssix_offsets->len) {
-            ts_packet_t* last_ts = g_ptr_array_index(ts_packets, ts_packets->len - 1);
+            ts_packet_t* last_ts = &g_array_index(ts_packets, ts_packet_t, ts_packets->len - 1);
             uint64_t last_ts_end = last_ts->pos_in_stream + TS_SIZE;
             uint64_t next_ssix_offset = g_array_index(subsegment->ssix_offsets, uint64_t,
                     subsegment->ssix_offset_index);
@@ -741,7 +741,7 @@ static void validate_emsg_pes_packet(pes_packet_t* pes, elementary_stream_info_t
     }
 
     for (size_t i = 0; i < ts_packets->len; ++i) {
-        ts_packet_t* tsp = g_ptr_array_index(ts_packets, i);
+        ts_packet_t* tsp = &g_array_index(ts_packets, ts_packet_t, i);
         if (tsp->transport_scrambling_control != 0) {
             g_critical("DASH Conformance: EMSG packet transport_scrambling_control was 0x%x but should be 0. From "
                     "\"5.10.3.3.5 Carriage of the Event Message Box in MPEG-2 TS\": \"For any packet with PID value "
@@ -819,8 +819,8 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
 
     // Read TS packets from initialization segment
     for (gsize i = 0; dash_validator_init && i < dash_validator_init->initialization_segment_ts->len; ++i) {
-        ts_packet_t* ts = g_ptr_array_index(dash_validator_init->initialization_segment_ts, i);
-        mpeg2ts_stream_read_ts_packet(m2s, ts_copy(ts));
+        ts_packet_t* ts = &g_array_index(dash_validator_init->initialization_segment_ts, ts_packet_t, i);
+        mpeg2ts_stream_read_ts_packet(m2s, ts);
     }
 
     long packet_buf_size = 4096;
@@ -835,8 +835,8 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
 
     while ((num_packets = fread(ts_buf, TS_SIZE, packet_buf_size, infile)) > 0) {
         for (int i = 0; i < num_packets; i++) {
-            ts_packet_t* ts = ts_read(ts_buf + i * TS_SIZE, TS_SIZE, packets_read);
-            if (!ts) {
+            ts_packet_t ts;
+            if (!ts_read(&ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read)) {
                 g_critical("DASH Conformance: Error parsing TS packet %"PRIo64" in segment %s. %s",
                         packets_read, file_name,
                         dash_validator->segment_type == INITIALIZATION_SEGMENT ? "6.4.3.2 Initialization Segment: An "
@@ -849,9 +849,11 @@ int validate_segment(dash_validator_t* dash_validator, char* file_name, uint64_t
                 goto fail;
             }
             if (dash_validator->segment_type == INITIALIZATION_SEGMENT) {
-                g_ptr_array_add(dash_validator->initialization_segment_ts, ts_copy(ts));
+                size_t new_i = dash_validator->initialization_segment_ts->len;
+                g_array_set_size(dash_validator->initialization_segment_ts, new_i + 1);
+                ts_copy(&g_array_index(dash_validator->initialization_segment_ts, ts_packet_t, new_i), &ts);
             }
-            mpeg2ts_stream_read_ts_packet(m2s, ts);
+            mpeg2ts_stream_read_ts_packet(m2s, &ts);
             packets_read++;
         }
 
@@ -912,11 +914,11 @@ bool validate_bitstream_switching(const char* file_names[], uint64_t byte_starts
         size_t packets_read;
         while ((packets_read = fread(ts_buf, TS_SIZE, MIN(TS_BUFFER_SIZE / TS_SIZE, packets_to_read), infile)) > 0) {
             for (size_t i = 0; i < packets_read; i++) {
-                ts_packet_t* ts = ts_read(ts_buf + i * TS_SIZE, TS_SIZE, packets_read_total);
-                if (!ts) {
+                ts_packet_t ts;
+                if (!ts_read(&ts, ts_buf + i * TS_SIZE, TS_SIZE, packets_read_total)) {
                     goto fail;
                 }
-                mpeg2ts_stream_read_ts_packet(m2s, ts);
+                mpeg2ts_stream_read_ts_packet(m2s, &ts);
                 packets_read_total++;
             }
             packets_to_read -= packets_read;

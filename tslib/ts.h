@@ -70,7 +70,7 @@ typedef struct {
     uint8_t splice_countdown;
 
     /* if transport_private_data_flag == 1 */
-    uint8_t* private_data;
+    uint8_t private_data[TS_SIZE];
     size_t private_data_len;
 
     /* if adaptation_field_extension_flag == 1 */
@@ -105,8 +105,7 @@ typedef struct {
 
     ts_adaptation_field_t adaptation_field;
 
-    uint8_t bytes[TS_SIZE];
-    uint8_t* payload;
+    uint8_t payload[TS_SIZE];
     size_t payload_len;
     uint64_t pcr_int;   /// interpolated PCR
     uint64_t pos_in_stream;  // byte location of payload in transport stream
@@ -121,10 +120,8 @@ enum {
     PID_NULL = 0x1FFF
 } ts_pid_t;
 
-
-ts_packet_t* ts_copy(const ts_packet_t*);
-void ts_free(ts_packet_t* ts);
-ts_packet_t* ts_read(uint8_t* buf, size_t buf_size, uint64_t packet_num);
+void ts_copy(ts_packet_t*, const ts_packet_t*);
+bool ts_read(ts_packet_t*, uint8_t* buf, size_t buf_size, uint64_t packet_num);
 void ts_print(const ts_packet_t* ts);
 
 int64_t ts_read_pcr(const ts_packet_t* ts);

@@ -216,7 +216,6 @@ static int mpeg2ts_stream_read_cat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
 cleanup:
-    ts_free(ts);
     return ret;
 }
 
@@ -265,7 +264,6 @@ static int mpeg2ts_stream_read_pat(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
     }
 
 cleanup:
-    ts_free(ts);
     return ret;
 }
 
@@ -274,7 +272,6 @@ static int mpeg2ts_stream_read_dash_event_msg(mpeg2ts_stream_t* m2s, ts_packet_t
     if (m2s->emsg_processor && m2s->emsg_processor->process_ts_packet) {
         m2s->emsg_processor->process_ts_packet(ts, NULL, m2s->emsg_processor->arg);
     }
-    ts_free(ts);
     return 0;
 }
 
@@ -324,7 +321,6 @@ static int mpeg2ts_program_read_pmt(mpeg2ts_program_t* m2p, ts_packet_t* ts)
     }
 
 cleanup:
-    ts_free(ts);
     return ret;
 }
 
@@ -367,13 +363,11 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         return mpeg2ts_stream_read_dash_event_msg(m2s, ts);
     }
     if (ts->pid == PID_NULL) {
-        ts_free(ts);
         return 0;
     }
 
     if (m2s->pat == NULL) {
         g_info("PAT missing -- unknown PID 0x%02X", ts->pid);
-        ts_free(ts);
         return 0;
     }
 
@@ -409,6 +403,5 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         break;
     }
 
-    ts_free(ts);
     return 0;
 }

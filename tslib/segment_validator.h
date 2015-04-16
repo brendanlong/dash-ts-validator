@@ -97,7 +97,7 @@ typedef struct {
     conditional_access_section_t* cat;
     int status; // 0 == fail
     segment_type_t segment_type;
-    GPtrArray* initialization_segment_ts;
+    GArray* initialization_segment_ts;
 
     bool has_subsegments;
     size_t subsegment_index;

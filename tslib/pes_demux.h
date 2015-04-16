@@ -35,11 +35,11 @@
 #include "psi.h"
 
 
-typedef void (*pes_processor_t)(pes_packet_t*, elementary_stream_info_t*, GPtrArray* ts_packets, void*);
+typedef void (*pes_processor_t)(pes_packet_t*, elementary_stream_info_t*, GArray* ts_packets, void*);
 typedef void (*pes_arg_destructor_t)(void*);
 
 typedef struct {
-    GPtrArray* ts_packets;
+    GArray* ts_packets;
     pes_processor_t processor;
     void* arg;
     pes_arg_destructor_t arg_destructor;

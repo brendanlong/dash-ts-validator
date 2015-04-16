@@ -35,7 +35,7 @@
 
 bool pes_arg_called = false;
 
-static void processor(pes_packet_t* pes, elementary_stream_info_t* esi, GPtrArray* ts_packets, void* arg)
+static void processor(pes_packet_t* pes, elementary_stream_info_t* esi, GArray* ts_packets, void* arg)
 {
     pes_packet_t* expected = arg;
 
@@ -75,8 +75,8 @@ START_TEST(test_pes_single_ts)
             116, 116, 112, 58, 47, 47, 119, 119, 119};
     uint8_t* pes_bytes = tspacket_bytes + 12;
     size_t pes_len = sizeof(tspacket_bytes) - 12;
-    ts_packet_t* ts = ts_read(tspacket_bytes, sizeof(tspacket_bytes), 0);
-    ck_assert_ptr_ne(ts, NULL);
+    ts_packet_t ts;
+    ck_assert(ts_read(&ts, tspacket_bytes, sizeof(tspacket_bytes), 0));
     pes_packet_t* pes = pes_read(pes_bytes, pes_len);
     ck_assert_ptr_ne(pes, NULL);
 
@@ -85,7 +85,7 @@ START_TEST(test_pes_single_ts)
     pes_demux->arg_destructor = (pes_arg_destructor_t)pes_free;
     ck_assert_ptr_ne(pes_demux, NULL);
 
-    pes_demux_process_ts_packet(ts, NULL, pes_demux);
+    pes_demux_process_ts_packet(&ts, NULL, pes_demux);
     ck_assert(!pes_arg_called);
     pes_demux_process_ts_packet(NULL, NULL, pes_demux);
     ck_assert(pes_arg_called);
@@ -197,8 +197,9 @@ START_TEST(test_pes_multi_ts)
     ck_assert_ptr_ne(pes_demux, NULL);
 
     for (size_t i = 0; i < 6; ++i) {
-        ts_packet_t* ts = ts_read(ts_bytes[i], TS_SIZE, i);
-        pes_demux_process_ts_packet(ts, NULL, pes_demux);
+        ts_packet_t ts;
+        ck_assert(ts_read(&ts, ts_bytes[i], TS_SIZE, i));
+        pes_demux_process_ts_packet(&ts, NULL, pes_demux);
         ck_assert(pes_arg_called == (i == 5));
     }
 
@@ -223,13 +224,13 @@ START_TEST(test_bad_pes)
             32, 45, 32, 72, 46, 50, 54, 52, 47, 77, 80, 69, 71, 45, 52, 32, 65, 86, 67, 32, 99, 111, 100, 101, 99, 32,
             45, 32, 67, 111, 112, 121, 108, 101, 102, 116, 32, 50, 48, 48, 51, 45, 50, 48, 49, 52, 32, 45, 32, 104,
             116, 116, 112, 58, 47, 47, 119, 119, 119};
-    ts_packet_t* ts = ts_read(tspacket_bytes, sizeof(tspacket_bytes), 0);
-    ck_assert_ptr_ne(ts, NULL);
+    ts_packet_t ts;
+    ck_assert(ts_read(&ts, tspacket_bytes, sizeof(tspacket_bytes), 0));
 
     pes_demux_t* pes_demux = pes_demux_new(processor);
     ck_assert_ptr_ne(pes_demux, NULL);
 
-    pes_demux_process_ts_packet(ts, NULL, pes_demux);
+    pes_demux_process_ts_packet(&ts, NULL, pes_demux);
     ck_assert(!pes_arg_called);
     pes_demux_process_ts_packet(NULL, NULL, pes_demux);
     ck_assert(pes_arg_called);

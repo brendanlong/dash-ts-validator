@@ -43,23 +43,22 @@ START_TEST(test_read_ts)
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
 
-    ts_packet_t* ts = ts_read(bytes, sizeof(bytes), 5);
+    ts_packet_t ts;
+    ck_assert(ts_read(&ts, bytes, sizeof(bytes), 5));
 
-    ck_assert_ptr_ne(ts, NULL);
-    ck_assert(!ts->transport_error_indicator);
-    ck_assert(ts->payload_unit_start_indicator);
-    ck_assert(!ts->transport_priority);
-    ck_assert_uint_eq(ts->pid, 0);
-    ck_assert_uint_eq(ts->transport_scrambling_control, 0);
-    ck_assert(!ts->has_adaptation_field);
-    ck_assert(ts->has_payload);
-    ck_assert_uint_eq(ts->continuity_counter, 6);
-    assert_bytes_eq(ts->bytes, TS_SIZE, bytes, sizeof(bytes));
-    assert_bytes_eq(ts->payload, ts->payload_len, bytes + 4, sizeof(bytes) - 4);
-    ck_assert_uint_eq(ts->pcr_int, PCR_INVALID);
-    ck_assert_uint_eq(ts->pos_in_stream, 5 * TS_SIZE);
+    ck_assert(!ts.transport_error_indicator);
+    ck_assert(ts.payload_unit_start_indicator);
+    ck_assert(!ts.transport_priority);
+    ck_assert_uint_eq(ts.pid, 0);
+    ck_assert_uint_eq(ts.transport_scrambling_control, 0);
+    ck_assert(!ts.has_adaptation_field);
+    ck_assert(ts.has_payload);
+    ck_assert_uint_eq(ts.continuity_counter, 6);
+    assert_bytes_eq(ts.payload, ts.payload_len, bytes + 4, sizeof(bytes) - 4);
+    ck_assert_uint_eq(ts.pcr_int, PCR_INVALID);
+    ck_assert_uint_eq(ts.pos_in_stream, 5 * TS_SIZE);
 
-    ts_adaptation_field_t* af = &ts->adaptation_field;
+    ts_adaptation_field_t* af = &ts.adaptation_field;
     ck_assert_uint_eq(af->length, 0);
     ck_assert(!af->discontinuity_indicator);
     ck_assert(!af->random_access_indicator);
@@ -76,7 +75,6 @@ START_TEST(test_read_ts)
     ck_assert_uint_eq(af->original_program_clock_reference_extension, 0);
     ck_assert_uint_eq(af->splice_countdown, 0);
     ck_assert_uint_eq(af->private_data_len, 0);
-    ck_assert_ptr_eq(af->private_data, NULL);
     ck_assert_uint_eq(af->extension_length, 0);
     ck_assert(!af->ltw_flag);
     ck_assert(!af->piecewise_rate_flag);
@@ -87,9 +85,7 @@ START_TEST(test_read_ts)
     ck_assert_uint_eq(af->splice_type, 0);
     ck_assert_uint_eq(af->dts_next_au, 0);
 
-    ck_assert_uint_eq(ts_read_pcr(ts), PCR_INVALID);
-
-    ts_free(ts);
+    ck_assert_uint_eq(ts_read_pcr(&ts), PCR_INVALID);
 END_TEST
 
 START_TEST(test_read_ts_too_short)
@@ -103,11 +99,8 @@ START_TEST(test_read_ts_too_short)
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
 
-    ts_packet_t* ts = ts_read(bytes, sizeof(bytes), 0);
-
-    ck_assert_ptr_eq(ts, NULL);
-
-    ts_free(ts);
+    ts_packet_t ts;
+    ck_assert(!ts_read(&ts, bytes, sizeof(bytes), 0));
 END_TEST
 
 START_TEST(test_read_ts_too_long)
@@ -121,23 +114,20 @@ START_TEST(test_read_ts_too_long)
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
 
-    ts_packet_t* ts = ts_read(bytes, sizeof(bytes), 0);
+    ts_packet_t ts;
+    ck_assert(ts_read(&ts, bytes, sizeof(bytes), 0));
 
-    ck_assert_ptr_ne(ts, NULL);
-    ck_assert(!ts->transport_error_indicator);
-    ck_assert(ts->payload_unit_start_indicator);
-    ck_assert(!ts->transport_priority);
-    ck_assert_uint_eq(ts->pid, PID_PAT);
-    ck_assert_uint_eq(ts->transport_scrambling_control, 0);
-    ck_assert(!ts->has_adaptation_field);
-    ck_assert(ts->has_payload);
-    ck_assert_uint_eq(ts->continuity_counter, 6);
-    assert_bytes_eq(ts->bytes, TS_SIZE, bytes, TS_SIZE);
-    assert_bytes_eq(ts->payload, ts->payload_len, bytes + 4, TS_SIZE - 4);
-    ck_assert_uint_eq(ts->pcr_int, PCR_INVALID);
-    ck_assert_uint_eq(ts->pos_in_stream, 0);
-
-    ts_free(ts);
+    ck_assert(!ts.transport_error_indicator);
+    ck_assert(ts.payload_unit_start_indicator);
+    ck_assert(!ts.transport_priority);
+    ck_assert_uint_eq(ts.pid, PID_PAT);
+    ck_assert_uint_eq(ts.transport_scrambling_control, 0);
+    ck_assert(!ts.has_adaptation_field);
+    ck_assert(ts.has_payload);
+    ck_assert_uint_eq(ts.continuity_counter, 6);
+    assert_bytes_eq(ts.payload, ts.payload_len, bytes + 4, TS_SIZE - 4);
+    ck_assert_uint_eq(ts.pcr_int, PCR_INVALID);
+    ck_assert_uint_eq(ts.pos_in_stream, 0);
 END_TEST
 
 START_TEST(test_read_ts_with_adaptation_field)
@@ -150,23 +140,22 @@ START_TEST(test_read_ts_with_adaptation_field)
             150, 90, 216, 159, 191, 107, 134, 217, 75, 229, 251, 68, 72, 58, 58, 245, 61, 110, 212, 87, 185, 78, 143,
             129, 36, 110, 165, 126, 181, 27, 16, 153, 23, 142, 144, 163, 127, 35, 200, 73, 96, 225};
 
-    ts_packet_t* ts = ts_read(bytes, sizeof(bytes), 6);
+    ts_packet_t ts;
+    ck_assert(ts_read(&ts, bytes, sizeof(bytes), 6));
 
-    ck_assert_ptr_ne(ts, NULL);
-    ck_assert(!ts->transport_error_indicator);
-    ck_assert(ts->payload_unit_start_indicator);
-    ck_assert(!ts->transport_priority);
-    ck_assert_uint_eq(ts->pid, 256);
-    ck_assert_uint_eq(ts->transport_scrambling_control, 0);
-    ck_assert(ts->has_adaptation_field);
-    ck_assert(ts->has_payload);
-    ck_assert_uint_eq(ts->continuity_counter, 5);
-    assert_bytes_eq(ts->bytes, TS_SIZE, bytes, TS_SIZE);
-    assert_bytes_eq(ts->payload, ts->payload_len, bytes + 12, ts->payload_len);
-    ck_assert_uint_eq(ts->pcr_int, PCR_INVALID);
-    ck_assert_uint_eq(ts->pos_in_stream, 1128);
+    ck_assert(!ts.transport_error_indicator);
+    ck_assert(ts.payload_unit_start_indicator);
+    ck_assert(!ts.transport_priority);
+    ck_assert_uint_eq(ts.pid, 256);
+    ck_assert_uint_eq(ts.transport_scrambling_control, 0);
+    ck_assert(ts.has_adaptation_field);
+    ck_assert(ts.has_payload);
+    ck_assert_uint_eq(ts.continuity_counter, 5);
+    assert_bytes_eq(ts.payload, ts.payload_len, bytes + 12, ts.payload_len);
+    ck_assert_uint_eq(ts.pcr_int, PCR_INVALID);
+    ck_assert_uint_eq(ts.pos_in_stream, 1128);
 
-    ts_adaptation_field_t* af = &ts->adaptation_field;
+    ts_adaptation_field_t* af = &ts.adaptation_field;
     ck_assert_uint_eq(af->length, 7);
     ck_assert(!af->discontinuity_indicator);
     ck_assert(af->random_access_indicator);
@@ -177,9 +166,7 @@ START_TEST(test_read_ts_with_adaptation_field)
     ck_assert(!af->private_data_flag);
     ck_assert(!af->extension_flag);
 
-    ck_assert_uint_eq(ts_read_pcr(ts), 810000000);
-
-    ts_free(ts);
+    ck_assert_uint_eq(ts_read_pcr(&ts), 810000000);
 END_TEST
 
 Suite *suite(void)
