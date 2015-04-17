@@ -547,7 +547,7 @@ START_TEST(test_subrepresentation)
             subrepresentation->dependency_level->len, dependency_levels, 3);
 
     char* content_components[] = {"256", "5", "a"};
-    assert_arrays_eq(ck_assert_str_eq, subrepresentation->content_component->pdata,
+    assert_arrays_eq(ck_assert_str_eq, (char**)subrepresentation->content_component->pdata,
             subrepresentation->content_component->len, content_components, 3);
 
     mpd_free(mpd);
