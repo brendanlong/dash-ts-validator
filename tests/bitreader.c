@@ -34,7 +34,7 @@
 
 START_TEST(test_bitreader_aligned)
     uint8_t bytes[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 170, '5', 0, '\t', 255, 29, 54, 5, 9,'a', 'b', 0};
-    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    bitreader_new_stack(b, bytes, sizeof(bytes));
 
     ck_assert_int_eq(bitreader_read_uint8(b), 1);
     ck_assert_int_eq(bitreader_read_uint16(b), 515);
@@ -62,14 +62,12 @@ START_TEST(test_bitreader_aligned)
     ck_assert(!b->error);
     bitreader_skip_bits(b, 1);
     ck_assert(b->error);
-
-    bitreader_free(b);
 END_TEST
 
 START_TEST(test_bitreader_unaligned)
     uint8_t bytes[] = {255, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 'a', 'b', 'c', 'd', 'e', 'f', 'g',
             'h'};
-    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    bitreader_new_stack(b, bytes, sizeof(bytes));
 
     ck_assert(bitreader_read_bit(b));
     ck_assert_int_eq(bitreader_read_uint8(b), 254);
@@ -93,8 +91,6 @@ START_TEST(test_bitreader_unaligned)
     ck_assert(!b->error);
     bitreader_skip_bits(b, 1);
     ck_assert(b->error);
-
-    bitreader_free(b);
 END_TEST
 
 Suite *suite(void)

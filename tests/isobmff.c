@@ -155,7 +155,7 @@ START_TEST(test_read_boxes_from_stream)
     ck_assert(g_file_get_contents("tests/subsegment-example.six", &contents, &length, &gerror));
     ck_assert_ptr_eq(gerror, NULL);
 
-    bitreader_t* b = bitreader_new((uint8_t*)contents, length);
+    bitreader_new_stack(b, (uint8_t*)contents, length);
     size_t boxes_len;
     int error = 0;
     box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
@@ -269,7 +269,6 @@ START_TEST(test_read_boxes_from_stream)
     }
 
     free_boxes(boxes, boxes_len);
-    bitreader_free(b);
     g_free(contents);
 END_TEST
 
@@ -349,7 +348,7 @@ START_TEST(test_read_styp)
     uint8_t bytes[] = {0, 0, 0, 24, 's', 't', 'y', 'p', 'a', 'b', 'c', 'd', 1, 'f', 'g', 'h', 'r', 'i', 's', 'x',
             'r', 's', 't', 'l'};
 
-    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    bitreader_new_stack(b, bytes, sizeof(bytes));
     size_t boxes_len;
     int error = 0;
     box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
@@ -379,13 +378,12 @@ START_TEST(test_read_styp)
     }
 
     free_boxes(boxes, boxes_len);
-    bitreader_free(b);
 END_TEST
 
 START_TEST(test_read_styp_no_compatible_brands)
     uint8_t bytes[] = {0, 0, 0, 16, 's', 't', 'y', 'p', 'a', 'b', 'c', 'd', 1, 'f', 'g', 'h'};
 
-    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    bitreader_new_stack(b, bytes, sizeof(bytes));
     size_t boxes_len;
     int error = 0;
     box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
@@ -409,64 +407,55 @@ START_TEST(test_read_styp_no_compatible_brands)
     ck_assert_uint_eq(styp->num_compatible_brands, 0);
 
     free_boxes(boxes, boxes_len);
-    bitreader_free(b);
 END_TEST
 
 START_TEST(test_read_styp_too_short)
     uint8_t bytes[] = {0, 0, 0, 12, 's', 't', 'y', 'p', 'a', 'b', 'c', 'd'};
 
-    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    bitreader_new_stack(b, bytes, sizeof(bytes));
     size_t boxes_len;
     int error = 0;
     box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
 
     ck_assert(error);
     ck_assert_ptr_eq(boxes, NULL);
-
-    bitreader_free(b);
 END_TEST
 
 START_TEST(test_read_styp_data_too_short)
     uint8_t bytes[] = {0, 0, 0, 12, 's', 't', 'y', 'p', 'a', 'b', 'c'};
 
-    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    bitreader_new_stack(b, bytes, sizeof(bytes));
     size_t boxes_len;
     int error = 0;
     box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
 
     ck_assert(error);
     ck_assert_ptr_eq(boxes, NULL);
-
-    bitreader_free(b);
 END_TEST
 
 START_TEST(test_read_styp_data_too_long)
     uint8_t bytes[] = {0, 0, 0, 20, 's', 't', 'y', 'p', 'a', 'b', 'c', 'd', 1, 'f', 'g', 'h', 'r', 'i', 's', 'x',
             'r', 's', 't', 'l'};
 
-    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    bitreader_new_stack(b, bytes, sizeof(bytes));
     size_t boxes_len;
     int error = 0;
     box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
 
     ck_assert(error);
     ck_assert_ptr_eq(boxes, NULL);
-
-    bitreader_free(b);
 END_TEST
 
 START_TEST(test_read_styp_size_not_divisible_by_four)
     uint8_t bytes[] = {0, 0, 0, 18, 's', 't', 'y', 'p', 'a', 'b', 'c', 'd', 1, 'f', 'g', 'h', 'r', 'i'};
 
-    bitreader_t* b = bitreader_new(bytes, sizeof(bytes));
+    bitreader_new_stack(b, bytes, sizeof(bytes));
     size_t boxes_len;
     int error = 0;
     box_t** boxes = read_boxes_from_stream(b, &boxes_len, &error);
 
     ck_assert(error);
     ck_assert_ptr_eq(boxes, NULL);
-
-    bitreader_free(b);
 END_TEST
 
 Suite *suite(void)
