@@ -97,12 +97,12 @@ typedef struct _mpeg2ts_stream  mpeg2ts_stream_t;
 typedef struct _mpeg2ts_program mpeg2ts_program_t;
 
 typedef struct {
-    demux_pid_handler_t* demux_handler;   /// demux handler
-    demux_pid_handler_t* demux_validator; /// demux validator
+    demux_pid_handler_t* demux_handler;
+    demux_pid_handler_t* demux_validator;
     // TODO: mux_pid_handler_t*
     elementary_stream_info_t* es_info;  /// ES-level information (type, descriptors)
-    int continuity_counter;             /// running continuity counter
     uint64_t num_packets;
+    uint8_t last_continuity_counter;
 } pid_info_t;
 
 mpeg2ts_stream_t* mpeg2ts_stream_new(void);

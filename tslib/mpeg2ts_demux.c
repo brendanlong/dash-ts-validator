@@ -28,6 +28,7 @@
 #include "mpeg2ts_demux.h"
 
 #include <glib.h>
+#include <inttypes.h>
 #include "psi.h"
 
 demux_pid_handler_t* demux_pid_handler_new(ts_pid_processor_t process_ts_packet)
@@ -384,6 +385,15 @@ int mpeg2ts_stream_read_ts_packet(mpeg2ts_stream_t* m2s, ts_packet_t* ts)
         if (pi == NULL) {
             continue;
         }
+
+        if (pi->num_packets > 0 && ts->has_payload
+                && !(ts->has_adaptation_field && ts->adaptation_field.discontinuity_indicator)
+                && ts->continuity_counter == pi->last_continuity_counter) {
+            g_debug("Ignoring duplicate packet for PID %"PRIu16" with continuity_counter=%"PRIu8,
+                    ts->pid, ts->continuity_counter);
+            break;
+        }
+        pi->last_continuity_counter = ts->continuity_counter;
 
         // TODO: check for discontinuity
 
