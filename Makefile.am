@@ -26,7 +26,7 @@ tslib_apps_ts_validate_mult_segment_SOURCES = tslib/apps/ts_validate_mult_segmen
 tslib_apps_ts_validate_mult_segment_LDADD = tslib/libts.a $(AM_LDFLAGS)
 
 TEST_CFLAGS = $(AM_CFLAGS) $(CHECK_CFLAGS)
-TEST_LIBS = tslib/libts.a $(AM_LDFLAGS) $(CHECK_LIBS) -lrt
+TEST_LIBS = tslib/libts.a $(AM_LDFLAGS) $(CHECK_LIBS)
 
 tests_check_bitreader_SOURCES = tests/bitreader.c tests/main.c
 tests_check_bitreader_CFLAGS = $(TEST_CFLAGS)
