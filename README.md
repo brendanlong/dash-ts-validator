@@ -56,3 +56,13 @@ The built executables are placed in the `ts_lib/apps` directory.
 The build produces an executable:
 
 `ts_validate_multi_segment`: The first argument is the MPD to validate. It will validate all segments in the MPD (correctly handling different adaptation sets and representations).
+
+## Running Tests
+
+There are some unit tests. Run them with:
+
+    make check
+
+On Linux machines with Valgrind, you can also run the tests under Valgrind to check for memory leaks:
+
+    make check-valgrind
