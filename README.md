@@ -18,6 +18,24 @@ See [Homebrew](http://brew.sh/) if you don't already use it. You can also instal
 
     brew install pcre libxml2 glib
 
+#### OS X Open File Limit
+
+On recent versions of OS X, you may need to increase the "open file limit". The TS validator only opens a few files at a time, but OS X seems to have trouble with it.
+
+Open or create /etc/launchd.conf (`sudo nano /etc/launchd.conf`) and add:
+
+    limit maxfiles 16384 16384
+    limit maxproc 2048 2048
+
+Then edit ~/.bashrc (`nano ~/.bashrc`) and add:
+
+    ulimit -n 1024
+    ulimit -u 1024
+
+Then **restart**, and the open file limit error should go away.
+
+Note: You can close nano by typing `ctrl+x`, then `y` to save.
+
 ## Building `ts_validator`
 
 To build `ts_validator`, run:
